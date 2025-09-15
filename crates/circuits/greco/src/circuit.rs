@@ -3,6 +3,7 @@ use crate::sample::generate_sample_encryption;
 use crate::toml::GrecoTomlGenerator;
 use crate::vectors::GrecoVectors;
 use fhe::bfv::BfvParameters;
+use pvw::PvwParameters;
 use shared::toml::TomlGenerator;
 use shared::{Circuit, SupportedParameterType};
 use std::path::Path;
@@ -48,6 +49,7 @@ impl Circuit for GrecoCircuit {
     fn generate_params(
         &self,
         _bfv_params: &Arc<BfvParameters>,
+        _pvw_params: Option<&Arc<PvwParameters>>,
     ) -> Result<(), shared::errors::ZkFheError> {
         // Nothing to do - parameters are generated on-demand in generate_toml
         Ok(())
@@ -56,6 +58,7 @@ impl Circuit for GrecoCircuit {
     fn generate_toml(
         &self,
         bfv_params: &Arc<BfvParameters>,
+        _pvw_params: Option<&Arc<PvwParameters>>,
         output_dir: &Path,
     ) -> Result<(), shared::errors::ZkFheError> {
         // Generate bounds and vectors directly

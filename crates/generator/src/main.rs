@@ -17,6 +17,8 @@ use crypto_params::bfv::{BfvSearchConfig, bfv_search};
 use crypto_params::pvw::{PvwSearchConfig, pvw_search};
 use crypto_params::utils::{approx_bits_from_log2, log2_big};
 use fhe::bfv::BfvParametersBuilder;
+use num_bigint::BigInt;
+use pvw::PvwParametersBuilder;
 use shared::{Circuit, SupportedParameterType};
 
 /// Main CLI structure using clap for argument parsing
@@ -177,6 +179,10 @@ pub struct PvwParams {
     /// Default: 4 (tweak as needed).
     #[arg(long)]
     max_pvw_growth: Option<usize>,
+
+    /// Secret key variance for PVW parameters. Default: 0.5 (standard for CBD distribution).
+    #[arg(long)]
+    secret_variance: Option<f32>,
 }
 
 /// Circuit registry - maps circuit names to their implementations
@@ -315,6 +321,7 @@ fn create_pvw_config(
             k_start: 1024,
             k_max: 32768,
             delta_power_num: 1,
+            secret_variance: 0.5,
             qbfv_primes: None, // Will be set from BFV computation
             max_pvw_growth: None,
             verbose,
@@ -326,6 +333,7 @@ fn create_pvw_config(
             k_start: 1024,
             k_max: 32768,
             delta_power_num: 1,
+            secret_variance: 0.5,
             qbfv_primes: None,
             max_pvw_growth: None,
             verbose,
@@ -337,6 +345,7 @@ fn create_pvw_config(
             k_start: 1024,
             k_max: 32768,
             delta_power_num: 1,
+            secret_variance: 0.5,
             qbfv_primes: None,
             max_pvw_growth: None,
             verbose,
@@ -363,6 +372,9 @@ fn create_pvw_config(
         }
         if let Some(delta_power_num_val) = pvw_params.delta_power_num {
             config.delta_power_num = delta_power_num_val;
+        }
+        if let Some(secret_variance_val) = pvw_params.secret_variance {
+            config.secret_variance = secret_variance_val;
         }
         if let Some(qbfv_primes_val) = pvw_params.qbfv_primes {
             config.qbfv_primes = Some(qbfv_primes_val);
@@ -498,15 +510,16 @@ fn generate_circuit_params(
     );
 
     // Generate PVW parameters if requested
-    if let Some(pvw_config) = &param_config.pvw_config {
+    let pvw_search_result = if let Some(pvw_config) = &param_config.pvw_config {
         println!(
-            "🔐 PVW Parameters: n={}, ell_start={}, ell_max={}, k_start={}, k_max={}, delta_power_num={}",
+            "🔐 PVW Parameters: n={}, ell_start={}, ell_max={}, k_start={}, k_max={}, delta_power_num={}, secret_variance={}",
             pvw_config.n,
             pvw_config.ell_start,
             pvw_config.ell_max,
             pvw_config.k_start,
             pvw_config.k_max,
-            pvw_config.delta_power_num
+            pvw_config.delta_power_num,
+            pvw_config.secret_variance
         );
         println!("⚙️  PVW parameters computed using BFV result as starting point");
 
@@ -552,7 +565,10 @@ fn generate_circuit_params(
             );
         }
         println!("✅ PVW parameters computed successfully");
-    }
+        Some(pvw_result)
+    } else {
+        None
+    };
 
     // Build BFV parameters for circuit use
     let bfv_params = BfvParametersBuilder::new()
@@ -568,18 +584,56 @@ fn generate_circuit_params(
         bfv_params.plaintext()
     );
 
+    // Build PVW parameters if PVW search was performed
+    let pvw_params = if let Some(pvw_result) = &pvw_search_result {
+        println!(
+            "🔐 Building PVW parameters with {} moduli",
+            bfv_result.qi_values().len()
+        );
+
+        // Build PVW parameters using the search results
+        let pvw_params = PvwParametersBuilder::new()
+            .set_parties(bfv_result.d as usize)
+            .set_l(pvw_result.ell)
+            .set_dimension(pvw_result.k)
+            .set_moduli(bfv_result.qi_values().as_slice())
+            .set_secret_variance(param_config.pvw_config.unwrap().secret_variance)
+            .set_error_bound_1(BigInt::from(pvw_result.sigma1))
+            .set_error_bound_2(BigInt::from(pvw_result.sigma2))
+            .build_arc()
+            .map_err(|e| anyhow::anyhow!("Failed to build PVW parameters: {}", e))?;
+
+        println!("✅ PVW parameters built successfully");
+        Some(pvw_params)
+    } else {
+        None
+    };
+
     // Generate parameters
     println!("⚙️  Generating circuit parameters...");
-    circuit
-        .generate_params(&bfv_params)
-        .map_err(|e| anyhow::anyhow!("Failed to generate parameters: {}", e))?;
+
+    if let Some(pvw_params) = &pvw_params {
+        circuit
+            .generate_params(&bfv_params, Some(pvw_params))
+            .map_err(|e| anyhow::anyhow!("Failed to generate parameters: {}", e))?;
+    } else {
+        circuit
+            .generate_params(&bfv_params, None)
+            .map_err(|e| anyhow::anyhow!("Failed to generate parameters: {}", e))?;
+    }
     println!("✅ Parameters generated successfully");
 
-    // Generate TOML file
+    // Generate TOML file - circuits can access PVW data through the parameter config if needed
     println!("📄 Generating TOML file...");
-    circuit
-        .generate_toml(&bfv_params, output_dir)
-        .map_err(|e| anyhow::anyhow!("Failed to generate TOML: {}", e))?;
+    if let Some(pvw_params) = &pvw_params {
+        circuit
+            .generate_toml(&bfv_params, Some(pvw_params), output_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to generate TOML: {}", e))?;
+    } else {
+        circuit
+            .generate_toml(&bfv_params, None, output_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to generate TOML: {}", e))?;
+    }
     println!("✅ TOML file generated successfully");
 
     println!("\n🎉 Generation complete!");
@@ -620,7 +674,8 @@ fn main() -> anyhow::Result<()> {
         Commands::List { circuits, presets } => {
             if circuits {
                 println!("📋 Available circuits:");
-                println!("  • greco - Greco circuit implementation (BFV only)");
+                println!("  • greco   - Greco circuit implementation (BFV only)");
+                println!("  • pk_pvw  - PVW public key circuit (BFV + PVW parameters)");
             }
             if presets {
                 println!("\n⚙️  Available presets:");
@@ -629,16 +684,21 @@ fn main() -> anyhow::Result<()> {
                 println!("  • prod  - Production (n=1000, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
                 println!("   Example: --bfv-n 2000 --bfv-lambda 80");
+                println!("\n💡 PVW parameters can be specified with --pvw-* flags");
+                println!("   Example: --pvw-n 1000 --ell-start 4 --secret-variance 0.5");
             }
             if !circuits && !presets {
                 println!("📋 Available circuits:");
-                println!("  • greco - Greco circuit implementation (BFV only)");
+                println!("  • greco   - Greco circuit implementation (BFV only)");
+                println!("  • pk_pvw  - PVW public key circuit (BFV + PVW parameters)");
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=100, z=100, λ=40, B=20)");
                 println!("  • test  - Testing (n=1000, z=1000, λ=80, B=20)");
                 println!("  • prod  - Production (n=1000, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
                 println!("   Example: --bfv-n 2000 --bfv-lambda 128");
+                println!("\n💡 PVW parameters can be specified with --pvw-* flags");
+                println!("   Example: --pvw-n 1000 --ell-start 4 --secret-variance 0.5");
                 println!("\n⚠️  Note: greco circuit only supports BFV parameters");
             }
         }

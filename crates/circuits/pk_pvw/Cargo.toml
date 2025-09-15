@@ -1,9 +1,9 @@
 [package]
-name = "zkfhe-greco"
+name = "zkfhe-pk-pvw"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Greco circuit parameter generation in Rust"
+description = "PVW circuit parameter generation for zero-knowledge FHE proofs"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -14,6 +14,8 @@ rust-version.workspace = true
 
 [dependencies]
 shared = { package = "zkfhe-shared", path = "../../shared" }
+pvw = { git = "https://github.com/gnosisguild/pvw-rs", branch = "fixes" }
+num-integer = { workspace = true }
 bigint-poly = { workspace = true }
 blake3 = { workspace = true }
 fhe = { workspace = true }
@@ -28,5 +30,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
 tempfile = { workspace = true }
-pvw = { workspace = true }
