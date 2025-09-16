@@ -203,6 +203,10 @@ fn get_circuit(circuit_name: &str) -> anyhow::Result<Box<dyn Circuit>> {
             let circuit = greco::circuit::GrecoCircuit;
             Ok(Box::new(circuit))
         }
+        "pk_pvw" => {
+            let circuit = pk_pvw::circuit::PkPvwCircuit;
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {}", circuit_name),
     }
 }
@@ -236,8 +240,8 @@ impl ParameterConfig {
         // Always create BFV config first (needed as base for PVW)
         let bfv_config = create_bfv_config(preset, bfv, verbose)?;
 
-        // If PVW params provided, create PVW config that derives from BFV
-        let pvw_config = if pvw.is_some() {
+        // Create PVW config if PVW params provided OR if using a preset (presets include PVW defaults)
+        let pvw_config = if pvw.is_some() || preset.is_some() {
             // Step 1: Create initial PVW config from preset + CLI args (like BFV)
             let mut pvw_config = create_pvw_config(preset, pvw, verbose)?;
             // Step 2: Update it with BFV computation results
@@ -593,7 +597,7 @@ fn generate_circuit_params(
 
         // Build PVW parameters using the search results
         let pvw_params = PvwParametersBuilder::new()
-            .set_parties(bfv_result.d as usize)
+            .set_parties(param_config.bfv_config.n as usize)
             .set_l(pvw_result.ell)
             .set_dimension(pvw_result.k)
             .set_moduli(bfv_result.qi_values().as_slice())

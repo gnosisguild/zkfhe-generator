@@ -25,7 +25,5 @@ fhe = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
-pvw = { workspace = true }
 num-bigint = { workspace = true }
-num-traits = { workspace = true }
-num-integer = { workspace = true }
+pvw = { workspace = true }

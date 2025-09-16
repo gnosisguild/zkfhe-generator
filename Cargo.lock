@@ -1478,8 +1478,6 @@ dependencies = [
  "clap",
  "fhe",
  "num-bigint",
- "num-integer",
- "num-traits",
  "pvw",
  "zkfhe-crypto-params",
  "zkfhe-greco",
@@ -1540,6 +1538,7 @@ name = "zkfhe-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bigint-poly",
  "chrono",
  "fhe",
  "fhe-math",
