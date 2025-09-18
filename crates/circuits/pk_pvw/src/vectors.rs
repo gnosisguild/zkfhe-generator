@@ -77,8 +77,10 @@ impl PkPvwVectors {
     /// Create PkPvwVectors from sample PVW encryption data
     pub fn compute(encryption_data: &crate::sample::PvwEncryptionData) -> ZkFheResult<Self> {
         use bigint_poly::reduce_and_center_coefficients;
+        use rand::rngs::OsRng;
         use shared::constants::get_zkp_modulus;
 
+        let mut rng = OsRng;
         let params = &encryption_data.params;
         let n_parties = params.n;
         let k = params.k;
@@ -102,9 +104,9 @@ impl PkPvwVectors {
         }
 
         // Extract secret keys (sk) - N_PARTIES×K matrix of polynomials
-        for (party_idx, secret_key) in encryption_data.secret_keys.iter().enumerate() {
+        for (party_idx, party) in encryption_data.parties.iter().enumerate() {
             for k_idx in 0..k {
-                let sk_coeffs = secret_key.get_coefficients(k_idx).ok_or_else(|| {
+                let sk_coeffs = party.secret_key.get_coefficients(k_idx).ok_or_else(|| {
                     shared::errors::ZkFheError::Bfv {
                         message: format!(
                             "Failed to get secret key coefficients for party {party_idx} dim {k_idx}"
@@ -141,10 +143,17 @@ impl PkPvwVectors {
         }
 
         // Extract error vectors (e) - N_PARTIES×K matrix of polynomials
-        // Use the actual errors from key generation
-        for (party_idx, error_vector) in encryption_data.error_vectors.iter().enumerate() {
-            for (k_idx, error_poly) in error_vector.iter().enumerate() {
-                let coeffs = extract_poly_coefficients(error_poly, n, params.context.moduli()[0])?;
+        // Generate error polynomials using the configured error bound
+        for party_idx in 0..n_parties {
+            for k_idx in 0..k {
+                // Generate error polynomial using sample_error_1 method
+                let error_poly = params.sample_error_1(&mut rng).map_err(|e| {
+                    shared::errors::ZkFheError::Bfv {
+                        message: format!("Failed to sample error polynomial: {e}"),
+                    }
+                })?;
+
+                let coeffs = extract_poly_coefficients(&error_poly, n, params.context.moduli()[0])?;
                 vectors.e[party_idx][k_idx] = coeffs;
             }
         }
