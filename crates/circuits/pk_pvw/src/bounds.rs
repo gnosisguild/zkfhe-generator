@@ -32,7 +32,7 @@ impl PkPvwBounds {
         let qis: Vec<u64> = moduli.to_vec();
 
         // Extract parameters for bounds calculation
-        let n = params.context.degree; // Ring dimension N from context degree
+        let n = params.l; // Ring dimension N from context degree
         let error_bound = params.error_bound_1.to_u64().unwrap(); // B (error bound)
         let secret_variance = params.secret_variance as u64; // B_s (secret key bound)
 

@@ -57,20 +57,20 @@ impl PkPvwVectors {
     /// * `k` - LWE dimension (K)
     /// * `n` - Ring dimension/polynomial degree (N)
     /// * `num_moduli` - Number of moduli (L in the circuit)
-    pub fn new(n_parties: usize, k: usize, n: usize, nun_moduli: usize) -> Self {
+    pub fn new(n_parties: usize, k: usize, n: usize, num_moduli: usize) -> Self {
         PkPvwVectors {
             // a: L matrices of K x K polynomials of degree N
-            a: vec![vec![vec![vec![BigInt::zero(); n]; k]; k]; nun_moduli],
+            a: vec![vec![vec![vec![BigInt::zero(); n]; k]; k]; num_moduli],
             // e: N_PARTIES x K matrix of polynomials of degree N
             e: vec![vec![vec![BigInt::zero(); n]; k]; n_parties],
             // sk: N_PARTIES x K matrix of polynomials of degree N
             sk: vec![vec![vec![BigInt::zero(); n]; k]; n_parties],
             // b: L matrices of N_PARTIES x K polynomials of degree N
-            b: vec![vec![vec![vec![BigInt::zero(); n]; k]; n_parties]; nun_moduli],
+            b: vec![vec![vec![vec![BigInt::zero(); n]; k]; n_parties]; num_moduli],
             // r1: L matrices of N_PARTIES x K polynomials of degree 2*N-1
-            r1: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; nun_moduli],
+            r1: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; num_moduli],
             // r2: L matrices of N_PARTIES x K polynomials of degree 2*N-1
-            r2: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; nun_moduli],
+            r2: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; num_moduli],
         }
     }
 
@@ -86,7 +86,7 @@ impl PkPvwVectors {
         // Extract parameters from the PVW parameters
         let n_parties = params.n;        // Number of parties
         let k = params.k;                // LWE dimension
-        let n = params.context.degree; // Ring dimension/polynomial degree
+        let n = params.l;                // Ring dimension/polynomial degree (from PVW l parameter)
         let num_moduli = params.context.moduli().len(); // Number of moduli (L in the circuit)
 
         // Create the vectors structure

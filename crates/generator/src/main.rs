@@ -268,21 +268,21 @@ fn create_bfv_config(
     let mut config = match preset.unwrap_or("dev") {
         // TODO: there's currently no difference between dev, test and prod.
         "dev" => BfvSearchConfig {
-            n: 1000,
+            n: 1,
             z: 1000,
             lambda: 80,
             b: 20,
             verbose,
         },
         "test" => BfvSearchConfig {
-            n: 1000,
+            n: 1,
             z: 1000,
             lambda: 80,
             b: 20,
             verbose,
         },
         "prod" => BfvSearchConfig {
-            n: 1000,
+            n: 1,
             z: 1000,
             lambda: 80,
             b: 20,
@@ -319,7 +319,7 @@ fn create_pvw_config(
     // Start with preset defaults (similar to BFV)
     let mut config = match preset.unwrap_or("dev") {
         "dev" => PvwSearchConfig {
-            n: 1000, // Default, can be overridden by BFV result or PVW param
+            n: 1, // Default, can be overridden by BFV result or PVW param
             ell_start: 2,
             ell_max: 64,
             k_start: 1024,
@@ -331,7 +331,7 @@ fn create_pvw_config(
             verbose,
         },
         "test" => PvwSearchConfig {
-            n: 1000,
+            n: 1,
             ell_start: 2,
             ell_max: 64,
             k_start: 1024,
@@ -343,7 +343,7 @@ fn create_pvw_config(
             verbose,
         },
         "prod" => PvwSearchConfig {
-            n: 1000,
+            n: 1,
             ell_start: 2,
             ell_max: 64,
             k_start: 1024,
@@ -406,7 +406,7 @@ fn update_pvw_config_with_bfv(
     }
 
     // If no explicit PVW n was provided, use BFV n
-    if pvw_config.n == 1000 {
+    if pvw_config.n == 1 {
         // This is the default, so likely wasn't explicitly set
         pvw_config.n = bfv_config.n;
     }

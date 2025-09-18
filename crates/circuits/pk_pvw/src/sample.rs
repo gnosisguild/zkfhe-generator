@@ -19,10 +19,8 @@ pub fn generate_sample_pvw_data(
 
     // Generate CRS (Common Reference String)
     let crs = PvwCrs::new(params, &mut rng)?;
-
     // Initialize global public key with the CRS
     let mut global_pk = GlobalPublicKey::new(crs.clone());
-
     // Generate parties and their keys
     let mut parties = Vec::new();
     for i in 0..params.n {
@@ -37,9 +35,7 @@ pub fn generate_sample_pvw_data(
             .collect();
         all_party_vectors.push(party_vector);
     }
-
     let all_ciphertexts = encrypt_all_party_shares(&all_party_vectors, &global_pk)?;
-
     Ok(PvwEncryptionData {
         crs,
         parties,
