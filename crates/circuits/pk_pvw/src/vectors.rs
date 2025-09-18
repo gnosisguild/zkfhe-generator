@@ -56,21 +56,21 @@ impl PkPvwVectors {
     /// * `n_parties` - Number of parties (N_PARTIES)
     /// * `k` - LWE dimension (K)
     /// * `n` - Ring dimension/polynomial degree (N)
-    /// * `l` - Number of moduli (L)
-    pub fn new(n_parties: usize, k: usize, n: usize, l: usize) -> Self {
+    /// * `num_moduli` - Number of moduli (L in the circuit)
+    pub fn new(n_parties: usize, k: usize, n: usize, nun_moduli: usize) -> Self {
         PkPvwVectors {
             // a: L matrices of K x K polynomials of degree N
-            a: vec![vec![vec![vec![BigInt::zero(); n]; k]; k]; l],
+            a: vec![vec![vec![vec![BigInt::zero(); n]; k]; k]; nun_moduli],
             // e: N_PARTIES x K matrix of polynomials of degree N
             e: vec![vec![vec![BigInt::zero(); n]; k]; n_parties],
             // sk: N_PARTIES x K matrix of polynomials of degree N
             sk: vec![vec![vec![BigInt::zero(); n]; k]; n_parties],
             // b: L matrices of N_PARTIES x K polynomials of degree N
-            b: vec![vec![vec![vec![BigInt::zero(); n]; k]; n_parties]; l],
+            b: vec![vec![vec![vec![BigInt::zero(); n]; k]; n_parties]; nun_moduli],
             // r1: L matrices of N_PARTIES x K polynomials of degree 2*N-1
-            r1: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; l],
+            r1: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; nun_moduli],
             // r2: L matrices of N_PARTIES x K polynomials of degree 2*N-1
-            r2: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; l],
+            r2: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; nun_moduli],
         }
     }
 
@@ -82,13 +82,15 @@ impl PkPvwVectors {
 
         let mut rng = OsRng;
         let params = &encryption_data.params;
-        let n_parties = params.n;
-        let k = params.k;
-        let n = params.l; // Ring dimension (polynomial degree)
-        let l = params.context.moduli().len(); // Number of moduli
+
+        // Extract parameters from the PVW parameters
+        let n_parties = params.n;        // Number of parties
+        let k = params.k;                // LWE dimension
+        let n = params.context.degree; // Ring dimension/polynomial degree
+        let num_moduli = params.context.moduli().len(); // Number of moduli (L in the circuit)
 
         // Create the vectors structure
-        let mut vectors = Self::new(n_parties, k, n, l);
+        let mut vectors = Self::new(n_parties, k, n, num_moduli);
 
         // Extract CRS matrices (a) - one K×K matrix per modulus l
         for (l_idx, modulus) in params.context.moduli().iter().enumerate() {
@@ -128,7 +130,7 @@ impl PkPvwVectors {
         }
 
         // Extract public keys (b) - L×N_PARTIES×K matrices of polynomials
-        for l_idx in 0..l {
+        for l_idx in 0..num_moduli {
             let modulus = params.context.moduli()[l_idx];
             for party_idx in 0..n_parties {
                 for k_idx in 0..k {
@@ -161,7 +163,7 @@ impl PkPvwVectors {
         // Compute r1 and r2 quotients from the PVW equation:
         // b_{l,i} = a_l * s_i + e_i + r2_{l,i} * (X^N + 1) + r1_{l,i} * q_l
         // Rearranging: r2_{l,i} * (X^N + 1) + r1_{l,i} * q_l = b_{l,i} - a_l * s_i - e_i
-        for l_idx in 0..l {
+        for l_idx in 0..num_moduli {
             let modulus = params.context.moduli()[l_idx];
             let qi = BigInt::from(modulus);
 
