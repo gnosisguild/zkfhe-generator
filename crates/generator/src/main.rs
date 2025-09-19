@@ -282,7 +282,7 @@ fn create_bfv_config(
             verbose,
         },
         "prod" => BfvSearchConfig {
-            n: 1,
+            n: 1000,
             z: 1000,
             lambda: 80,
             b: 20,
@@ -343,7 +343,7 @@ fn create_pvw_config(
             verbose,
         },
         "prod" => PvwSearchConfig {
-            n: 1,
+            n: 1000,
             ell_start: 2,
             ell_max: 64,
             k_start: 1024,
@@ -403,12 +403,6 @@ fn update_pvw_config_with_bfv(
 
     if verbose {
         println!("🔐 BFV Result for PVW: q_bfv={}", bfv_result.q_bfv);
-    }
-
-    // If no explicit PVW n was provided, use BFV n
-    if pvw_config.n == 1 {
-        // This is the default, so likely wasn't explicitly set
-        pvw_config.n = bfv_config.n;
     }
 
     // If no explicit qbfv_primes provided, use computed BFV modulus

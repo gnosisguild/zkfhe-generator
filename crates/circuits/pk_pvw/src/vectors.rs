@@ -84,9 +84,9 @@ impl PkPvwVectors {
         let params = &encryption_data.params;
 
         // Extract parameters from the PVW parameters
-        let n_parties = params.n;        // Number of parties
-        let k = params.k;                // LWE dimension
-        let n = params.l;                // Ring dimension/polynomial degree (from PVW l parameter)
+        let n_parties = params.n; // Number of parties
+        let k = params.k; // LWE dimension
+        let n = params.l; // Ring dimension/polynomial degree (from PVW l parameter)
         let num_moduli = params.context.moduli().len(); // Number of moduli (L in the circuit)
 
         // Create the vectors structure
