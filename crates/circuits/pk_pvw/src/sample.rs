@@ -25,7 +25,7 @@ pub fn generate_sample_pvw_data(
     let mut parties = Vec::new();
     for i in 0..params.n {
         let party: Party = Party::new(i, params, &mut rng)?;
-        global_pk.generate_and_add_party(&party, &mut rng)?;
+        global_pk.generate_and_add_party_with_errors(&party, &mut rng)?;
         parties.push(party);
     }
     let mut all_party_vectors = Vec::new();

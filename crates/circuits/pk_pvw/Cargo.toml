@@ -14,7 +14,7 @@ rust-version.workspace = true
 
 [dependencies]
 shared = { package = "zkfhe-shared", path = "../../shared" }
-pvw = { git = "https://github.com/gnosisguild/pvw-rs", branch = "fixes" }
+pvw = { workspace = true }
 num-integer = { workspace = true }
 bigint-poly = { workspace = true }
 blake3 = { workspace = true }

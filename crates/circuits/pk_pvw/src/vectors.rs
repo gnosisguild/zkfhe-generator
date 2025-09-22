@@ -77,10 +77,7 @@ impl PkPvwVectors {
     /// Create PkPvwVectors from sample PVW encryption data
     pub fn compute(encryption_data: &crate::sample::PvwEncryptionData) -> ZkFheResult<Self> {
         use bigint_poly::reduce_and_center_coefficients;
-        use rand::rngs::OsRng;
         use shared::constants::get_zkp_modulus;
-
-        let mut rng = OsRng;
         let params = &encryption_data.params;
 
         // Extract parameters from the PVW parameters
@@ -145,17 +142,22 @@ impl PkPvwVectors {
         }
 
         // Extract error vectors (e) - N_PARTIES×K matrix of polynomials
-        // Generate error polynomials using the configured error bound
+        // Reuse the error polynomials that were generated during party key generation
         for party_idx in 0..n_parties {
             for k_idx in 0..k {
-                // Generate error polynomial using sample_error_1 method
-                let error_poly = params.sample_error_1(&mut rng).map_err(|e| {
-                    shared::errors::ZkFheError::Bfv {
-                        message: format!("Failed to sample error polynomial: {e}"),
-                    }
-                })?;
+                // Get the error polynomial that was used during key generation
+                let error_poly = encryption_data.global_pk.error_polynomials
+                    .get(party_idx)
+                    .and_then(|party_errors| party_errors.get(k_idx))
+                    .ok_or_else(|| {
+                        shared::errors::ZkFheError::Bfv {
+                            message: format!(
+                                "Failed to get error polynomial for party {party_idx} dim {k_idx}"
+                            ),
+                        }
+                    })?;
 
-                let coeffs = extract_poly_coefficients(&error_poly, n, params.context.moduli()[0])?;
+                let coeffs = extract_poly_coefficients(error_poly, n, params.context.moduli()[0])?;
                 vectors.e[party_idx][k_idx] = coeffs;
             }
         }
