@@ -107,6 +107,7 @@ source = "git+https://github.com/gnosisguild/bigint-poly#fece8d54076fde37fa4f2e4
 dependencies = [
  "num-bigint",
  "num-traits",
+ "serde",
  "thiserror",
 ]
 

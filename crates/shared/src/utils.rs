@@ -3,7 +3,7 @@
 //! This module contains helper functions for string conversion,
 //! serialization, and other common operations.
 
-use bigint_poly::reduce_and_center_coefficients;
+use bigint_poly::{reduce_and_center_coefficients, Polynomial};
 use num_bigint::BigInt;
 
 /// Convert a 1D vector of BigInt to a vector of strings
@@ -56,5 +56,30 @@ pub fn reduce_coefficients_4d(
 ) -> Vec<Vec<Vec<Vec<BigInt>>>> {
     vec.iter()
         .map(|matrix_3d| reduce_coefficients_3d(matrix_3d, modulus))
+        .collect()
+}
+
+// Helper function to convert a polynomial (Vec<BigInt>) to a Polynomial
+pub fn poly_to_coeff_obj(poly: &[num_bigint::BigInt]) -> Polynomial {
+    Polynomial::new(poly.to_vec())
+}
+
+// Helper function to convert a 2D matrix to the correct format
+pub fn matrix_to_format(matrix: &[Vec<Vec<num_bigint::BigInt>>]) -> Vec<Vec<serde_json::Value>> {
+    matrix
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|poly| serde_json::to_value(poly_to_coeff_obj(poly)).unwrap())
+                .collect()
+        })
+        .collect()
+}
+
+// Helper function to convert a 3D matrix to the correct format
+pub fn matrix_3d_to_format(matrix_3d: &[Vec<Vec<Vec<num_bigint::BigInt>>>]) -> Vec<Vec<Vec<serde_json::Value>>> {
+    matrix_3d
+        .iter()
+        .map(|matrix| matrix_to_format(matrix))
         .collect()
 }

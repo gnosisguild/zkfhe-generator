@@ -39,7 +39,7 @@ fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git", branch = "refact
 pvw = { git = "https://github.com/gnosisguild/pvw-rs", branch = "fixes" }
 serde_json = "1.0.133"
 rand = "0.8.5"
-bigint-poly = { git = "https://github.com/gnosisguild/bigint-poly" }
+bigint-poly = { git = "https://github.com/gnosisguild/bigint-poly", features = ["serde"] }
 num-bigint = "0.4.6"
 num-traits = "0.2"
 num-integer = "0.1"
