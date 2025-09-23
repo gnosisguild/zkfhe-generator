@@ -20,9 +20,9 @@ pub struct PkPvwTomlGenerator {
 /// Circuit parameters for TOML output
 #[derive(Clone, Debug)]
 pub struct CircuitParams {
-    pub n: usize,        // Ring dimension/polynomial degree
+    pub n: usize,         // Ring dimension/polynomial degree
     pub n_parties: usize, // Number of parties
-    pub k: usize,        // LWE dimension
+    pub k: usize,         // LWE dimension
 }
 
 impl PkPvwTomlGenerator {
@@ -84,36 +84,56 @@ struct CircuitSection {
 }
 
 impl TomlGenerator for PkPvwTomlGenerator {
-    fn to_toml_string(&self) -> ZkFheResult<String> {        
+    fn to_toml_string(&self) -> ZkFheResult<String> {
         let toml_data = PkPvwTomlFormat {
             // a: L matrices of K x K polynomials - convert to 3D array format
             a: matrix_3d_to_format(&self.vectors.a),
-            
+
             // e: N_PARTIES x K matrix of polynomials - convert to 2D array format
             e: matrix_to_format(&self.vectors.e),
-            
+
             // sk: N_PARTIES x K matrix of polynomials - convert to 2D array format
             sk: matrix_to_format(&self.vectors.sk),
-            
+
             // b: L matrices of N_PARTIES x K polynomials - convert to 3D array format
             b: matrix_3d_to_format(&self.vectors.b),
-            
+
             // r1: L matrices of N_PARTIES x K polynomials - convert to 3D array format
             r1: matrix_3d_to_format(&self.vectors.r1),
-            
+
             // r2: L matrices of N_PARTIES x K polynomials - convert to 3D array format
             r2: matrix_3d_to_format(&self.vectors.r2),
-            
+
             params: ParamsSection {
                 bounds: BoundsSection {
                     e_bound: self.bounds.e_bound.to_string(),
-                    r1_low_bounds: self.bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
-                    r1_up_bounds: self.bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
-                    r2_bounds: self.bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                    r1_low_bounds: self
+                        .bounds
+                        .r1_low_bounds
+                        .iter()
+                        .map(|b| b.to_string())
+                        .collect(),
+                    r1_up_bounds: self
+                        .bounds
+                        .r1_up_bounds
+                        .iter()
+                        .map(|b| b.to_string())
+                        .collect(),
+                    r2_bounds: self
+                        .bounds
+                        .r2_bounds
+                        .iter()
+                        .map(|b| b.to_string())
+                        .collect(),
                     sk_bound: self.bounds.sk_bound.to_string(),
                 },
                 crypto: CryptoSection {
-                    qis: self.crypto_params.qis.iter().map(|q| q.to_string()).collect(),
+                    qis: self
+                        .crypto_params
+                        .qis
+                        .iter()
+                        .map(|q| q.to_string())
+                        .collect(),
                 },
                 circuit: CircuitSection {
                     n: self.circuit_params.n.to_string(),

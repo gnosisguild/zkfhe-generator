@@ -267,7 +267,7 @@ pub const NTT_PRIMES_BY_BITS: &[(u8, [&str; 6])] = &[
 ];
 
 /// Bounds to search within for the LWE dimension
-pub const D_POW2_START: u64 = 1024;
+pub const D_POW2_START: u64 = 256;
 pub const D_POW2_MAX: u64 = 32768;
 /// Max number of ciphertext
 pub const K_MAX: u128 = 1u128 << 25; // 33,554,432

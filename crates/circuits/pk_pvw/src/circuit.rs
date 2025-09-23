@@ -1,6 +1,6 @@
 use crate::bounds::PkPvwBounds;
 use crate::sample::generate_sample_pvw_data;
-use crate::toml::{PkPvwTomlGenerator, CircuitParams};
+use crate::toml::{CircuitParams, PkPvwTomlGenerator};
 use crate::vectors::PkPvwVectors;
 use fhe::bfv::BfvParameters;
 use pvw::PvwParameters;
@@ -58,13 +58,14 @@ impl Circuit for PkPvwCircuit {
 
         // Extract circuit parameters
         let circuit_params = CircuitParams {
-            n: pvw_params.l, // Ring dimension/polynomial degree
+            n: pvw_params.l,         // Ring dimension/polynomial degree
             n_parties: pvw_params.n, // Number of parties
-            k: pvw_params.k, // LWE dimension
+            k: pvw_params.k,         // LWE dimension
         };
 
         // Create TOML generator and generate file
-        let toml_generator = PkPvwTomlGenerator::new(crypto_params, bounds, vectors_standard, circuit_params);
+        let toml_generator =
+            PkPvwTomlGenerator::new(crypto_params, bounds, vectors_standard, circuit_params);
         toml_generator.generate_toml(output_dir)?;
 
         println!("✅ Generated pk_pvw.toml");

@@ -7,7 +7,7 @@ use crate::constants::{D_POW2_MAX, D_POW2_START, K_MAX};
 use crate::errors::{BfvParamsResult, SearchError, ValidationError};
 use crate::prime::PrimeItem;
 use crate::prime::build_prime_items;
-use crate::prime::select_crt_primes;
+use crate::prime::select_crt_primes_one_pack;
 use crate::utils::{approx_bits_from_log2, big_shift_pow2, fmt_big_summary, log2_big, product};
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
@@ -23,6 +23,8 @@ pub struct BfvSearchConfig {
     pub lambda: u32,
     /// Bound B on the error distribution ψ used generate e1 when encrypting (e.g., 20 for CBD with σ≈3.2).
     pub b: u128,
+    /// Bound B_{\chi} on the distribution \chi used generate the secret key sk_i of each party i.
+    pub b_chi: u128,
     /// Verbose output showing detailed parameter search process
     pub verbose: bool,
 }
@@ -78,11 +80,12 @@ pub fn bfv_search(bfv_search_config: &BfvSearchConfig) -> BfvParamsResult<BfvSea
         // Eq4: d ≥ 37.5*log2(q/B) + 75  =>  log2(q) ≤ log2(B) + (d-75)/37.5
         let log2_q_limit = log2_b + ((d as f64) - 75.0) / 37.5;
 
-        // Select primes under the limit (same-size first policy)
-        let chosen = select_crt_primes(log2_q_limit, &prime_items);
+        // Select the single best same-size pack under the cap (fewest primes, limit-first)
+        let chosen = select_crt_primes_one_pack(log2_q_limit, &prime_items);
 
         if chosen.is_empty() {
             if bfv_search_config.verbose {
+                println!("\n[BFV] d={d} checking for log2_q_limit = {log2_q_limit:.3}).");
                 println!(
                     "\n[BFV] d={d} candidate: no CRT primes fit under Eq4 limit (log2 limit {log2_q_limit:.3})."
                 );
@@ -93,7 +96,7 @@ pub fn bfv_search(bfv_search_config: &BfvSearchConfig) -> BfvParamsResult<BfvSea
             continue;
         }
 
-        // Try this candidate; if eq1 fails, continue to next d
+        // Try this one best candidate; if Eq1 fails, smaller q won't help — increase d.
         match finalize_bfv_candidate(bfv_search_config, d, chosen) {
             Some(res) => {
                 return Ok(res);
@@ -123,21 +126,24 @@ pub fn finalize_bfv_candidate(
     // Δ = floor(q / k)
     let delta = &q_bfv / &k_big;
 
-    // Eq2: 2 d n B ≤ B_Enc * 2^{-λ}  =>  B_Enc ≥ (2 d n B) * 2^{λ}
+    // Eq2: 2 d n B B_chi ≤ B_Enc * 2^{-λ}  =>  B_Enc ≥ (2 d n B B_chi) * 2^{λ}
     let two_pow_lambda = big_shift_pow2(bfv_search_config.lambda);
     let benc_min = (BigUint::from(2u32)
         * BigUint::from(d)
         * BigUint::from(bfv_search_config.n)
-        * BigUint::from(bfv_search_config.b))
+        * BigUint::from(bfv_search_config.b)
+        * BigUint::from(bfv_search_config.b_chi))
         * &two_pow_lambda;
 
-    // B_fresh ≤ B_Enc + d B + d B^2 n
-    let term_d_b = BigUint::from(d) * BigUint::from(bfv_search_config.b);
-    let term_d_b2n = BigUint::from(d)
+    // B_fresh ≤ B_Enc + d B B_chi+ d B B_chi n
+    let term_d_b_chi = BigUint::from(d)
         * BigUint::from(bfv_search_config.b)
+        * BigUint::from(bfv_search_config.b_chi);
+    let term_d_b_b_chi_n = BigUint::from(d)
         * BigUint::from(bfv_search_config.b)
+        * BigUint::from(bfv_search_config.b_chi)
         * BigUint::from(bfv_search_config.n);
-    let b_fresh = &benc_min + &term_d_b + &term_d_b2n;
+    let b_fresh = &benc_min + &term_d_b_chi + &term_d_b_b_chi_n;
 
     // B_C = z (B_fresh + r_k(q))
     let b_c = BigUint::from(bfv_search_config.z) * (&b_fresh + BigUint::from(rkq));
@@ -153,7 +159,7 @@ pub fn finalize_bfv_candidate(
     let benc_bits = approx_bits_from_log2(log2_big(&benc_min));
     let bfresh_bits = approx_bits_from_log2(log2_big(&b_fresh));
     let bc_bits = approx_bits_from_log2(log2_big(&b_c));
-    let bsm_bits: u64 = approx_bits_from_log2(log2_big(&b_sm_min));
+    let bsm_bits = approx_bits_from_log2(log2_big(&b_sm_min));
 
     if bfv_search_config.verbose {
         println!("\n[BFV] d={d} candidate:");

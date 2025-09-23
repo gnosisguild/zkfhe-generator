@@ -29,6 +29,12 @@ struct Args {
     #[arg(long, default_value_t = 20u128)]
     b: u128,
 
+    /// Bound B_{\chi} on the distribution \chi (see pdf) used generate the secret key sk_i of each party i.
+    /// By default, it is fixed to be 20 (that is the case when \chi is CBD with with σ≈3.2, which
+    /// is the distribution by default in fhe.rs).
+    #[arg(long, default_value_t = 1u128)]
+    b_chi: u128,
+
     /// Verbose per-candidate logging
     #[arg(long, default_value_t = false)]
     verbose: bool,
@@ -39,8 +45,8 @@ fn main() {
 
     println!("== BFV search with NTT-friendly primes (40..63 bits) ==");
     println!(
-        "Inputs: n={}  z(k)={}  λ={}  B={}",
-        args.n, args.z, args.lambda, args.b
+        "Inputs: n={}  z(k)={}  λ={}  B={} B_chi={}",
+        args.n, args.z, args.lambda, args.b, args.b_chi
     );
     println!("Degree sweep: d = 1024, 2048, 4096, 8192, 16384, 32768");
     println!("Constraint: k := z and z ≤ 2^25 (≈33.5M)\n");
@@ -64,6 +70,7 @@ fn main() {
         z: args.z,
         lambda: args.lambda,
         b: args.b,
+        b_chi: args.b_chi,
         verbose: args.verbose,
     };
 

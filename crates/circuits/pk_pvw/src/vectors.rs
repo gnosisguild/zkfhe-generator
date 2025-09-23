@@ -146,15 +146,15 @@ impl PkPvwVectors {
         for party_idx in 0..n_parties {
             for k_idx in 0..k {
                 // Get the error polynomial that was used during key generation
-                let error_poly = encryption_data.global_pk.error_polynomials
+                let error_poly = encryption_data
+                    .global_pk
+                    .error_polynomials
                     .get(party_idx)
                     .and_then(|party_errors| party_errors.get(k_idx))
-                    .ok_or_else(|| {
-                        shared::errors::ZkFheError::Bfv {
-                            message: format!(
-                                "Failed to get error polynomial for party {party_idx} dim {k_idx}"
-                            ),
-                        }
+                    .ok_or_else(|| shared::errors::ZkFheError::Bfv {
+                        message: format!(
+                            "Failed to get error polynomial for party {party_idx} dim {k_idx}"
+                        ),
                     })?;
 
                 let coeffs = extract_poly_coefficients(error_poly, n, params.context.moduli()[0])?;

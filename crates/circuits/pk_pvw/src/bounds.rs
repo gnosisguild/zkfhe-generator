@@ -34,7 +34,7 @@ impl PkPvwBounds {
         // Extract parameters for bounds calculation
         let n = params.l; // Ring dimension N from context degree
         let error_bound = params.error_bound_1.to_u64().unwrap(); // B (error bound)
-        let secret_variance = params.secret_variance as u64; // B_s (secret key bound)
+        let sk_bound = 20; // B_s (secret key bound)
 
         // Calculate bounds for each modulus
         let mut r1_low_bounds = Vec::new();
@@ -50,7 +50,7 @@ impl PkPvwBounds {
 
             // r1_{l,i} ∈ [⌊(-((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B)) / q_l⌋, ⌊((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B) / q_l⌋]
             // Formula: r1_{l,i} ∈ [⌊(-((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B)) / q_l⌋, ⌊((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B) / q_l⌋]
-            let numerator = (n as u64 * secret_variance + 2) * qi_bound + error_bound;
+            let numerator = (n as u64 * sk_bound + 2) * qi_bound + error_bound;
             let r1_up = numerator / qi;
             let r1_low = -((numerator / qi) as i64);
 
@@ -61,7 +61,7 @@ impl PkPvwBounds {
         let crypto_params = PkPvwCryptographicParameters { qis };
         let bounds = PkPvwBounds {
             e_bound: error_bound,
-            sk_bound: secret_variance,
+            sk_bound,
             r1_low_bounds,
             r1_up_bounds,
             r2_bounds,

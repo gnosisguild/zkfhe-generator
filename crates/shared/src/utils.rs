@@ -3,8 +3,10 @@
 //! This module contains helper functions for string conversion,
 //! serialization, and other common operations.
 
-use bigint_poly::{reduce_and_center_coefficients, Polynomial};
+use bigint_poly::{Polynomial, reduce_and_center_coefficients};
 use num_bigint::BigInt;
+use num_bigint::BigUint;
+use num_traits::Zero;
 
 /// Convert a 1D vector of BigInt to a vector of strings
 pub fn to_string_1d_vec(vec: &[BigInt]) -> Vec<String> {
@@ -77,9 +79,21 @@ pub fn matrix_to_format(matrix: &[Vec<Vec<num_bigint::BigInt>>]) -> Vec<Vec<serd
 }
 
 // Helper function to convert a 3D matrix to the correct format
-pub fn matrix_3d_to_format(matrix_3d: &[Vec<Vec<Vec<num_bigint::BigInt>>>]) -> Vec<Vec<Vec<serde_json::Value>>> {
+pub fn matrix_3d_to_format(
+    matrix_3d: &[Vec<Vec<Vec<num_bigint::BigInt>>>],
+) -> Vec<Vec<Vec<serde_json::Value>>> {
     matrix_3d
         .iter()
         .map(|matrix| matrix_to_format(matrix))
         .collect()
+}
+
+pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
+    let three = BigUint::from(3u32);
+    let num = b * (b + BigUint::from(1u32));
+    if (&num % &three).is_zero() {
+        (num / three).to_str_radix(10)
+    } else {
+        format!("{}/3", num.to_str_radix(10))
+    }
 }
