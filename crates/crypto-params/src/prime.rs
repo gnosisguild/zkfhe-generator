@@ -29,6 +29,56 @@ pub fn build_prime_items() -> Vec<PrimeItem> {
     vec
 }
 
+pub fn select_crt_primes_one_pack(limit_log2: f64, all: &[PrimeItem]) -> Vec<PrimeItem> {
+    use std::collections::BTreeMap;
+
+    // Group primes by bit-length, sort descending by value.
+    let mut by_bits: BTreeMap<u8, Vec<PrimeItem>> = BTreeMap::new();
+    for p in all {
+        by_bits.entry(p.bitlen).or_default().push(p.clone());
+    }
+    for v in by_bits.values_mut() {
+        v.sort_by(|a, b| b.value.cmp(&a.value));
+    }
+
+    let ceil_lim = limit_log2.ceil() as u64;
+
+    let mut best_bb: Option<u8> = None;
+    let mut best_target: u64 = u64::MAX; // store the overshoot multiple
+
+    for bb in 40u8..=63u8 {
+        if let Some(bucket) = by_bits.get(&bb) {
+            if bucket.is_empty() {
+                continue;
+            }
+
+            let bb_u = bb as u64;
+            // next multiple of bb at or above ceil_lim
+            let next_mult = ceil_lim.div_ceil(bb_u) * bb_u;
+
+            if next_mult < ceil_lim {
+                continue;
+            } // should not happen
+            let overshoot = next_mult - ceil_lim;
+
+            // accept overshoot, but we want the smallest overshoot
+            if overshoot < (best_target.saturating_sub(ceil_lim))
+                || (overshoot == (best_target.saturating_sub(ceil_lim)) && Some(bb) > best_bb)
+            {
+                best_bb = Some(bb);
+                best_target = next_mult;
+            }
+        }
+    }
+
+    if let Some(bb) = best_bb {
+        let m = (best_target / bb as u64) as usize;
+        return by_bits.get(&bb).unwrap().iter().take(m).cloned().collect();
+    }
+
+    Vec::new()
+}
+
 /// Try to select primes using ONLY one bit-size that best fits under limit_log2.
 /// Returns Some(selection) if at least one prime of that size could be taken; otherwise None.
 pub fn select_same_size_only(limit_log2: f64, all: &[PrimeItem]) -> Option<Vec<PrimeItem>> {

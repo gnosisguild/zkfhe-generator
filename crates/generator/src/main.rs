@@ -262,6 +262,7 @@ fn create_bfv_config(
             z: 1000,
             lambda: 80,
             b: 20,
+            b_chi: 1,
             verbose,
         },
         "test" => BfvSearchConfig {
@@ -269,6 +270,7 @@ fn create_bfv_config(
             z: 1000,
             lambda: 80,
             b: 20,
+            b_chi: 1,
             verbose,
         },
         "prod" => BfvSearchConfig {
@@ -276,6 +278,7 @@ fn create_bfv_config(
             z: 1000,
             lambda: 80,
             b: 20,
+            b_chi: 1,
             verbose,
         },
         _ => anyhow::bail!("Unknown preset: {}", preset.unwrap()),

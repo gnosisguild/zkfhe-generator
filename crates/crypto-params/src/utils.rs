@@ -52,8 +52,53 @@ pub fn big_shift_pow2(exp: u32) -> BigUint {
     BigUint::one() << exp
 }
 
-pub fn ceil_to_u128(x: f64) -> u128 {
-    x.ceil() as u128
+/// Exact variance string for Uniform(-B..B): Var = B(B+1)/3 (exact)
+pub fn variance_uniform_sym_str_u128(b: u128) -> String {
+    let num = b.checked_mul(b + 1).expect("overflow in B(B+1)");
+    if num % 3 == 0 {
+        (num / 3).to_string()
+    } else {
+        format!("{num}/3")
+    }
+}
+
+pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
+    let three = BigUint::from(3u32);
+    let num = b * (b + BigUint::from(1u32));
+    if (&num % &three).is_zero() {
+        (num / three).to_str_radix(10)
+    } else {
+        format!("{}/3", num.to_str_radix(10))
+    }
+}
+
+pub fn cap_ok_log2(x: &BigUint, limit_log2: f64) -> bool {
+    log2_big(x) <= limit_log2 + 1.0 + 1e-12
+}
+
+pub fn comb_indices(n: usize, k: usize, res: &mut Vec<Vec<usize>>) {
+    fn rec(start: usize, n: usize, k: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+        if cur.len() == k {
+            out.push(cur.clone());
+            return;
+        }
+        let need = k - cur.len();
+        for i in start..=n - need {
+            cur.push(i);
+            rec(i + 1, n, k, cur, out);
+            cur.pop();
+        }
+    }
+    res.clear();
+    rec(0, n, k, &mut Vec::new(), res);
+}
+
+pub fn sum_bits_exact(sel: &[&BigUint]) -> f64 {
+    let mut acc = BigUint::one();
+    for v in sel {
+        acc *= *v;
+    }
+    log2_big(&acc)
 }
 
 pub fn big_pow(base: &BigUint, exp: u64) -> BigUint {

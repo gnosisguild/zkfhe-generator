@@ -5,11 +5,12 @@ use crate::constants::NTT_PRIMES_BY_BITS;
 use crate::errors::{BfvParamsError, SearchError, ValidationError};
 use crate::prime::PrimeItem;
 use crate::utils::{
-    approx_bits_from_log2, big_pow, ceil_to_u128, fmt_big_summary, log2_big, nth_root_floor,
-    parse_hex_big, product,
+    approx_bits_from_log2, big_pow, fmt_big_summary, log2_big, nth_root_floor, parse_hex_big,
+    product,
 };
 use num_integer::Integer;
 use num_traits::One;
+use num_traits::Zero;
 
 /// Result type alias for PVW parameter operations
 pub type PvwParamsResult<T> = Result<T, BfvParamsError>;
@@ -86,7 +87,7 @@ impl PvwParametersBuilder {
             degree: Default::default(),
             ell_start: 2,       // Default minimum redundancy parameter
             ell_max: 64,        // Default maximum redundancy parameter
-            k_start: 1024,      // Default starting LWE dimension
+            k_start: 256,       // Default starting LWE dimension
             k_max: 32768,       // Default maximum LWE dimension
             delta_power_num: 1, // Default alpha parameter
             qbfv_primes: Default::default(),
@@ -173,8 +174,8 @@ impl PvwParametersBuilder {
 pub struct PvwSearchResult {
     pub ell: usize,
     pub k: usize,
-    pub sigma1: u128,
-    pub sigma2: u128,
+    pub sigma1: BigUint,
+    pub sigma2: BigUint,
     pub delta_log2: f64,
     pub lhs_log2: f64,
     pub rhs_log2: f64,
@@ -244,17 +245,48 @@ pub fn choose_delta(q_pvw: &BigUint, ell: u32, alpha: u32) -> BigUint {
     delta
 }
 
-pub fn correctness_rhs_new(sigma1: u128, n: usize, ell: usize, k: usize) -> f64 {
+pub fn correctness_rhs_log2(sigma1: &BigUint, n: usize, ell: usize, k: usize) -> f64 {
     let nf = n as f64;
     let ellf = ell as f64;
     let kf = k as f64;
-    let s1 = sigma1 as f64;
 
-    let term_a = ellf * (kf * nf).sqrt() * 20973f64.sqrt() * (nf * ellf).sqrt() * (1.0 + nf.sqrt());
-    let term_b = 2.0 * kf * ellf;
-    let term_c = 14.0 * (nf * kf * ellf).sqrt();
+    let term_a = 716.0 * ellf * (kf * nf).sqrt() * (nf * ellf).sqrt() * (1.0 + nf.sqrt());
+    let term_b = 40.0 * kf * ellf;
+    let term_c = 168.0 * (nf * kf * ellf).sqrt();
+    let terms = term_a + term_b + term_c;
 
-    s1 * (term_a + term_b + term_c)
+    log2_big(sigma1) + terms.log2()
+}
+
+pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
+    let three = BigUint::from(3u32);
+    let num = b * (b + BigUint::from(1u32));
+    if (&num % &three).is_zero() {
+        (num / three).to_str_radix(10)
+    } else {
+        format!("{}/3", num.to_str_radix(10))
+    }
+}
+
+/// Build BigUint σ from a log2 lower bound.
+/// If log2_min <= 0   -> σ = 1
+/// If log2_min < 120  -> σ = ceil(2^log2_min) via f64
+/// Else                -> σ = 2^{ceil(log2_min)} (≤2× over-approx, safe)
+pub fn sigma_from_log2_min(log2_min: f64) -> BigUint {
+    if !(log2_min.is_finite()) || log2_min <= 0.0 {
+        return BigUint::from(1u32);
+    }
+    if log2_min < 120.0 {
+        let val = f64::exp2(log2_min).ceil();
+        let v = if val < (u128::MAX as f64) {
+            val as u128
+        } else {
+            u128::MAX
+        };
+        return BigUint::from(v);
+    }
+    let e = log2_min.ceil() as u64;
+    BigUint::one() << e
 }
 
 pub fn pvw_search(
@@ -336,36 +368,92 @@ pub fn pvw_search(
                 }
             }
 
+            // ----- BEFORE the k-loop: fix sigma2 from the smallest qi bit-length -----
+            // sanity: need at least 3 so that (b-2) >= 1
+            let min_qi_bits: u32 = bfv_primes
+                .iter()
+                .map(|pi| pi.value.bits() as u32) // use the BigUint bit-length, not the tag
+                .min()
+                .expect("BFV qi primes is empty");
+
+            if min_qi_bits < 3 {
+                return Err(ValidationError::General {
+                    message: format!(
+                        "smallest BFV qi has only {min_qi_bits} bits; need >= 3 to set sigma2 = 2^(b-2)."
+                    ),
+                }
+                .into());
+            }
+
+            // σ2 := 2^(b-2)
+            let sigma2_fixed: BigUint = BigUint::one() << (min_qi_bits - 2);
+
+            // Optionally print it if verbose
+            if config.verbose {
+                println!(
+                    "Fixed σ2 from smallest qi bits: b={} → σ2 = 2^{} ({} bits)",
+                    min_qi_bits,
+                    min_qi_bits - 2,
+                    approx_bits_from_log2(log2_big(&sigma2_fixed))
+                );
+            }
+
             // k loop (doubling)
             let mut k = config.k_start.max(1);
 
             while k <= config.k_max {
                 // Security: kℓ ≥ 37.5*log2(q_PVW/σ1) + 7  =>  log2 σ1 ≥ log2 q_PVW - (kℓ-7)/37.5
-                let t_sec = ((k * ell) as f64 - 7.0) / 37.5;
+                let t_sec = ((k * ell) as f64 - 75.0) / 37.5;
                 let log2_sigma1_min = log2_qpvw - t_sec;
-                let sigma1_min_real = f64::exp2(log2_sigma1_min);
-                let sigma1_int: u128 = if sigma1_min_real <= 1.0 {
-                    1
-                } else {
-                    sigma1_min_real.ceil() as u128
-                };
+                let sigma1_min: BigUint = sigma_from_log2_min(log2_sigma1_min);
 
-                // Flooding: σ2 = ceil( sqrt(20973) * ℓ * sqrt(k*n) * σ1 )
-                let sigma2_real = 20973f64.sqrt()
-                    * (ell as f64)
-                    * ((k as f64) * (config.n as f64)).sqrt()
-                    * (sigma1_int as f64);
-                let sigma2_int: u128 = ceil_to_u128(sigma2_real);
+                // Flooding factor c(k) = ceil( sqrt(513413) * ℓ * sqrt(nk) )
+                let c_float =
+                    (513413f64).sqrt() * (ell as f64) * ((k as f64) * (config.n as f64)).sqrt();
+                let c_u128 = c_float.ceil() as u128;
+                if c_u128 == 0 {
+                    if config.verbose {
+                        println!("[ell={ell} g={g} k={k:<5}] c=0 guard; skipping.");
+                    }
+                    if k > config.k_max / 2 {
+                        break;
+                    }
+                    k *= 2;
+                    continue;
+                }
+                let c_big: BigUint = BigUint::from(c_u128);
 
-                // Correctness via logs:
-                let rhs = correctness_rhs_new(sigma1_int, config.n as usize, ell, k);
+                // With σ2 fixed, set σ1(k) = floor(σ2 / c(k)).
+                let sigma1_big: BigUint = &sigma2_fixed / &c_big;
+
+                // If σ1 < σ1_min, this k cannot work (need larger k).
+                if sigma1_big < sigma1_min {
+                    if config.verbose {
+                        println!(
+                            "[ell={} g={} k={:<5}] infeasible: σ1(cap)={} < σ1_min={}.",
+                            ell,
+                            g,
+                            k,
+                            sigma1_big.to_str_radix(10),
+                            sigma1_min.to_str_radix(10)
+                        );
+                    }
+                    if k > config.k_max / 2 {
+                        break;
+                    }
+                    k *= 2;
+                    continue;
+                }
+
+                // Correctness check
                 let lhs_log2 = (ell as f64 - 1.0) * delta_log2;
-                let rhs_log2 = rhs.log2();
+                let rhs_log2 = correctness_rhs_log2(&sigma1_big, config.n as usize, ell, k);
 
                 if config.verbose {
                     println!(
-                        "[ℓ={ell} g={g} k={:<5}] σ1_int={sigma1_int}  σ2={sigma2_int}  (ℓ-1)·log2(Δ)={lhs_log2:.3}  log2(rhs)={rhs_log2:.3}  => {}",
-                        k,
+                        "[ell={ell} g={g} k={k:<5}] σ1={}  σ2(FIXED)={}  (ℓ-1)·log2(Δ)={lhs_log2:.3}  log2(rhs)={rhs_log2:.3}  => {}",
+                        sigma1_big.to_str_radix(10),
+                        sigma2_fixed.to_str_radix(10),
                         if lhs_log2 > rhs_log2 + 1e-12 {
                             "PASS ✅"
                         } else {
@@ -379,8 +467,8 @@ pub fn pvw_search(
                     hits.push(PvwSearchResult {
                         ell,
                         k,
-                        sigma1: sigma1_int,
-                        sigma2: sigma2_int,
+                        sigma1: sigma1_big,
+                        sigma2: sigma2_fixed.clone(),
                         delta_log2,
                         lhs_log2,
                         rhs_log2,
@@ -416,6 +504,9 @@ pub fn pvw_search(
         println!("\n=== PVW Passing candidates (summary) ===");
         println!("n  ℓ    k      |q_PVW|  PVW#   σ1     σ2        (ℓ-1)·log2(Δ)   log2(rhs)");
         for h in &hits {
+            let s1 = h.sigma1.to_str_radix(10);
+            let s2 = h.sigma2.to_str_radix(10);
+
             println!(
                 "{:<2} {:<4} {:<6} {:>6} {:>5}  {:>11} {:>11}    {:>14.3}   {:>9.3}",
                 config.n,
@@ -423,8 +514,8 @@ pub fn pvw_search(
                 h.k,
                 h.q_pvw_bits,
                 h.pvw_primes_used,
-                h.sigma1,
-                h.sigma2,
+                s1,
+                s2,
                 h.lhs_log2,
                 h.rhs_log2
             );
@@ -441,25 +532,41 @@ pub fn pvw_search(
                 h.q_pvw_bits,
                 h.pvw_primes_used
             );
-            println!("   sigma_e1 = {}", h.sigma1);
-            println!("   sigma_e2      = {}", h.sigma2);
+            let var_s1 = variance_uniform_sym_str_big(&h.sigma1);
+            let var_s2 = variance_uniform_sym_str_big(&h.sigma2);
+
+            println!(
+                "   sigma_e1 = {}   [Dist: Uniform, Var = {}]",
+                h.sigma1.to_str_radix(10),
+                var_s1
+            );
+            println!(
+                "   sigma_e2 = {}   [Dist: Uniform, Var = {}]",
+                h.sigma2.to_str_radix(10),
+                var_s2
+            );
             println!(
                 "   Check: (ℓ-1)·log2(Δ) = {:.3}  >  log2(rhs) = {:.3}",
                 h.lhs_log2, h.rhs_log2
             );
-            println!("   PVW primes used:");
+            println!("   PVW primes used (including BFV CRT primes if g=0):");
             for p in &h.used_pvw_list {
                 println!(
                     "     - {}  (hex 0x{})  ({} bits)",
                     p,
                     p.to_str_radix(16),
-                    approx_bits_from_log2(log2_big(p))
+                    p.bits()
                 );
             }
-            println!("secret key: Uniform from {{-1,0,1}}");
+            println!("secret key: CBD(20) (centered binomial, Var=10)");
         }
 
-        // Always include an ℓ = 8 pick if available
+        // Always include an ℓ = 8 pick if available (fewest PVW moduli, then smallest σ1)
+        // Note we are picking the one with the least number of moduli. If more than one option, we are
+        // picking the one with the smallest sigma_e1. We could also take instead the one with the
+        // smalles degree k. There is a tradeoff here with respect to the zkps needed (with the
+        // smallest k, we have less coefficients, but the range checks corresponding to e1 and e2
+        // are over much larger intervals)
         if let Some((idx, h8)) =
             hits.iter()
                 .enumerate()
@@ -467,17 +574,30 @@ pub fn pvw_search(
                 .min_by(|(_, a), (_, b)| {
                     a.pvw_primes_used
                         .cmp(&b.pvw_primes_used)
-                        .then(a.k.cmp(&b.k))
+                        .then(a.sigma1.cmp(&b.sigma1))
                 })
         {
             // Check if it was already within top 5
             if idx >= 5 {
                 println!(
-                    "\n#ℓ=8 pick  n={}  ℓ={}  k={}  |q_PVW|≈{} bits  PVW_primes_used={}",
+                    "\n#ℓ=8 pick  n={}  ell={}  k={}  |q_PVW|≈{} bits  PVW_primes_used={}",
                     config.n, h8.ell, h8.k, h8.q_pvw_bits, h8.pvw_primes_used
                 );
-                println!("   sigma_e1 = {}", h8.sigma1);
-                println!("   sigma_e2      = {}", h8.sigma2);
+
+                let var_s1 = variance_uniform_sym_str_big(&h8.sigma1);
+                let var_s2 = variance_uniform_sym_str_big(&h8.sigma2);
+
+                println!(
+                    "   sigma_e1 = {}   [Dist: Uniform, Var = {}]",
+                    h8.sigma1.to_str_radix(10),
+                    var_s1
+                );
+                println!(
+                    "   sigma_e2 = {}   [Dist: Uniform, Var = {}]",
+                    h8.sigma2.to_str_radix(10),
+                    var_s2
+                );
+
                 println!(
                     "   Check: (ℓ-1)·log2(Δ) = {:.3}  >  log2(rhs) = {:.3}",
                     h8.lhs_log2, h8.rhs_log2
@@ -488,10 +608,10 @@ pub fn pvw_search(
                         "     - {}  (hex 0x{})  ({} bits)",
                         p,
                         p.to_str_radix(16),
-                        approx_bits_from_log2(log2_big(p))
+                        p.bits()
                     );
                 }
-                println!("secret key: Uniform from {{-1,0,1}}");
+                println!("secret key: CBD(20) (centered binomial, Var=10)");
             }
         }
     }
