@@ -3,7 +3,8 @@ resolver = "2"
 members = [
     "crates/generator",
     "crates/shared",
-    "crates/circuits/greco"
+    "crates/circuits/greco",
+    "crates/crypto-params"
 ]
 
 [workspace.package]
@@ -22,6 +23,7 @@ rust-version = "1.86.0"
 greco = { package = "zkfhe-greco", path = "./crates/circuits/greco" }
 generator = { package = "zkfhe-generator", path = "./crates/generator" }
 shared = { package = "zkfhe-shared", path = "./crates/shared" }
+crypto-params = { package = "zkfhe-crypto-params", path = "./crates/crypto-params" }
 
 # needs cleanup from previous generator.
 serde = { version = "1.0", features = ["derive"] }
@@ -37,6 +39,7 @@ rand = "0.8.5"
 bigint-poly = { git = "https://github.com/gnosisguild/bigint-poly" }
 num-bigint = "0.4.6"
 num-traits = "0.2"
+num-integer = "0.1"
 ndarray = "0.16.1"
 itertools = "0.14.0"
 rayon = "1.10.0"

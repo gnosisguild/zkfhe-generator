@@ -1,0 +1,30 @@
+[package]
+name = "zkfhe-crypto-params"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Crypto parameter search library with NTT-friendly primes"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+shared = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+num-integer = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+fhe = { workspace = true }
+thiserror = { workspace = true }
+
+[[bin]]
+name = "bfv-param-search"
+path = "src/bin/bfv.rs"
+
+[[bin]]
+name = "pvw-param-search"
+path = "src/bin/pvw.rs"

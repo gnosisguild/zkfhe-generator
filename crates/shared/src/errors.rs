@@ -11,7 +11,7 @@ use thiserror::Error;
 /// This enum covers all the different types of errors that can occur
 /// during circuit parameter generation and TOML file creation.
 #[derive(Error, Debug)]
-pub enum ZkfheError {
+pub enum ZkFheError {
     /// Validation errors for cryptographic parameters
     #[error("Validation error: {message}")]
     Validation { message: String },
@@ -58,7 +58,7 @@ pub enum ZkfheError {
 }
 
 /// Result type alias for zkFHE operations
-pub type ZkfheResult<T> = Result<T, ZkfheError>;
+pub type ZkFheResult<T> = Result<T, ZkFheError>;
 
 /// Validation error type
 #[derive(Error, Debug)]
@@ -145,119 +145,119 @@ pub enum TomlError {
 }
 
 // Conversion implementations for better error handling
-impl From<ValidationError> for ZkfheError {
+impl From<ValidationError> for ZkFheError {
     fn from(err: ValidationError) -> Self {
-        ZkfheError::Validation {
+        ZkFheError::Validation {
             message: err.to_string(),
         }
     }
 }
 
-impl From<BfvError> for ZkfheError {
+impl From<BfvError> for ZkFheError {
     fn from(err: BfvError) -> Self {
-        ZkfheError::Bfv {
+        ZkFheError::Bfv {
             message: err.to_string(),
         }
     }
 }
 
-impl From<CircuitError> for ZkfheError {
+impl From<CircuitError> for ZkFheError {
     fn from(err: CircuitError) -> Self {
-        ZkfheError::Circuit {
+        ZkFheError::Circuit {
             message: err.to_string(),
         }
     }
 }
 
-impl From<TomlError> for ZkfheError {
+impl From<TomlError> for ZkFheError {
     fn from(err: TomlError) -> Self {
-        ZkfheError::Toml {
+        ZkFheError::Toml {
             message: err.to_string(),
         }
     }
 }
 
-impl From<String> for ZkfheError {
+impl From<String> for ZkFheError {
     fn from(message: String) -> Self {
-        ZkfheError::Generic { message }
+        ZkFheError::Generic { message }
     }
 }
 
-impl From<&str> for ZkfheError {
+impl From<&str> for ZkFheError {
     fn from(message: &str) -> Self {
-        ZkfheError::Generic {
+        ZkFheError::Generic {
             message: message.to_string(),
         }
     }
 }
 
 // Conversion from fhe::Error to ZkfheError
-impl From<fhe::Error> for ZkfheError {
+impl From<fhe::Error> for ZkFheError {
     fn from(err: fhe::Error) -> Self {
-        ZkfheError::Bfv {
+        ZkFheError::Bfv {
             message: err.to_string(),
         }
     }
 }
 
 // Conversion from fhe_math::Error to ZkfheError
-impl From<fhe_math::Error> for ZkfheError {
+impl From<fhe_math::Error> for ZkFheError {
     fn from(err: fhe_math::Error) -> Self {
-        ZkfheError::Math {
+        ZkFheError::Math {
             message: err.to_string(),
         }
     }
 }
 
 // Conversion from Box<dyn std::error::Error> to ZkfheError
-impl From<Box<dyn std::error::Error>> for ZkfheError {
+impl From<Box<dyn std::error::Error>> for ZkFheError {
     fn from(err: Box<dyn std::error::Error>) -> Self {
-        ZkfheError::Generic {
+        ZkFheError::Generic {
             message: err.to_string(),
         }
     }
 }
 
 // Helper functions for creating errors with context
-impl ZkfheError {
+impl ZkFheError {
     /// Create a validation error with a message
     pub fn validation(message: impl Into<String>) -> Self {
-        ZkfheError::Validation {
+        ZkFheError::Validation {
             message: message.into(),
         }
     }
 
     /// Create a BFV error with a message
     pub fn bfv(message: impl Into<String>) -> Self {
-        ZkfheError::Bfv {
+        ZkFheError::Bfv {
             message: message.into(),
         }
     }
 
     /// Create a circuit error with a message
     pub fn circuit(message: impl Into<String>) -> Self {
-        ZkfheError::Circuit {
+        ZkFheError::Circuit {
             message: message.into(),
         }
     }
 
     /// Create a TOML error with a message
     pub fn toml(message: impl Into<String>) -> Self {
-        ZkfheError::Toml {
+        ZkFheError::Toml {
             message: message.into(),
         }
     }
 
     /// Create a mathematical error with a message
     pub fn math(message: impl Into<String>) -> Self {
-        ZkfheError::Math {
+        ZkFheError::Math {
             message: message.into(),
         }
     }
 
     /// Create a configuration error with a message
     pub fn config(message: impl Into<String>) -> Self {
-        ZkfheError::Config {
+        ZkFheError::Config {
             message: message.into(),
         }
     }

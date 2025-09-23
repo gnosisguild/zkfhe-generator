@@ -7,19 +7,21 @@ use bigint_poly::{reduce_and_center_scalar, reduce_scalar};
 use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
 use num_traits::{Signed, ToPrimitive};
-use shared::circuit::{CircuitBounds, CircuitDimensions, CircuitVectors};
 use shared::constants::get_zkp_modulus;
-use shared::errors::ZkfheResult;
+use shared::errors::ZkFheResult;
 use std::sync::Arc;
+
+/// Cryptographic parameters for Greco circuit
+#[derive(Clone, Debug)]
+pub struct GrecoCryptographicParameters {
+    pub q_mod_t: BigInt,
+    pub moduli: Vec<u64>,
+    pub k0is: Vec<u64>,
+}
 
 /// Bounds for Greco circuit polynomial coefficients
 #[derive(Clone, Debug)]
 pub struct GrecoBounds {
-    // Cryptographic parameters
-    pub q_mod_t: BigInt,
-    pub moduli: Vec<u64>,
-    pub k0is: Vec<u64>,
-
     // Bounds for different polynomial types
     pub u_bound: u64,
     pub e_bound: u64,
@@ -34,8 +36,11 @@ pub struct GrecoBounds {
 }
 
 impl GrecoBounds {
-    /// Compute bounds from BFV parameters
-    pub fn compute(params: &Arc<BfvParameters>, level: usize) -> ZkfheResult<Self> {
+    /// Compute bounds and cryptographic parameters from BFV parameters
+    pub fn compute(
+        params: &Arc<BfvParameters>,
+        level: usize,
+    ) -> ZkFheResult<(GrecoCryptographicParameters, Self)> {
         // Get cyclotomic degree and context at provided level
         let n = BigInt::from(params.degree());
         let t = BigInt::from(params.plaintext());
@@ -123,10 +128,13 @@ impl GrecoBounds {
             p2_bounds.push(qi_bound.clone());
         }
 
-        Ok(GrecoBounds {
+        let crypto_params = GrecoCryptographicParameters {
             q_mod_t: q_mod_t_mod_p,
             moduli,
             k0is,
+        };
+
+        let bounds = GrecoBounds {
             u_bound: u_bound.to_u64().unwrap(),
             e_bound: e_bound.to_u64().unwrap(),
             k1_low_bound: k1_low_bound.to_i64().unwrap(),
@@ -137,33 +145,25 @@ impl GrecoBounds {
             r2_bounds: r2_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
             p1_bounds: p1_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
             p2_bounds: p2_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
-        })
+        };
+
+        Ok((crypto_params, bounds))
     }
 }
 
-impl CircuitDimensions for GrecoBounds {
-    fn num_moduli(&self) -> usize {
-        self.moduli.len()
-    }
-
-    fn degree(&self) -> usize {
-        // The degree is not directly stored in bounds, but we can derive it
-        // from the number of bounds which should match the degree
-        // This is a reasonable approximation for validation purposes
-        self.pk_bounds.len()
-    }
-
-    fn level(&self) -> usize {
-        0 // Default level, can be overridden if needed
-    }
-}
-
-impl CircuitBounds for GrecoBounds {
-    fn to_json(&self) -> serde_json::Value {
+impl GrecoCryptographicParameters {
+    pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "q_mod_t": self.q_mod_t.to_string(),
             "moduli": self.moduli,
             "k0is": self.k0is,
+        })
+    }
+}
+
+impl GrecoBounds {
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
             "u_bound": self.u_bound,
             "e_bound": self.e_bound,
             "k1_low_bound": self.k1_low_bound,
@@ -175,26 +175,6 @@ impl CircuitBounds for GrecoBounds {
             "p1_bounds": self.p1_bounds,
             "p2_bounds": self.p2_bounds,
         })
-    }
-
-    fn validate_vectors<V: CircuitVectors>(&self, vectors: &V) -> ZkfheResult<()> {
-        // Basic validation - ensure dimensions match
-        if vectors.num_moduli() != self.num_moduli() {
-            return Err(shared::errors::ValidationError::General {
-                message: "Vector and bounds have different number of moduli".to_string(),
-            }
-            .into());
-        }
-
-        if vectors.degree() != self.degree() {
-            return Err(shared::errors::ValidationError::General {
-                message: "Vector and bounds have different degrees".to_string(),
-            }
-            .into());
-        }
-
-        // Additional validation can be added here
-        Ok(())
     }
 }
 
@@ -215,10 +195,10 @@ mod tests {
     #[test]
     fn test_bounds_computation() {
         let params = setup_test_params();
-        let bounds = GrecoBounds::compute(&params, 0).unwrap();
+        let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
 
-        assert_eq!(bounds.moduli.len(), 1);
-        assert_eq!(bounds.k0is.len(), 1);
+        assert_eq!(crypto_params.moduli.len(), 1);
+        assert_eq!(crypto_params.k0is.len(), 1);
         assert_eq!(bounds.pk_bounds.len(), 1);
         assert_eq!(bounds.r1_low_bounds.len(), 1);
         assert_eq!(bounds.r1_up_bounds.len(), 1);

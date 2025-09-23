@@ -3,13 +3,13 @@
 //! This module contains shared traits and utilities for TOML generation
 //! that can be implemented by each circuit.
 
-use crate::errors::{TomlError, ZkfheResult};
+use crate::errors::{TomlError, ZkFheResult};
 use std::path::{Path, PathBuf};
 
 /// Trait for TOML generation that can be implemented by each circuit
 pub trait TomlGenerator {
     /// Convert circuit data to TOML string
-    fn to_toml_string(&self) -> ZkfheResult<String>;
+    fn to_toml_string(&self) -> ZkFheResult<String>;
 
     /// Get the filename for the TOML file (defaults to "Prover.toml")
     fn toml_filename(&self) -> &'static str {
@@ -17,7 +17,7 @@ pub trait TomlGenerator {
     }
 
     /// Generate TOML file for the circuit
-    fn generate_toml(&self, output_dir: &Path) -> ZkfheResult<PathBuf> {
+    fn generate_toml(&self, output_dir: &Path) -> ZkFheResult<PathBuf> {
         use std::fs::File;
         use std::io::Write;
 

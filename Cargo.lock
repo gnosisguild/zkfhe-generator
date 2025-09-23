@@ -1395,12 +1395,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "zkfhe-crypto-params"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "fhe",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "thiserror",
+ "zkfhe-shared",
+]
+
+[[package]]
 name = "zkfhe-generator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "fhe",
+ "zkfhe-crypto-params",
  "zkfhe-greco",
  "zkfhe-shared",
 ]

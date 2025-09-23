@@ -38,24 +38,44 @@ cargo run -p zkfhe-generator -- list
 
 #### Generate parameters for a specific circuit
 ```bash
-# Basic generation with dev preset
+# Basic generation with dev preset (BFV only)
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev
+
+# Generate with custom BFV parameters
+cargo run -p zkfhe-generator -- generate --circuit greco --bfv-n 16384 --z 2000 --lambda 128
 
 # Generate with custom output directory
 cargo run -p zkfhe-generator -- generate --circuit greco --preset prod --output ./my-output
 
-# Generate with test preset
-cargo run -p zkfhe-generator -- generate --circuit greco --preset test
+# Note: Currently no circuits accept both BFV and PVW parameters
+# PVW parameters can be provided but will show a warning for BFV-only circuits like greco
+cargo run -p zkfhe-generator -- generate --circuit greco --pvw-n 1000 --verbose
 ```
 
 ### Generated Output
 
 The generator creates a `Prover.toml` file containing the following. Please, note that these might vary a bit based on the circuit.
 
-- Cryptographic Parameters: BFV configuration (degree, moduli, etc.)
-- Bounds: Valid ranges for polynomial coefficients
-- Vectors: Input validation vectors for zero-knowledge proofs
-- Metadata: Generation timestamp and configuration details
+- **Cryptographic Parameters**: BFV configuration (degree, moduli, etc.)
+- **Bounds**: Valid ranges for polynomial coefficients based on computed parameters
+- **Vectors**: Input validation vectors for zero-knowledge proofs
+- **Metadata**: Generation timestamp, configuration details, and parameter compatibility information
+
+### Parameter Types and Circuit Compatibility
+
+#### BFV Parameters
+- Used for homomorphic encryption operations
+- Required by all circuits
+- Automatically computed based on security requirements
+
+#### PVW Parameters  
+- Used for zero-knowledge proof systems
+- **Currently not supported by any existing circuits**
+- Infrastructure is in place for future circuits that require PVW parameters
+- Include redundancy factors (ℓ), LWE dimensions (k), and error bounds (σ₁, σ₂)
+
+#### Current Circuit Support
+- **greco**: BFV only (will show warning if PVW parameters are provided)
 
 ## Architecture
 

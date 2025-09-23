@@ -17,23 +17,8 @@ use serde_json::json;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use shared::circuit::{CircuitDimensions, CircuitVectors};
-use shared::errors::ZkfheResult;
+use shared::errors::ZkFheResult;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
-
-/// Type alias for the complex tuple type used in vector computation
-type ComputationResult = (
-    usize,
-    Vec<BigInt>,
-    Vec<BigInt>,
-    BigInt,
-    Vec<BigInt>,
-    Vec<BigInt>,
-    Vec<BigInt>,
-    Vec<BigInt>,
-    Vec<BigInt>,
-    Vec<BigInt>,
-);
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
@@ -101,7 +86,7 @@ impl GrecoVectors {
         ct: &Ciphertext,
         pk: &PublicKey,
         params: &Arc<BfvParameters>,
-    ) -> ZkfheResult<GrecoVectors> {
+    ) -> ZkFheResult<GrecoVectors> {
         // Get context, plaintext modulus, and degree
         let ctx = params.ctx_at_level(pt.level())?;
         let t = Modulus::new(params.plaintext())?;
@@ -202,7 +187,7 @@ impl GrecoVectors {
         let pk1_coeffs_rows = pk1_coeffs.rows();
 
         // Perform the main computation logic
-        let results: Vec<ComputationResult> = izip!(
+        let results: Vec<_> = izip!(
             ctx.moduli_operators(),
             ct0_coeffs_rows,
             ct1_coeffs_rows,
@@ -441,29 +426,8 @@ impl GrecoVectors {
     }
 }
 
-impl CircuitDimensions for GrecoVectors {
-    fn num_moduli(&self) -> usize {
-        self.pk0is.len()
-    }
-
-    fn degree(&self) -> usize {
-        self.u.len()
-    }
-
-    fn level(&self) -> usize {
-        0 // Default level, can be overridden if needed
-    }
-}
-
-impl CircuitVectors for GrecoVectors {
-    fn new_from_params<P>(params: &P, _level: usize) -> Self
-    where
-        P: CircuitDimensions,
-    {
-        Self::new(params.num_moduli(), params.degree())
-    }
-
-    fn standard_form(&self) -> Self {
+impl GrecoVectors {
+    pub fn standard_form(&self) -> Self {
         let zkp_modulus = &shared::constants::get_zkp_modulus();
         GrecoVectors {
             pk0is: reduce_coefficients_2d(&self.pk0is, zkp_modulus),
@@ -482,7 +446,7 @@ impl CircuitVectors for GrecoVectors {
         }
     }
 
-    fn to_json(&self) -> serde_json::Value {
+    pub fn to_json(&self) -> serde_json::Value {
         json!({
             "pk0is": to_string_2d_vec(&self.pk0is),
             "pk1is": to_string_2d_vec(&self.pk1is),
@@ -499,41 +463,6 @@ impl CircuitVectors for GrecoVectors {
             "ct1is": to_string_2d_vec(&self.ct1is),
         })
     }
-
-    fn validate_dimensions(&self) -> bool {
-        let num_moduli = self.num_moduli();
-        let degree = self.degree();
-
-        // Helper function to check 2D vector lengths
-        let check_2d_lengths =
-            |vec: &Vec<Vec<BigInt>>, expected_outer_len: usize, expected_inner_len: usize| {
-                vec.len() == expected_outer_len && vec.iter().all(|v| v.len() == expected_inner_len)
-            };
-
-        // Helper function to check 1D vector lengths
-        let check_1d_lengths = |vec: &Vec<BigInt>, expected_len: usize| vec.len() == expected_len;
-
-        // Use all to combine all checks into a single statement
-        [
-            // 2D vector checks
-            check_2d_lengths(&self.pk0is, num_moduli, degree),
-            check_2d_lengths(&self.pk1is, num_moduli, degree),
-            check_2d_lengths(&self.ct0is, num_moduli, degree),
-            check_2d_lengths(&self.ct1is, num_moduli, degree),
-            check_2d_lengths(&self.r1is, num_moduli, 2 * (degree - 1) + 1),
-            check_2d_lengths(&self.r2is, num_moduli, degree - 1),
-            check_2d_lengths(&self.p1is, num_moduli, 2 * (degree - 1) + 1),
-            check_2d_lengths(&self.p2is, num_moduli, degree - 1),
-            // 1D vector checks
-            check_1d_lengths(&self.k0is, num_moduli),
-            check_1d_lengths(&self.u, degree),
-            check_1d_lengths(&self.e0, degree),
-            check_1d_lengths(&self.e1, degree),
-            check_1d_lengths(&self.k1, degree),
-        ]
-        .iter()
-        .all(|&check| check)
-    }
 }
 
 #[cfg(test)]
@@ -542,34 +471,6 @@ mod tests {
     use fhe::bfv::{BfvParametersBuilder, Encoding, Plaintext, SecretKey};
     use fhe_traits::FheEncoder;
     use rand::{SeedableRng, rngs::StdRng};
-
-    fn setup_test_params() -> (Arc<BfvParameters>, SecretKey, PublicKey) {
-        let params = BfvParametersBuilder::new()
-            .set_degree(2048)
-            .set_plaintext_modulus(1032193)
-            .set_moduli(&[0x3FFFFFFF000001])
-            .build_arc()
-            .unwrap();
-
-        let mut rng = StdRng::seed_from_u64(0); // Use deterministic seed
-        let sk = SecretKey::random(&params, &mut rng);
-        let pk = PublicKey::new(&sk, &mut rng);
-
-        (params, sk, pk)
-    }
-
-    #[test]
-    fn test_vector_lengths() {
-        let vecs = GrecoVectors::new(1, 2048);
-        assert!(vecs.validate_dimensions());
-
-        // Test that vectors with correct dimensions pass validation
-        let vecs_2_moduli = GrecoVectors::new(2, 2048);
-        assert!(vecs_2_moduli.validate_dimensions());
-
-        let vecs_different_degree = GrecoVectors::new(1, 1024);
-        assert!(vecs_different_degree.validate_dimensions());
-    }
 
     #[test]
     fn test_standard_form() {
@@ -585,8 +486,17 @@ mod tests {
     }
 
     #[test]
-    fn test_vector_computation() {
-        let (params, _sk, pk) = setup_test_params();
+    fn test_vector_computation_to_json() {
+        let params = BfvParametersBuilder::new()
+            .set_degree(2048)
+            .set_plaintext_modulus(1032193)
+            .set_moduli(&[0x3FFFFFFF000001])
+            .build_arc()
+            .unwrap();
+
+        let mut rng = StdRng::seed_from_u64(0);
+        let sk = SecretKey::random(&params, &mut rng);
+        let pk = PublicKey::new(&sk, &mut rng);
 
         // Create a sample plaintext
         let mut message_data = vec![3u64; params.degree()];
@@ -601,13 +511,6 @@ mod tests {
         let vecs =
             GrecoVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params).unwrap();
 
-        // Check dimensions
-        assert!(vecs.validate_dimensions());
-    }
-
-    #[test]
-    fn test_vector_json_format() {
-        let vecs = GrecoVectors::new(1, 4); // Small size for testing
         let json = vecs.to_json();
 
         // Check all required fields are present
