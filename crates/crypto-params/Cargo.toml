@@ -24,3 +24,7 @@ thiserror = { workspace = true }
 [[bin]]
 name = "bfv-param-search"
 path = "src/bin/bfv.rs"
+
+[[bin]]
+name = "pvw-param-search"
+path = "src/bin/pvw.rs"
