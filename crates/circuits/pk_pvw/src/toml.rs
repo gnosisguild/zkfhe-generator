@@ -7,7 +7,6 @@ use crate::vectors::PkPvwVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
 use shared::toml::TomlGenerator;
-use shared::utils::{matrix_3d_to_format, matrix_to_format};
 
 /// Generator for PVW circuit TOML files
 pub struct PkPvwTomlGenerator {
@@ -86,23 +85,67 @@ struct CircuitSection {
 impl TomlGenerator for PkPvwTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
         let toml_data = PkPvwTomlFormat {
-            // a: L matrices of K x K polynomials - convert to 3D array format
-            a: matrix_3d_to_format(&self.vectors.a),
+            // a: L matrices of K x K polynomials - convert to simple string format
+            a: self.vectors.a.iter().map(|matrix| {
+                matrix.iter().map(|row| {
+                    row.iter().map(|poly| {
+                        serde_json::json!({
+                            "coefficients": poly.iter().map(|coeff| coeff.to_string()).collect::<Vec<String>>()
+                        })
+                    }).collect()
+                }).collect()
+            }).collect(),
 
-            // e: N_PARTIES x K matrix of polynomials - convert to 2D array format
-            e: matrix_to_format(&self.vectors.e),
+            // e: N_PARTIES x K matrix of polynomials - convert to simple string format
+            e: self.vectors.e.iter().map(|row| {
+                row.iter().map(|poly| {
+                    serde_json::json!({
+                        "coefficients": poly.iter().map(|coeff| coeff.to_string()).collect::<Vec<String>>()
+                    })
+                }).collect()
+            }).collect(),
 
-            // sk: N_PARTIES x K matrix of polynomials - convert to 2D array format
-            sk: matrix_to_format(&self.vectors.sk),
+            // sk: N_PARTIES x K matrix of polynomials - convert to simple string format
+            sk: self.vectors.sk.iter().map(|row| {
+                row.iter().map(|poly| {
+                    serde_json::json!({
+                        "coefficients": poly.iter().map(|coeff| coeff.to_string()).collect::<Vec<String>>()
+                    })
+                }).collect()
+            }).collect(),
 
-            // b: L matrices of N_PARTIES x K polynomials - convert to 3D array format
-            b: matrix_3d_to_format(&self.vectors.b),
+            // b: L matrices of N_PARTIES x K polynomials - convert to simple string format
+            b: self.vectors.b.iter().map(|matrix| {
+                matrix.iter().map(|row| {
+                    row.iter().map(|poly| {
+                        serde_json::json!({
+                            "coefficients": poly.iter().map(|coeff| coeff.to_string()).collect::<Vec<String>>()
+                        })
+                    }).collect()
+                }).collect()
+            }).collect(),
 
-            // r1: L matrices of N_PARTIES x K polynomials - convert to 3D array format
-            r1: matrix_3d_to_format(&self.vectors.r1),
+            // r1: L matrices of N_PARTIES x K polynomials - convert to simple string format
+            r1: self.vectors.r1.iter().map(|matrix| {
+                matrix.iter().map(|row| {
+                    row.iter().map(|poly| {
+                        serde_json::json!({
+                            "coefficients": poly.iter().map(|coeff| coeff.to_string()).collect::<Vec<String>>()
+                        })
+                    }).collect()
+                }).collect()
+            }).collect(),
 
-            // r2: L matrices of N_PARTIES x K polynomials - convert to 3D array format
-            r2: matrix_3d_to_format(&self.vectors.r2),
+            // r2: L matrices of N_PARTIES x K polynomials - convert to simple string format
+            r2: self.vectors.r2.iter().map(|matrix| {
+                matrix.iter().map(|row| {
+                    row.iter().map(|poly| {
+                        serde_json::json!({
+                            "coefficients": poly.iter().map(|coeff| coeff.to_string()).collect::<Vec<String>>()
+                        })
+                    }).collect()
+                }).collect()
+            }).collect(),
 
             params: ParamsSection {
                 bounds: BoundsSection {
