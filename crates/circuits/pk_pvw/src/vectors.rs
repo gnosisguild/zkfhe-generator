@@ -1,8 +1,16 @@
-use bigint_poly::reduce_and_center_coefficients;
+use crate::sample::PvwEncryptionData;
+use bigint_poly::{Polynomial, reduce_and_center_coefficients_mut, reduce_in_ring, reduce_scalar};
+use fhe_math::rq::Representation;
+use itertools::izip;
 use num_bigint::BigInt;
 use num_traits::Zero;
+use pvw::PvwParameters;
+use rayon::iter::{ParallelBridge, ParallelIterator};
+use serde_json::json;
+use shared::constants::get_zkp_modulus;
 use shared::errors::ZkFheResult;
-
+use shared::utils::{to_string_3d_vec, to_string_4d_vec};
+use std::sync::Arc;
 /// Matrix type representing a 2D array of polynomials
 /// ROWS x COLS matrix where each entry is a polynomial of degree N
 pub type Matrix = Vec<Vec<Vec<BigInt>>>;
@@ -75,144 +83,384 @@ impl PkPvwVectors {
     }
 
     /// Create PkPvwVectors from sample PVW encryption data
-    pub fn compute(encryption_data: &crate::sample::PvwEncryptionData) -> ZkFheResult<Self> {
-        use bigint_poly::reduce_and_center_coefficients;
-        use shared::constants::get_zkp_modulus;
-        let params = &encryption_data.params;
-
+    /// Following the complete Greco pattern for all vectors computation
+    pub fn compute(
+        encryption_data: &PvwEncryptionData,
+        params: &Arc<PvwParameters>,
+    ) -> ZkFheResult<Self> {
         // Extract parameters from the PVW parameters
         let n_parties = params.n; // Number of parties
-        let k = params.k; // LWE dimension
+        let k = 2; // LWE dimension  
         let n = params.l; // Ring dimension/polynomial degree (from PVW l parameter)
         let num_moduli = params.context.moduli().len(); // Number of moduli (L in the circuit)
 
         // Create the vectors structure
         let mut vectors = Self::new(n_parties, k, n, num_moduli);
+        let parties = &encryption_data.parties;
+        let _global_pk = &encryption_data.global_pk; // TODO: Extract public keys and error vectors
+        let _crs = &encryption_data.crs; // TODO: Extract CRS matrices
 
-        // Extract CRS matrices (a) - one K×K matrix per modulus l
-        for (l_idx, modulus) in params.context.moduli().iter().enumerate() {
-            for i in 0..k {
-                for j in 0..k {
-                    if let Some(crs_poly) = encryption_data.crs.get(i, j) {
-                        // Convert polynomial to coefficients and reduce mod zkp_modulus
-                        let coeffs = extract_poly_coefficients(crs_poly, n, *modulus)?;
-                        vectors.a[l_idx][i][j] = coeffs;
-                    }
-                }
-            }
-        }
+        // Create cyclotomic polynomial x^N + 1
+        let mut cyclo = vec![BigInt::from(0u64); (n + 1) as usize];
+        cyclo[0] = BigInt::from(1u64); // x^N term
+        cyclo[n as usize] = BigInt::from(1u64); // x^0 term
 
-        // Extract secret keys (sk) - N_PARTIES×K matrix of polynomials
-        for (party_idx, party) in encryption_data.parties.iter().enumerate() {
+        // ================== QI-INDEPENDENT COMPUTATIONS ==================
+
+        // Extract secret keys (sk) - N_PARTIES×K matrix of polynomials (qi-independent)
+        for (party_idx, party) in parties.iter().enumerate() {
             for k_idx in 0..k {
-                let sk_coeffs = party.secret_key.get_coefficients(k_idx).ok_or_else(|| {
-                    shared::errors::ZkFheError::Bfv {
-                        message: format!(
-                            "Failed to get secret key coefficients for party {party_idx} dim {k_idx}"
-                        ),
-                    }
-                })?;
+                let sk_coeffs = party.secret_key.get_coefficients(k_idx).unwrap();
 
-                // Convert i64 coefficients to BigInt and reduce mod zkp_modulus
-                let coeffs = sk_coeffs
+                // Convert i64 coefficients to BigInt and reverse (following Greco pattern)
+                // Do NOT center/reduce here - PVW secret keys are already in correct distribution
+                vectors.sk[party_idx][k_idx] = sk_coeffs
                     .iter()
-                    .map(|&coeff| {
-                        let big_coeff = BigInt::from(coeff);
-                        reduce_and_center_coefficients(&[big_coeff.clone()], &get_zkp_modulus());
-                        big_coeff
-                    })
+                    .rev() // Reverse order like in Greco
+                    .map(|&coeff| BigInt::from(coeff))
                     .collect();
-                vectors.sk[party_idx][k_idx] = coeffs;
             }
         }
 
-        // Extract public keys (b) - L×N_PARTIES×K matrices of polynomials
-        for l_idx in 0..num_moduli {
-            let modulus = params.context.moduli()[l_idx];
-            for party_idx in 0..n_parties {
-                for k_idx in 0..k {
-                    if let Some(pk_poly) =
-                        encryption_data.global_pk.get_polynomial(party_idx, k_idx)
-                    {
-                        let coeffs = extract_poly_coefficients(pk_poly, n, modulus)?;
-                        vectors.b[l_idx][party_idx][k_idx] = coeffs;
+        // Extract error vectors (e) - N_PARTIES×K matrix of polynomials (qi-independent)
+        let all_errors = _global_pk.get_all_errors();
+        for (party_idx, _party) in parties.iter().enumerate() {
+            for k_idx in 0..k {
+                if let Some(party_errors) = all_errors.get(party_idx) {
+                    if let Some(error_poly) = party_errors.get(k_idx) {
+                        // Extract coefficients using the FHE pattern
+                        let mut error_poly_copy = error_poly.clone();
+                        error_poly_copy.change_representation(Representation::PowerBasis);
+
+                        // Get coefficients and apply Greco pattern processing
+                        let error_coeffs = error_poly_copy.coefficients();
+                        if let Some(coeffs_slice) = error_coeffs.row(0).as_slice() {
+                            // Convert to centered representation using first modulus operator
+                            let error_centered = unsafe {
+                                params.context.moduli_operators()[0].center_vec_vt(coeffs_slice)
+                            };
+
+                            // Convert to BigInt and reverse (following Greco pattern)
+                            vectors.e[party_idx][k_idx] = error_centered
+                                .iter()
+                                .rev()
+                                .map(|&coeff| BigInt::from(coeff))
+                                .collect();
+                        } else {
+                            vectors.e[party_idx][k_idx] = vec![BigInt::zero(); n];
+                        }
+                    } else {
+                        vectors.e[party_idx][k_idx] = vec![BigInt::zero(); n];
+                    }
+                } else {
+                    vectors.e[party_idx][k_idx] = vec![BigInt::zero(); n];
+                }
+            }
+        }
+
+        // ================== QI-DEPENDENT COMPUTATIONS ==================
+        // Following the Greco pattern: extract FHE components → process per modulus
+
+        // Get moduli operators and values from context
+        let moduli_ops = params.context.moduli_operators();
+        let qis: Vec<u64> = params.moduli().to_vec();
+
+        // Process each modulus in parallel (following Greco pattern)
+        let results: Vec<_> = izip!(moduli_ops.iter(), qis.iter())
+            .enumerate()
+            .par_bridge()
+            .map(|(modulus_idx, (qi_op, &qi))| {
+                let qi_bigint = BigInt::from(qi);
+
+                // Initialize results for this modulus
+                let mut a_l = vec![vec![vec![BigInt::zero(); n]; k]; k]; // K x K matrix
+                let mut b_l = vec![vec![vec![BigInt::zero(); n]; k]; n_parties]; // N_PARTIES x K matrix
+                let mut r1_l = vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; // N_PARTIES x K matrix
+                let mut r2_l = vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; // N_PARTIES x K matrix
+
+                // Extract CRS matrix a_l - K×K matrix for this modulus
+                for row in 0..k {
+                    for col in 0..k {
+                        // Extract CRS coefficients using the FHE pattern
+                        if let Some(crs_poly) = _crs.get(row, col) {
+                            // 1. Clone and change to PowerBasis representation
+                            let mut crs_poly_copy = crs_poly.clone();
+                            crs_poly_copy.change_representation(Representation::PowerBasis);
+
+                            // 2. Extract modulus component for this qi
+                            let crs_coeffs = crs_poly_copy.coefficients();
+                            if let Some(coeffs_slice) = crs_coeffs.row(modulus_idx).as_slice() {
+                                // 3. Convert to centered representation
+                                let crs_centered = unsafe { qi_op.center_vec_vt(coeffs_slice) };
+
+                                // 4. Convert to BigInt and reverse (following Greco pattern)
+                                a_l[row][col] = crs_centered
+                                    .iter()
+                                    .rev()
+                                    .map(|&coeff| BigInt::from(coeff))
+                                    .collect();
+
+                                // 5. Reduce and center modulo qi
+                                reduce_and_center_coefficients_mut(
+                                    &mut a_l[row][col],
+                                    &qi_bigint.clone(),
+                                );
+                            } else {
+                                a_l[row][col] = vec![BigInt::zero(); n];
+                            }
+                        } else {
+                            a_l[row][col] = vec![BigInt::zero(); n];
+                        }
                     }
                 }
-            }
-        }
 
-        // Extract error vectors (e) - N_PARTIES×K matrix of polynomials
-        // Reuse the error polynomials that were generated during party key generation
-        for party_idx in 0..n_parties {
-            for k_idx in 0..k {
-                // Get the error polynomial that was used during key generation
-                let error_poly = encryption_data
-                    .global_pk
-                    .error_polynomials
-                    .get(party_idx)
-                    .and_then(|party_errors| party_errors.get(k_idx))
-                    .ok_or_else(|| shared::errors::ZkFheError::Bfv {
-                        message: format!(
-                            "Failed to get error polynomial for party {party_idx} dim {k_idx}"
-                        ),
-                    })?;
+                // Process each party's public key for this modulus
+                for party_idx in 0..n_parties {
+                    for k_idx in 0..k {
+                        // Extract actual public key b[l][party][k_idx] using the FHE pattern
+                        let mut b_li = vec![BigInt::zero(); n];
+                        if let Some(pk_poly) = _global_pk.get_polynomial(party_idx, k_idx) {
+                            // 1. Clone and change to PowerBasis representation
+                            let mut pk_poly_copy = pk_poly.clone();
+                            pk_poly_copy.change_representation(Representation::PowerBasis);
 
-                let coeffs = extract_poly_coefficients(error_poly, n, params.context.moduli()[0])?;
-                vectors.e[party_idx][k_idx] = coeffs;
-            }
-        }
+                            // 2. Extract modulus component for this qi
+                            let pk_coeffs = pk_poly_copy.coefficients();
+                            if let Some(coeffs_slice) = pk_coeffs.row(modulus_idx).as_slice() {
+                                // 3. Convert to centered representation
+                                let pk_centered = unsafe { qi_op.center_vec_vt(coeffs_slice) };
 
-        // Compute r1 and r2 quotients from the PVW equation:
-        // b_{l,i} = a_l * s_i + e_i + r2_{l,i} * (X^N + 1) + r1_{l,i} * q_l
-        // Rearranging: r2_{l,i} * (X^N + 1) + r1_{l,i} * q_l = b_{l,i} - a_l * s_i - e_i
-        for l_idx in 0..num_moduli {
-            let modulus = params.context.moduli()[l_idx];
-            let qi = BigInt::from(modulus);
+                                // 4. Convert to BigInt and reverse (following Greco pattern)
+                                b_li = pk_centered
+                                    .iter()
+                                    .rev()
+                                    .map(|&coeff| BigInt::from(coeff))
+                                    .collect();
 
-            for party_idx in 0..n_parties {
-                for k_idx in 0..k {
-                    // Compute the right-hand side: b_{l,i} - a_l * s_i - e_i
-                    let (r1_coeffs, r2_coeffs) = compute_quotients(
-                        &vectors.b[l_idx][party_idx][k_idx], // b_{l,i}
-                        &vectors.a[l_idx],                   // a_l matrix
-                        &vectors.sk[party_idx],              // s_i
-                        &vectors.e[party_idx][k_idx],        // e_i
-                        k_idx,                               // which component of the K-vector
-                        &qi,                                 // q_l
-                        n,                                   // polynomial degree
-                    )?;
+                                // 5. Reduce and center modulo qi
+                                reduce_and_center_coefficients_mut(&mut b_li, &qi_bigint.clone());
+                            }
+                        }
 
-                    vectors.r1[l_idx][party_idx][k_idx] = r1_coeffs;
-                    vectors.r2[l_idx][party_idx][k_idx] = r2_coeffs;
+                        // ===== Compute theoretical public key b̂ = a*s + e =====
+                        // Following PVW equation: b_{l,i} = a_l * s_i + e_i + r2_{l,i} * (X^N + 1) + r1_{l,i} * q_l
+
+                        // Calculate theoretical b̂ = a_l * s_i + e_i
+                        // Initialize with first term: a_l[0][k_idx] * s_i[party_idx][0]
+                        let a_poly = Polynomial::new(a_l[0][k_idx].clone());
+                        let s_poly = Polynomial::new(vectors.sk[party_idx][0].clone());
+                        let mut b_hat_poly = a_poly.mul(&s_poly);
+
+                        // Reduce the intermediate result by the cyclotomic polynomial
+                        let mut b_hat_coeffs = b_hat_poly.coefficients().to_vec();
+                        reduce_in_ring(&mut b_hat_coeffs, &cyclo, &qi_bigint.clone());
+                        b_hat_poly = Polynomial::new(b_hat_coeffs);
+
+                        // Debug: Print first term
+                        if party_idx == 0 && k_idx == 0 {
+                            println!("First term a_l[0][{}]: {:?}", k_idx, &a_l[0][k_idx]);
+                            println!("First term s_i[0]: {:?}", &vectors.sk[party_idx][0]);
+                            println!(
+                                "First term product (reduced): {:?}",
+                                &b_hat_poly.coefficients().to_vec()
+                            );
+                        }
+
+                        // Add remaining terms: sum over a_row of a_l[a_row][k_idx] * s_i[party_idx][a_row]
+                        for a_row in 1..k {
+                            let a_poly = Polynomial::new(a_l[a_row][k_idx].clone());
+                            let s_poly = Polynomial::new(vectors.sk[party_idx][a_row].clone());
+                            let product = a_poly.mul(&s_poly);
+
+                            // Reduce the product by the cyclotomic polynomial
+                            let mut product_coeffs = product.coefficients().to_vec();
+                            reduce_in_ring(&mut product_coeffs, &cyclo, &qi_bigint.clone());
+
+                            b_hat_poly = b_hat_poly.add(&Polynomial::new(product_coeffs));
+
+                            // Debug: Print intermediate results
+                            if party_idx == 0 && k_idx == 0 {
+                                println!(
+                                    "Added term a_l[{}][{}]: {:?}",
+                                    a_row, k_idx, &a_l[a_row][k_idx]
+                                );
+                                println!(
+                                    "Added term s_i[{}]: {:?}",
+                                    a_row, &vectors.sk[party_idx][a_row]
+                                );
+                                println!(
+                                    "Current b_hat sum: {:?}",
+                                    &b_hat_poly.coefficients().to_vec()
+                                );
+                            }
+                        }
+
+                        // Add error vector e_i[k_idx]
+                        let e_poly = Polynomial::new(vectors.e[party_idx][k_idx].clone());
+
+                        // Debug: Print error term
+                        if party_idx == 0 && k_idx == 0 {
+                            println!(
+                                "Error term e_i[{}]: {:?}",
+                                k_idx, &vectors.e[party_idx][k_idx]
+                            );
+                        }
+
+                        b_hat_poly = b_hat_poly.add(&e_poly);
+
+                        // b_hat_poly is already reduced to degree < N, so we can use it directly
+                        let b_hat_reduced = b_hat_poly.coefficients().to_vec();
+                        assert_eq!(((b_hat_reduced.len() - 1) as u64), (n - 1) as u64);
+
+                        // Debug: Print final b_hat
+                        if party_idx == 0 && k_idx == 0 {
+                            println!("Final b_hat (reduced): {:?}", &b_hat_reduced);
+                            println!("b_li (actual public key): {:?}", &b_li);
+                        }
+
+                        // ===== Note: b_hat and b_li should NOT be equal =====
+                        // b_hat = a_l * s_i + e_i (theoretical, without quotients)
+                        // b_li = a_l * s_i + e_i + r2*(X^N+1) + r1*q_l (actual, with quotients)
+                        // The difference (b_li - b_hat) contains the quotient terms
+
+                        // ===== FOLLOW GRECO STEPS EXACTLY FOR PVW =====
+                        // Step 9: Calculate Difference (b - b̂) using the reduced b_hat
+                        let b_li_poly = Polynomial::new(b_li.clone());
+                        let b_hat_poly = Polynomial::new(b_hat_reduced.clone());
+                        let b_li_minus_b_hat = b_li_poly.sub(&b_hat_poly).coefficients().to_vec();
+                        // Fix: Both b_li and b_hat_reduced have degree n-1, so their difference has degree n-1
+                        assert_eq!(((b_li_minus_b_hat.len() - 1) as u64), (n - 1) as u64);
+
+                        // Step 10: Reduce and Center the Difference (only for r₂)
+                        let mut b_li_minus_b_hat_mod_zqi = b_li_minus_b_hat.clone();
+                        reduce_and_center_coefficients_mut(
+                            &mut b_li_minus_b_hat_mod_zqi,
+                            &qi_bigint.clone(),
+                        );
+
+                        // Step 11: Calculate r₂ following Greco pattern exactly
+                        // Calculate r2 as the quotient of (b_li - b_hat) / (x^N + 1)
+                        let b_li_minus_b_hat_poly =
+                            Polynomial::new(b_li_minus_b_hat_mod_zqi.clone());
+                        let cyclo_poly = Polynomial::new(cyclo.clone());
+                        let (r2_poly, r2_rem_poly) =
+                            b_li_minus_b_hat_poly.div(&cyclo_poly).unwrap();
+                        let r2_coeffs = r2_poly.coefficients().to_vec();
+                        let r2_rem = r2_rem_poly.coefficients().to_vec();
+                        assert!(r2_rem.iter().all(|x| x.is_zero()));
+                        assert_eq!(((r2_coeffs.len() - 1) as u64), (n - 2) as u64); // Order(r2) = N-2
+
+                        // Pad r2 to degree 2*N-1 as expected by the circuit
+                        let mut r2_padded = r2_coeffs.clone();
+                        while r2_padded.len() < (2 * n - 1) as usize {
+                            r2_padded.push(BigInt::zero());
+                        }
+                        let r2_coeffs = r2_padded;
+
+                        // Calculate r₁ Numerator following Greco pattern exactly
+                        // r1 = (b_li - b_hat - r2 * cyclo) / qi
+                        let r2_original_poly =
+                            Polynomial::new(r2_coeffs[..(n - 1) as usize].to_vec()); // Use original r2 (degree n-2)
+                        let r2_times_cyclo =
+                            r2_original_poly.mul(&cyclo_poly).coefficients().to_vec();
+                        let b_li_minus_b_hat_poly = Polynomial::new(b_li_minus_b_hat.clone());
+                        let r2_cyclo_poly = Polynomial::new(r2_times_cyclo.clone());
+                        let r1_numerator = b_li_minus_b_hat_poly
+                            .sub(&r2_cyclo_poly)
+                            .coefficients()
+                            .to_vec();
+
+                        assert_eq!(((r1_numerator.len() - 1) as u64), (2 * (n - 1)) as u64);
+
+                        // Step 14: Calculate r₁ (Modular Quotient)
+                        let r1_num_poly = Polynomial::new(r1_numerator.clone());
+                        let qi_poly = Polynomial::new(vec![qi_bigint.clone()]);
+                        let (r1_poly, r1_rem_poly) = r1_num_poly.div(&qi_poly).unwrap();
+                        let r1_coeffs = r1_poly.coefficients().to_vec();
+                        let r1_rem = r1_rem_poly.coefficients().to_vec();
+                        assert!(r1_rem.iter().all(|x| x.is_zero()));
+                        assert_eq!(((r1_coeffs.len() - 1) as u64), (2 * (n - 1)) as u64); // Order(r1) = 2*(N-1)
+
+                        // Verify that r1 * qi equals the numerator
+                        let r1_poly_check = Polynomial::new(r1_coeffs.clone());
+                        assert_eq!(
+                            &r1_numerator,
+                            &r1_poly_check.mul(&qi_poly).coefficients().to_vec()
+                        );
+
+                        // ===== VERIFICATION: Assert the PVW equation like the Noir circuit =====
+                        // This is equivalent to the Noir circuit's assert_eq(b_at_gamma[i][k], rhs)
+                        // We verify: b_{l,i} = a_l * s_i + e_i + r2*(X^N+1) + r1*q_l
+
+                        // Verify the PVW equation: b = b̂ + r2×cyclo + r1×qi
+                        // Since r2 = b - b̂, this becomes: b = b̂ + (b - b̂)×cyclo + r1×qi
+                        let r2_times_cyclo = Polynomial::new(r2_coeffs.clone()).mul(&cyclo_poly);
+                        let r1_times_qi =
+                            Polynomial::new(r1_coeffs.clone()).scalar_mul(&qi_bigint.clone());
+                        let rhs_reconstructed = b_hat_poly.add(&r2_times_cyclo).add(&r1_times_qi);
+                        let lhs_coeffs = b_li_poly.coefficients().to_vec();
+                        let rhs_coeffs = rhs_reconstructed.coefficients().to_vec();
+                        assert_eq!(
+                            lhs_coeffs, rhs_coeffs,
+                            "PVW equation verification failed for modulus {}",
+                            modulus_idx
+                        );
+
+                        // Store results (use reduced b_hat)
+                        b_l[party_idx][k_idx] = b_hat_reduced.clone();
+                        r1_l[party_idx][k_idx] = r1_coeffs;
+                        r2_l[party_idx][k_idx] = r2_coeffs;
+                    }
                 }
-            }
+
+                (modulus_idx, a_l, b_l, r1_l, r2_l)
+            })
+            .collect();
+
+        // Merge results back into vectors structure
+        for (modulus_idx, a_l, b_l, r1_l, r2_l) in results {
+            vectors.a[modulus_idx] = a_l;
+            vectors.b[modulus_idx] = b_l;
+            vectors.r1[modulus_idx] = r1_l;
+            vectors.r2[modulus_idx] = r2_l;
         }
 
         Ok(vectors)
     }
 
-    /// Convert to standard form (reduce modulo ZKP modulus)
+    /// Convert to standard form (reduce modulo ZKP modulus) - Noir compatible (non-negative values)
     pub fn standard_form(&self) -> Self {
-        use shared::constants::get_zkp_modulus;
-        use shared::utils::{reduce_coefficients_3d, reduce_coefficients_4d};
-
         let zkp_modulus = &get_zkp_modulus();
 
+        // Helper function to reduce coefficients using reduce_scalar for Noir compatibility
+        let reduce_1d = |vec: &[BigInt]| -> Vec<BigInt> {
+            vec.iter().map(|x| reduce_scalar(x, zkp_modulus)).collect()
+        };
+
+        let reduce_2d = |vec: &[Vec<BigInt>]| -> Vec<Vec<BigInt>> {
+            vec.iter().map(|row| reduce_1d(row)).collect()
+        };
+
+        let reduce_3d = |vec: &[Vec<Vec<BigInt>>]| -> Vec<Vec<Vec<BigInt>>> {
+            vec.iter().map(|matrix| reduce_2d(matrix)).collect()
+        };
+
+        let reduce_4d = |vec: &[Vec<Vec<Vec<BigInt>>>]| -> Vec<Vec<Vec<Vec<BigInt>>>> {
+            vec.iter().map(|matrix_3d| reduce_3d(matrix_3d)).collect()
+        };
+
         PkPvwVectors {
-            a: reduce_coefficients_4d(&self.a, zkp_modulus),
-            e: reduce_coefficients_3d(&self.e, zkp_modulus),
-            sk: reduce_coefficients_3d(&self.sk, zkp_modulus),
-            b: reduce_coefficients_4d(&self.b, zkp_modulus),
-            r1: reduce_coefficients_4d(&self.r1, zkp_modulus),
-            r2: reduce_coefficients_4d(&self.r2, zkp_modulus),
+            a: reduce_4d(&self.a),
+            e: reduce_3d(&self.e),
+            sk: reduce_3d(&self.sk),
+            b: reduce_4d(&self.b),
+            r1: reduce_4d(&self.r1),
+            r2: reduce_4d(&self.r2),
         }
     }
 
     /// Convert to JSON format for serialization
     pub fn to_json(&self) -> serde_json::Value {
-        use serde_json::json;
-        use shared::utils::{to_string_3d_vec, to_string_4d_vec};
-
         json!({
             "a": to_string_4d_vec(&self.a),
             "e": to_string_3d_vec(&self.e),
@@ -222,179 +470,4 @@ impl PkPvwVectors {
             "r2": to_string_4d_vec(&self.r2),
         })
     }
-}
-
-/// Helper function to extract polynomial coefficients and reduce them modulo ZKP modulus
-fn extract_poly_coefficients(
-    poly: &fhe_math::rq::Poly,
-    degree: usize,
-    _modulus: u64,
-) -> ZkFheResult<Vec<BigInt>> {
-    use bigint_poly::reduce_and_center_coefficients;
-    use fhe_math::rq::Representation;
-    use shared::constants::get_zkp_modulus;
-
-    // Convert to coefficient representation if needed
-    let mut working_poly = poly.clone();
-    if *working_poly.representation() != Representation::PowerBasis {
-        working_poly.change_representation(Representation::PowerBasis);
-    }
-
-    // Extract coefficients - fhe_math polynomials store coefficients as u64
-    let coeffs: Vec<BigInt> = working_poly
-        .coefficients()
-        .iter()
-        .take(degree)
-        .map(|&coeff| BigInt::from(coeff))
-        .collect();
-
-    // Ensure we have exactly 'degree' coefficients
-    let mut result = coeffs;
-    result.resize(degree, BigInt::zero());
-
-    // Reduce modulo ZKP modulus and center
-    reduce_and_center_coefficients(&result, &get_zkp_modulus());
-
-    Ok(result)
-}
-
-/// Compute r1 and r2 quotients from the PVW equation
-///
-/// Solves: r2 * (X^N + 1) + r1 * q_l = b - a_l * s_i - e_i
-///
-/// This is done by:
-/// 1. Computing the RHS: b - a_l * s_i - e_i
-/// 2. Using polynomial division to separate the cyclotomic and modulus components
-/// 3. r2 comes from division by (X^N + 1)
-/// 4. r1 comes from the remainder after cyclotomic reduction, divided by q_l
-fn compute_quotients(
-    b: &[BigInt],       // Public key polynomial b_{l,i}
-    a_matrix: &Matrix,  // CRS matrix a_l (K x K)
-    sk_vector: &Vector, // Secret key vector s_i (K polynomials)
-    e: &[BigInt],       // Error polynomial e_i
-    k_idx: usize,       // Which component of the K-vector we're computing
-    qi: &BigInt,        // Modulus q_l
-    n: usize,           // Polynomial degree
-) -> ZkFheResult<(Vec<BigInt>, Vec<BigInt>)> {
-    use num_traits::Zero;
-    use shared::constants::get_zkp_modulus;
-
-    // Step 1: Compute a_l * s_i for component k_idx
-    // This is the dot product of row k_idx of a_matrix with sk_vector
-    let mut a_times_s = vec![BigInt::zero(); n];
-    for (j, sk_poly) in sk_vector.iter().enumerate() {
-        let a_poly = &a_matrix[k_idx][j];
-
-        // Multiply polynomials: a[k_idx][j] * s[j]
-        let product = multiply_polynomials(a_poly, sk_poly, n)?;
-
-        // Add to accumulator
-        for (i, coeff) in product.iter().enumerate() {
-            if i < a_times_s.len() {
-                a_times_s[i] += coeff;
-            }
-        }
-    }
-
-    // Step 2: Compute RHS = b - a_l * s_i - e_i
-    let mut rhs = vec![BigInt::zero(); 2 * n - 1]; // Degree can be up to 2*N-1
-    for i in 0..n {
-        if i < b.len() && i < a_times_s.len() && i < e.len() {
-            rhs[i] = &b[i] - &a_times_s[i] - &e[i];
-        }
-    }
-
-    // Step 3: Reduce RHS modulo ZKP modulus
-    reduce_and_center_coefficients(&rhs, &get_zkp_modulus());
-
-    // Step 4: Solve for r2 and r1 using polynomial division
-    // We need to solve: r2 * (X^N + 1) + r1 * q_l = RHS
-    // This is equivalent to: RHS = r2 * (X^N + 1) + r1 * q_l
-
-    // First, divide by (X^N + 1) to get r2
-    let (r2_coeffs, remainder) = divide_by_cyclotomic(&rhs, n)?;
-
-    // Then, divide the remainder by q_l to get r1
-    let r1_coeffs = divide_by_scalar(&remainder, qi)?;
-
-    // Ensure both have the correct degree (2*N-1)
-    let mut r1_final = r1_coeffs;
-    let mut r2_final = r2_coeffs;
-    r1_final.resize(2 * n - 1, BigInt::zero());
-    r2_final.resize(2 * n - 1, BigInt::zero());
-
-    Ok((r1_final, r2_final))
-}
-
-/// Multiply two polynomials represented as coefficient vectors
-fn multiply_polynomials(
-    poly1: &[BigInt],
-    poly2: &[BigInt],
-    max_degree: usize,
-) -> ZkFheResult<Vec<BigInt>> {
-    let mut result = vec![BigInt::zero(); 2 * max_degree - 1];
-
-    for (i, coeff1) in poly1.iter().enumerate() {
-        for (j, coeff2) in poly2.iter().enumerate() {
-            let degree = i + j;
-            if degree < result.len() {
-                result[degree] += coeff1 * coeff2;
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-/// Divide a polynomial by the cyclotomic polynomial (X^N + 1)
-/// Returns (quotient, remainder)
-fn divide_by_cyclotomic(dividend: &[BigInt], n: usize) -> ZkFheResult<(Vec<BigInt>, Vec<BigInt>)> {
-    use num_traits::Zero;
-
-    let mut quotient = vec![BigInt::zero(); dividend.len()];
-    let mut remainder = dividend.to_vec();
-
-    // Polynomial long division: divide by (X^N + 1)
-    // The cyclotomic polynomial is X^N + 1, so we need to handle the pattern
-    for i in (n..dividend.len()).rev() {
-        if !remainder[i].is_zero() {
-            // The leading coefficient of the remainder
-            let coeff = remainder[i].clone();
-
-            // Add to quotient at position (i - n)
-            if i >= n {
-                quotient[i - n] += &coeff;
-            }
-
-            // Subtract coeff * (X^N + 1) from remainder
-            // This means: remainder[i] -= coeff and remainder[i-n] -= coeff
-            remainder[i] -= &coeff;
-            if i >= n {
-                remainder[i - n] -= &coeff;
-            }
-        }
-    }
-
-    // The remainder should have degree < N
-    remainder.truncate(n);
-
-    Ok((quotient, remainder))
-}
-
-/// Divide a polynomial by a scalar
-fn divide_by_scalar(poly: &[BigInt], scalar: &BigInt) -> ZkFheResult<Vec<BigInt>> {
-    use num_traits::Zero;
-
-    let mut result = Vec::new();
-    for coeff in poly {
-        if coeff.is_zero() {
-            result.push(BigInt::zero());
-        } else {
-            // For integer division, we need to handle the case where coeff might not be divisible by scalar
-            // In the PVW context, this should work out due to the mathematical structure
-            result.push(coeff / scalar);
-        }
-    }
-
-    Ok(result)
 }

@@ -53,9 +53,8 @@ impl Circuit for PkPvwCircuit {
             })?;
 
         // Compute vectors from the sample data
-        let vectors = PkPvwVectors::compute(&encryption_data)?;
+        let vectors = PkPvwVectors::compute(&encryption_data, pvw_params)?;
         let vectors_standard = vectors.standard_form();
-
         // Extract circuit parameters
         let circuit_params = CircuitParams {
             n: pvw_params.l,         // Ring dimension/polynomial degree

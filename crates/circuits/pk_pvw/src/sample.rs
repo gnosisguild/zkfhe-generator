@@ -1,5 +1,5 @@
 use pvw::PvwParameters;
-use pvw::{GlobalPublicKey, Party, PvwCiphertext, PvwCrs, encrypt_all_party_shares};
+use pvw::{GlobalPublicKey, Party, PvwCrs};
 use rand::rngs::OsRng;
 use std::sync::Arc;
 /// Data from a sample PVW encryption setup
@@ -7,8 +7,6 @@ pub struct PvwEncryptionData {
     pub crs: PvwCrs,
     pub parties: Vec<Party>,
     pub global_pk: GlobalPublicKey,
-    pub ciphertext: Option<Vec<PvwCiphertext>>,
-    pub params: Arc<PvwParameters>,
 }
 
 /// Generate a sample PVW encryption setup with all the data needed for circuit input validation
@@ -35,12 +33,9 @@ pub fn generate_sample_pvw_data(
             .collect();
         all_party_vectors.push(party_vector);
     }
-    let all_ciphertexts = encrypt_all_party_shares(&all_party_vectors, &global_pk)?;
     Ok(PvwEncryptionData {
         crs,
         parties,
         global_pk,
-        ciphertext: Some(all_ciphertexts),
-        params: params.clone(),
     })
 }

@@ -49,10 +49,13 @@ impl PkPvwBounds {
             r2_bounds.push(qi_bound);
 
             // r1_{l,i} ∈ [⌊(-((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B)) / q_l⌋, ⌊((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B) / q_l⌋]
-            // Formula: r1_{l,i} ∈ [⌊(-((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B)) / q_l⌋, ⌊((N * B_s + 2) * ⌊(q_l-1)/2⌋ + B) / q_l⌋]
-            let numerator = (n as u64 * sk_bound + 2) * qi_bound + error_bound;
-            let r1_up = numerator / qi;
-            let r1_low = -((numerator / qi) as i64);
+            // PVW formula: r1_{l,i} ∈ [-(((N * B_s + 2) * qi_bound + B) / q_l), ((N * B_s + 2) * qi_bound + B) / q_l]
+            let numerator = ((n as u64 * sk_bound + 2) * qi_bound + error_bound) as i64;
+            let qi_i64 = qi as i64;
+
+            // Apply the division and then the negation to get correct bounds
+            let r1_up = (numerator / qi_i64) as u64;
+            let r1_low = -(numerator / qi_i64);
 
             r1_low_bounds.push(r1_low);
             r1_up_bounds.push(r1_up);
