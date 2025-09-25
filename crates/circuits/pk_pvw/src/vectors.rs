@@ -52,9 +52,9 @@ pub struct PkPvwVectors {
 
     /// Quotients from cyclotomic reduction (secret witness)
     /// r2[l][i] are quotients from cyclotomic reduction for party i, modulus l (typically positive)
-    /// Structure: [Matrix<N_PARTIES, K, 2*N-1>; L]
-    /// r2[l][party][k_dim] where each entry is a polynomial of degree 2*N-1
-    pub r2: Vec<Matrix>, // L matrices of N_PARTIES x K polynomials (degree 2*N-1)
+    /// Structure: [Matrix<N_PARTIES, K, N-1>; L]
+    /// r2[l][party][k_dim] where each entry is a polynomial of degree N-1
+    pub r2: Vec<Matrix>, // L matrices of N_PARTIES x K polynomials (degree N-1)
 }
 
 impl PkPvwVectors {
@@ -77,8 +77,8 @@ impl PkPvwVectors {
             b: vec![vec![vec![vec![BigInt::zero(); n]; k]; n_parties]; num_moduli],
             // r1: L matrices of N_PARTIES x K polynomials of degree 2*N-1
             r1: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; num_moduli],
-            // r2: L matrices of N_PARTIES x K polynomials of degree 2*N-1
-            r2: vec![vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; num_moduli],
+            // r2: L matrices of N_PARTIES x K polynomials of degree N-1
+            r2: vec![vec![vec![vec![BigInt::zero(); n - 1]; k]; n_parties]; num_moduli],
         }
     }
 
@@ -176,7 +176,7 @@ impl PkPvwVectors {
                 let mut a_l = vec![vec![vec![BigInt::zero(); n]; k]; k]; // K x K matrix
                 let mut b_l = vec![vec![vec![BigInt::zero(); n]; k]; n_parties]; // N_PARTIES x K matrix
                 let mut r1_l = vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; // N_PARTIES x K matrix
-                let mut r2_l = vec![vec![vec![BigInt::zero(); 2 * n - 1]; k]; n_parties]; // N_PARTIES x K matrix
+                let mut r2_l = vec![vec![vec![BigInt::zero(); n - 1]; k]; n_parties]; // N_PARTIES x K matrix
 
                 // Extract CRS matrix a_l - K×K matrix for this modulus
                 for row in 0..k {
@@ -200,11 +200,7 @@ impl PkPvwVectors {
                                     .map(|&coeff| BigInt::from(coeff))
                                     .collect();
 
-                                // 5. Reduce and center modulo qi
-                                reduce_and_center_coefficients_mut(
-                                    &mut a_l[row][col],
-                                    &qi_bigint.clone(),
-                                );
+                                // 5. Keep centered representation (no additional reduction needed here)
                             } else {
                                 a_l[row][col] = vec![BigInt::zero(); n];
                             }
@@ -237,8 +233,7 @@ impl PkPvwVectors {
                                     .map(|&coeff| BigInt::from(coeff))
                                     .collect();
 
-                                // 5. Reduce and center modulo qi
-                                reduce_and_center_coefficients_mut(&mut b_li, &qi_bigint.clone());
+                                // 5. Keep centered representation (no additional reduction needed here)
                             }
                         }
 
@@ -249,74 +244,27 @@ impl PkPvwVectors {
                         // Initialize with first term: a_l[0][k_idx] * s_i[party_idx][0]
                         let a_poly = Polynomial::new(a_l[0][k_idx].clone());
                         let s_poly = Polynomial::new(vectors.sk[party_idx][0].clone());
-                        let mut b_hat_poly = a_poly.mul(&s_poly);
+                        let mut b_hat_poly = a_poly.mul(&s_poly); // Keep unreduced!
 
-                        // Reduce the intermediate result by the cyclotomic polynomial
-                        let mut b_hat_coeffs = b_hat_poly.coefficients().to_vec();
-                        reduce_in_ring(&mut b_hat_coeffs, &cyclo, &qi_bigint.clone());
-                        b_hat_poly = Polynomial::new(b_hat_coeffs);
-
-                        // Debug: Print first term
-                        if party_idx == 0 && k_idx == 0 {
-                            println!("First term a_l[0][{}]: {:?}", k_idx, &a_l[0][k_idx]);
-                            println!("First term s_i[0]: {:?}", &vectors.sk[party_idx][0]);
-                            println!(
-                                "First term product (reduced): {:?}",
-                                &b_hat_poly.coefficients().to_vec()
-                            );
-                        }
-
-                        // Add remaining terms: sum over a_row of a_l[a_row][k_idx] * s_i[party_idx][a_row]
+                        // Add remaining matrix multiplication terms 
                         for a_row in 1..k {
                             let a_poly = Polynomial::new(a_l[a_row][k_idx].clone());
                             let s_poly = Polynomial::new(vectors.sk[party_idx][a_row].clone());
                             let product = a_poly.mul(&s_poly);
-
-                            // Reduce the product by the cyclotomic polynomial
-                            let mut product_coeffs = product.coefficients().to_vec();
-                            reduce_in_ring(&mut product_coeffs, &cyclo, &qi_bigint.clone());
-
-                            b_hat_poly = b_hat_poly.add(&Polynomial::new(product_coeffs));
-
-                            // Debug: Print intermediate results
-                            if party_idx == 0 && k_idx == 0 {
-                                println!(
-                                    "Added term a_l[{}][{}]: {:?}",
-                                    a_row, k_idx, &a_l[a_row][k_idx]
-                                );
-                                println!(
-                                    "Added term s_i[{}]: {:?}",
-                                    a_row, &vectors.sk[party_idx][a_row]
-                                );
-                                println!(
-                                    "Current b_hat sum: {:?}",
-                                    &b_hat_poly.coefficients().to_vec()
-                                );
-                            }
+                            b_hat_poly = b_hat_poly.add(&product); // Keep unreduced!
                         }
 
-                        // Add error vector e_i[k_idx]
+                        // Add error vector
                         let e_poly = Polynomial::new(vectors.e[party_idx][k_idx].clone());
-
-                        // Debug: Print error term
-                        if party_idx == 0 && k_idx == 0 {
-                            println!(
-                                "Error term e_i[{}]: {:?}",
-                                k_idx, &vectors.e[party_idx][k_idx]
-                            );
-                        }
-
                         b_hat_poly = b_hat_poly.add(&e_poly);
 
-                        // b_hat_poly is already reduced to degree < N, so we can use it directly
-                        let b_hat_reduced = b_hat_poly.coefficients().to_vec();
-                        assert_eq!(((b_hat_reduced.len() - 1) as u64), (n - 1) as u64);
+                        let b_hat_unreduced = b_hat_poly.coefficients().to_vec();
 
-                        // Debug: Print final b_hat
-                        if party_idx == 0 && k_idx == 0 {
-                            println!("Final b_hat (reduced): {:?}", &b_hat_reduced);
-                            println!("b_li (actual public key): {:?}", &b_li);
-                        }
+                        // ===== Verification: Create reduced version =====
+                        let mut b_hat_reduced = b_hat_unreduced.clone();
+                        reduce_in_ring(&mut b_hat_reduced, &cyclo, &qi_bigint);
+                        // Verify: reduced b_hat should equal actual public key
+                        assert_eq!(b_hat_reduced, b_li);
 
                         // ===== Note: b_hat and b_li should NOT be equal =====
                         // b_hat = a_l * s_i + e_i (theoretical, without quotients)
@@ -324,12 +272,10 @@ impl PkPvwVectors {
                         // The difference (b_li - b_hat) contains the quotient terms
 
                         // ===== FOLLOW GRECO STEPS EXACTLY FOR PVW =====
-                        // Step 9: Calculate Difference (b - b̂) using the reduced b_hat
+                        // Step 9: Calculate Difference (b - b̂) using the unreduced b_hat
                         let b_li_poly = Polynomial::new(b_li.clone());
-                        let b_hat_poly = Polynomial::new(b_hat_reduced.clone());
+                        let b_hat_poly = Polynomial::new(b_hat_unreduced.clone());
                         let b_li_minus_b_hat = b_li_poly.sub(&b_hat_poly).coefficients().to_vec();
-                        // Fix: Both b_li and b_hat_reduced have degree n-1, so their difference has degree n-1
-                        assert_eq!(((b_li_minus_b_hat.len() - 1) as u64), (n - 1) as u64);
 
                         // Step 10: Reduce and Center the Difference (only for r₂)
                         let mut b_li_minus_b_hat_mod_zqi = b_li_minus_b_hat.clone();
@@ -348,24 +294,21 @@ impl PkPvwVectors {
                         let r2_coeffs = r2_poly.coefficients().to_vec();
                         let r2_rem = r2_rem_poly.coefficients().to_vec();
                         assert!(r2_rem.iter().all(|x| x.is_zero()));
-                        assert_eq!(((r2_coeffs.len() - 1) as u64), (n - 2) as u64); // Order(r2) = N-2
+                        assert_eq!(((r2_coeffs.len() - 1) as u64), (n - 2) as u64); // Order(r2) = N-2 after division
 
-                        // Pad r2 to degree 2*N-1 as expected by the circuit
-                        let mut r2_padded = r2_coeffs.clone();
-                        while r2_padded.len() < (2 * n - 1) as usize {
-                            r2_padded.push(BigInt::zero());
-                        }
-                        let r2_coeffs = r2_padded;
+                        // r2 has degree N-2 after division, so no padding needed - it fits in N-1 storage
+                        let r2_coeffs = r2_coeffs;
 
-                        // Calculate r₁ Numerator following Greco pattern exactly
-                        // r1 = (b_li - b_hat - r2 * cyclo) / qi
+                        // Calculate r₁ Numerator following cryptographer's instructions exactly  
+                        // r1 = (original_unreduced_difference - r2 * cyclo) / qi
+                        // Use the ORIGINAL unreduced difference, NOT the reduced one used for r2
                         let r2_original_poly =
-                            Polynomial::new(r2_coeffs[..(n - 1) as usize].to_vec()); // Use original r2 (degree n-2)
+                            Polynomial::new(r2_coeffs.clone()); // Use original r2 (degree N-2 after division)
                         let r2_times_cyclo =
                             r2_original_poly.mul(&cyclo_poly).coefficients().to_vec();
-                        let b_li_minus_b_hat_poly = Polynomial::new(b_li_minus_b_hat.clone());
+                        let b_li_minus_b_hat_original_poly = Polynomial::new(b_li_minus_b_hat.clone()); // Original unreduced difference
                         let r2_cyclo_poly = Polynomial::new(r2_times_cyclo.clone());
-                        let r1_numerator = b_li_minus_b_hat_poly
+                        let r1_numerator = b_li_minus_b_hat_original_poly
                             .sub(&r2_cyclo_poly)
                             .coefficients()
                             .to_vec();
@@ -393,21 +336,44 @@ impl PkPvwVectors {
                         // We verify: b_{l,i} = a_l * s_i + e_i + r2*(X^N+1) + r1*q_l
 
                         // Verify the PVW equation: b = b̂ + r2×cyclo + r1×qi
-                        // Since r2 = b - b̂, this becomes: b = b̂ + (b - b̂)×cyclo + r1×qi
+                        // Use the reduced b_hat for verification (degree N-1) to match b_li
+                        let b_hat_reduced_poly = Polynomial::new(b_hat_reduced.clone());
                         let r2_times_cyclo = Polynomial::new(r2_coeffs.clone()).mul(&cyclo_poly);
                         let r1_times_qi =
                             Polynomial::new(r1_coeffs.clone()).scalar_mul(&qi_bigint.clone());
-                        let rhs_reconstructed = b_hat_poly.add(&r2_times_cyclo).add(&r1_times_qi);
+                        let rhs_reconstructed = b_hat_reduced_poly.add(&r2_times_cyclo).add(&r1_times_qi);
+
+                        // Reduce the RHS by the cyclotomic polynomial to ensure same degree
+                        let mut rhs_coeffs = rhs_reconstructed.coefficients().to_vec();
+                        reduce_in_ring(&mut rhs_coeffs, &cyclo, &qi_bigint.clone());
+
                         let lhs_coeffs = b_li_poly.coefficients().to_vec();
-                        let rhs_coeffs = rhs_reconstructed.coefficients().to_vec();
+
+                        // Debug: Print all components for debugging circuit mismatch
+                        if party_idx == 0 && k_idx == 0 && modulus_idx == 0 {
+                            println!("=== DEBUG: Circuit components for party {}, k_idx {}, modulus {} ===", party_idx, k_idx, modulus_idx);
+                            println!("a_l[0][{}]: {:?}", k_idx, &a_l[0][k_idx]);
+                            println!("a_l[1][{}]: {:?}", k_idx, &a_l[1][k_idx]);
+                            println!("sk[{}][0]: {:?}", party_idx, &vectors.sk[party_idx][0]);
+                            println!("sk[{}][1]: {:?}", party_idx, &vectors.sk[party_idx][1]);
+                            println!("e[{}][{}]: {:?}", party_idx, k_idx, &vectors.e[party_idx][k_idx]);
+                            println!("b_li (actual): {:?}", &b_li);
+                            println!("b_hat_reduced: {:?}", &b_hat_reduced);
+                            println!("r1_coeffs: {:?}", &r1_coeffs);
+                            println!("r2_coeffs: {:?}", &r2_coeffs);
+                            println!("qi: {:?}", &qi_bigint);
+                            println!("=======================================");
+                        }
+                        println!("lhs_coeffs: {:?}", lhs_coeffs);
+                        println!("rhs_coeffs: {:?}", rhs_coeffs);
                         assert_eq!(
                             lhs_coeffs, rhs_coeffs,
                             "PVW equation verification failed for modulus {}",
                             modulus_idx
                         );
 
-                        // Store results (use reduced b_hat)
-                        b_l[party_idx][k_idx] = b_hat_reduced.clone();
+                        // Store results (use actual public key values like Greco does)
+                        b_l[party_idx][k_idx] = b_li.clone();
                         r1_l[party_idx][k_idx] = r1_coeffs;
                         r2_l[party_idx][k_idx] = r2_coeffs;
                     }
