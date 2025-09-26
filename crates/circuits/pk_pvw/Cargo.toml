@@ -34,6 +34,3 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-[[bin]]
-name = "test-k-dimension"
-path = "src/test_main.rs"

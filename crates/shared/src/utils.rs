@@ -3,7 +3,7 @@
 //! This module contains helper functions for string conversion,
 //! serialization, and other common operations.
 
-use bigint_poly::{Polynomial, reduce_and_center_coefficients};
+use bigint_poly::{Polynomial, reduce_and_center_coefficients, reduce_scalar};
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_traits::Zero;
@@ -96,4 +96,25 @@ pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
     } else {
         format!("{}/3", num.to_str_radix(10))
     }
+}
+
+// Helper functions to reduce coefficients using reduce_scalar for Noir compatibility
+pub fn reduce_1d(vec: &[BigInt], modulus: &BigInt) -> Vec<BigInt> {
+    vec.iter().map(|x| reduce_scalar(x, modulus)).collect()
+}
+
+pub fn reduce_2d(vec: &[Vec<BigInt>], modulus: &BigInt) -> Vec<Vec<BigInt>> {
+    vec.iter().map(|row| reduce_1d(row, modulus)).collect()
+}
+
+pub fn reduce_3d(vec: &[Vec<Vec<BigInt>>], modulus: &BigInt) -> Vec<Vec<Vec<BigInt>>> {
+    vec.iter()
+        .map(|matrix| reduce_2d(matrix, modulus))
+        .collect()
+}
+
+pub fn reduce_4d(vec: &[Vec<Vec<Vec<BigInt>>>], modulus: &BigInt) -> Vec<Vec<Vec<Vec<BigInt>>>> {
+    vec.iter()
+        .map(|matrix_3d| reduce_3d(matrix_3d, modulus))
+        .collect()
 }

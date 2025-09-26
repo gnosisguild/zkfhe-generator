@@ -16,8 +16,6 @@ pub enum SupportedParameterType {
     Bfv,
     /// Circuit supports PVW parameters  
     Pvw,
-    /// Circuit supports both BFV and PVW parameters
-    Both,
 }
 
 /// Circuit trait that all circuit implementations must implement

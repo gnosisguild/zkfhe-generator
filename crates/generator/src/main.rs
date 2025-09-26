@@ -265,7 +265,7 @@ fn create_bfv_config(
 ) -> anyhow::Result<BfvSearchConfig> {
     // Start with preset defaults
     let mut config = match preset.unwrap_or("dev") {
-        // TODO: there's currently no difference between dev, test and prod.
+        // TODO: there's currently no difference between dev and test.
         "dev" => BfvSearchConfig {
             n: 1,
             z: 1000,
@@ -320,14 +320,15 @@ fn create_pvw_config(
 ) -> anyhow::Result<PvwSearchConfig> {
     // Start with preset defaults (similar to BFV)
     let mut config = match preset.unwrap_or("dev") {
+        // TODO: there's currently no difference between dev and test.
         "dev" => PvwSearchConfig {
-            n: 1, // Default, can be overridden by BFV result or PVW param
+            n: 1,
             ell_start: 2,
             ell_max: 64,
             k_start: 1024,
             k_max: 32768,
             delta_power_num: 1,
-            qbfv_primes: None, // Will be set from BFV computation
+            qbfv_primes: None,
             max_pvw_growth: None,
             verbose,
         },
@@ -436,9 +437,6 @@ fn validate_parameter_compatibility(
                     circuit.name()
                 );
             }
-        }
-        SupportedParameterType::Both => {
-            // Both parameter types are supported, no validation needed
         }
     }
 
@@ -665,6 +663,7 @@ fn generate_circuit_params(
         );
 
         // Build PVW parameters using the search results
+        // tip: modify explicitly k or other parameters if needed for testing here.
         let pvw_params = PvwParametersBuilder::new()
             .set_parties(param_config.bfv_config.n as usize)
             .set_l(pvw_result.ell)
