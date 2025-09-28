@@ -6,11 +6,10 @@ use crate::errors::{BfvParamsError, SearchError, ValidationError};
 use crate::prime::PrimeItem;
 use crate::utils::{
     approx_bits_from_log2, big_pow, fmt_big_summary, log2_big, nth_root_floor, parse_hex_big,
-    product,
+    product, variance_uniform_sym_str_big,
 };
 use num_integer::Integer;
 use num_traits::One;
-use num_traits::Zero;
 
 /// Result type alias for PVW parameter operations
 pub type PvwParamsResult<T> = Result<T, BfvParamsError>;
@@ -256,16 +255,6 @@ pub fn correctness_rhs_log2(sigma1: &BigUint, n: usize, ell: usize, k: usize) ->
     let terms = term_a + term_b + term_c;
 
     log2_big(sigma1) + terms.log2()
-}
-
-pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
-    let three = BigUint::from(3u32);
-    let num = b * (b + BigUint::from(1u32));
-    if (&num % &three).is_zero() {
-        (num / three).to_str_radix(10)
-    } else {
-        format!("{}/3", num.to_str_radix(10))
-    }
 }
 
 /// Build BigUint σ from a log2 lower bound.
