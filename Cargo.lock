@@ -1505,6 +1505,7 @@ dependencies = [
  "zkfhe-greco",
  "zkfhe-pk-pvw",
  "zkfhe-shared",
+ "zkfhe-sk-shares",
 ]
 
 [[package]]
@@ -1573,4 +1574,29 @@ dependencies = [
  "serde_json",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "zkfhe-sk-shares"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bigint-poly",
+ "blake3",
+ "fhe",
+ "fhe-math",
+ "fhe-traits",
+ "itertools 0.14.0",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "pvw",
+ "rand",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "zkfhe-shared",
 ]

@@ -206,6 +206,10 @@ fn get_circuit(circuit_name: &str) -> anyhow::Result<Box<dyn Circuit>> {
             let circuit = pk_pvw::circuit::PkPvwCircuit;
             Ok(Box::new(circuit))
         }
+        "sk_shares" => {
+            let circuit = sk_shares::circuit::SkSharesCircuit;
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }

@@ -20,6 +20,7 @@ path = "src/main.rs"
 shared = { package = "zkfhe-shared", path = "../shared" }
 greco = { package = "zkfhe-greco", path = "../circuits/greco" }
 pk_pvw = { package = "zkfhe-pk-pvw", path = "../circuits/pk_pvw" }
+sk_shares = { package = "zkfhe-sk-shares", path = "../circuits/sk_shares" }
 crypto-params = { package = "zkfhe-crypto-params", path = "../crypto-params" }
 fhe = { workspace = true }
 clap = { workspace = true }

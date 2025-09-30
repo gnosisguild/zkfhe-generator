@@ -5,6 +5,7 @@ members = [
     "crates/shared",
     "crates/circuits/greco",
     "crates/circuits/pk_pvw",
+    "crates/circuits/sk_shares",
     "crates/crypto-params"
 ]
 
