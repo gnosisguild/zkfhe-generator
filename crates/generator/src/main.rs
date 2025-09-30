@@ -19,10 +19,11 @@ use crypto_params::utils::{
     approx_bits_from_log2, fmt_big_summary, log2_big, variance_uniform_sym_str_big,
     variance_uniform_sym_str_u128,
 };
-use fhe::bfv::BfvParametersBuilder;
+use fhe::bfv::{BfvParameters, BfvParametersBuilder};
 use num_bigint::BigInt;
-use pvw::PvwParametersBuilder;
-use shared::{Circuit, SupportedParameterType};
+use pvw::{PvwParameters, PvwParametersBuilder};
+use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator, SupportedParameterType};
+use std::sync::Arc;
 
 /// Main CLI structure using clap for argument parsing
 ///
@@ -90,6 +91,15 @@ enum Commands {
         /// If not specified, defaults to the current directory.
         #[arg(long, short, default_value = ".")]
         output: PathBuf,
+
+        /// Generate template main.nr file
+        ///
+        /// When enabled, generates a template main.nr file with the correct
+        /// function signature and parameter types for the specified circuit.
+        /// The template will be parameterized with the generated cryptographic
+        /// parameters (N, L, K, N_PARTIES, etc.).
+        #[arg(long)]
+        main: bool,
     },
 
     /// List available circuits and presets
@@ -467,6 +477,7 @@ fn generate_circuit_params(
     pvw: Option<PvwParams>,
     verbose: bool,
     output_dir: &Path,
+    generate_main: bool,
 ) -> anyhow::Result<()> {
     println!("🔧 Generating parameters for circuit: {circuit_name}");
 
@@ -707,8 +718,109 @@ fn generate_circuit_params(
     }
     println!("✅ TOML file generated successfully");
 
+    // Generate main.nr template if requested
+    if generate_main {
+        println!("📄 Generating main.nr template...");
+        generate_main_template(
+            circuit.as_ref(),
+            &bfv_params,
+            pvw_params.as_ref(),
+            output_dir,
+        )?;
+        println!("✅ main.nr template generated successfully");
+    }
+
     println!("\n🎉 Generation complete!");
     println!("📁 Output directory: {}", output_dir.display());
+
+    Ok(())
+}
+
+/// Generate main.nr template for the specified circuit
+///
+/// This function extracts the necessary parameters from the generated cryptographic
+/// parameters and generates a template main.nr file with the correct function signature
+/// and parameter types for the specified circuit.
+///
+/// # Arguments
+///
+/// * `circuit` - The circuit implementation
+/// * `bfv_params` - The generated BFV parameters
+/// * `pvw_params` - The generated PVW parameters (if any)
+/// * `output_dir` - The directory where the main.nr file should be written
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the template was generated successfully, or an error otherwise
+fn generate_main_template(
+    circuit: &dyn Circuit,
+    bfv_params: &Arc<BfvParameters>,
+    pvw_params: Option<&Arc<PvwParameters>>,
+    output_dir: &Path,
+) -> anyhow::Result<()> {
+    // Extract base parameters (N, L) that are common to all circuits
+    let n = bfv_params.degree();
+    let l = bfv_params.moduli().len();
+    let circuit_type = circuit.name();
+
+    let base_params = BaseTemplateParams::new(n, l, circuit_type);
+
+    // Generate circuit-specific template based on circuit type
+    match circuit_type {
+        "pk_pvw" => {
+            // For PVW circuits, we need to extract K and N_PARTIES from PVW parameters
+            let pvw = pvw_params
+                .ok_or_else(|| anyhow::anyhow!("PVW parameters required for pk_pvw circuit"))?;
+
+            // Import the PVW template generator
+            use pk_pvw::template::{PkPvwMainTemplate, PvwTemplateParams};
+
+            let pvw_template_params = PvwTemplateParams {
+                base: base_params,
+                k: pvw.k,
+                n_parties: pvw.n,
+            };
+
+            let template_generator = PkPvwMainTemplate;
+            template_generator.generate_main_file(&pvw_template_params, output_dir)?;
+        }
+        "greco" => {
+            // For Greco circuits, we need to extract bounds from the circuit
+            // We need to compute the bounds to get the bit widths
+            use greco::bounds::GrecoBounds;
+
+            // Compute bounds from BFV parameters
+            let (_, bounds) = GrecoBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
+
+            // Convert bounds to strings for bit width calculation
+            let bounds_data = greco::template::GrecoBoundsData {
+                pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
+                ct_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(), // Same as pk_bounds
+                u_bound: bounds.u_bound.to_string(),
+                e_bound: bounds.e_bound.to_string(),
+                k1_low_bound: bounds.k1_low_bound.to_string(),
+                k1_up_bound: bounds.k1_up_bound.to_string(),
+                r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
+                r1_up_bounds: bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                p1_bounds: bounds.p1_bounds.iter().map(|b| b.to_string()).collect(),
+                p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
+            };
+
+            // Import the Greco template generator
+            use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
+
+            let greco_template_params =
+                GrecoTemplateParams::from_bounds(base_params, &bounds_data)?;
+
+            let template_generator = GrecoMainTemplate;
+            template_generator.generate_main_file(&greco_template_params, output_dir)?;
+        }
+        _ => {
+            anyhow::bail!("No main template generator available for circuit: {circuit_type}");
+        }
+    }
 
     Ok(())
 }
@@ -736,11 +848,20 @@ fn main() -> anyhow::Result<()> {
             pvw,
             verbose,
             output,
+            main,
         } => {
             // Ensure output directory exists
             std::fs::create_dir_all(&output)?;
 
-            generate_circuit_params(&circuit, preset.as_deref(), bfv, pvw, verbose, &output)?;
+            generate_circuit_params(
+                &circuit,
+                preset.as_deref(),
+                bfv,
+                pvw,
+                verbose,
+                &output,
+                main,
+            )?;
         }
         Commands::List { circuits, presets } => {
             if circuits {
