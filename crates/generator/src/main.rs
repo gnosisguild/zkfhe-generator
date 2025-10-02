@@ -759,11 +759,8 @@ fn generate_main_template(
     output_dir: &Path,
 ) -> anyhow::Result<()> {
     // Extract base parameters (N, L) that are common to all circuits
-    let n = bfv_params.degree();
     let l = bfv_params.moduli().len();
     let circuit_type = circuit.name();
-
-    let base_params = BaseTemplateParams::new(n, l, circuit_type);
 
     // Generate circuit-specific template based on circuit type
     match circuit_type {
@@ -775,8 +772,10 @@ fn generate_main_template(
             // Import the PVW template generator
             use pk_pvw::template::{PkPvwMainTemplate, PvwTemplateParams};
 
+            let n = pvw.l;
+
             let pvw_template_params = PvwTemplateParams {
-                base: base_params,
+                base: BaseTemplateParams::new(n, l, circuit_type),
                 k: pvw.k,
                 n_parties: pvw.n,
             };
@@ -812,7 +811,7 @@ fn generate_main_template(
             use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
 
             let greco_template_params =
-                GrecoTemplateParams::from_bounds(base_params, &bounds_data)?;
+                GrecoTemplateParams::from_bounds(BaseTemplateParams::new(bfv_params.degree(), l, circuit_type), &bounds_data)?;
 
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;
