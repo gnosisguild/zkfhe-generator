@@ -678,7 +678,7 @@ fn generate_circuit_params(
         let pvw_params = PvwParametersBuilder::new()
             .set_parties(param_config.bfv_config.n as usize)
             .set_l(pvw_result.ell)
-            .set_dimension(2)
+            .set_dimension(pvw_result.k)
             .set_moduli(bfv_result.qi_values().as_slice())
             .set_error_bound_1(BigInt::from(pvw_result.sigma1.clone()))
             .set_error_bound_2(BigInt::from(pvw_result.sigma2.clone()))
