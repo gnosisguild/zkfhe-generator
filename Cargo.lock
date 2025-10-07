@@ -355,7 +355,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fhe"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=generator#9faa6eba937fe55bf60f486f33d17d828413e5ff"
 dependencies = [
  "doc-comment",
  "fhe-math",
@@ -380,7 +380,7 @@ dependencies = [
 [[package]]
 name = "fhe-math"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=generator#9faa6eba937fe55bf60f486f33d17d828413e5ff"
 dependencies = [
  "ethnum",
  "fhe-traits",
@@ -403,7 +403,7 @@ dependencies = [
 [[package]]
 name = "fhe-traits"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=generator#9faa6eba937fe55bf60f486f33d17d828413e5ff"
 dependencies = [
  "rand",
 ]
@@ -411,7 +411,7 @@ dependencies = [
 [[package]]
 name = "fhe-util"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=generator#9faa6eba937fe55bf60f486f33d17d828413e5ff"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint-dig",
@@ -840,7 +840,7 @@ dependencies = [
 [[package]]
 name = "pvw"
 version = "0.1.0"
-source = "git+https://github.com/gnosisguild/pvw-rs?branch=fixes#fa7a736b675f39725abfd044d9a1418fafb3093e"
+source = "git+https://github.com/gnosisguild/pvw-rs?branch=generator#c101699fdf9e3bb94d296583154e07329c99589c"
 dependencies = [
  "console",
  "fhe-math",
