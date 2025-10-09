@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
 use fhe::trbfv::ShamirSecretSharing;
-use num_bigint::{BigInt, BigUint, RandBigInt, Sign, ToBigInt};
+use fhe_util::sample_vec_cbd_f32;
+use num_bigint::{BigInt, RandBigInt, Sign};
 use num_traits::Zero;
-use pvw::params::PvwParameters;
 use rand::rngs::ThreadRng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::json;
@@ -40,25 +38,18 @@ impl SkSharesVectors {
     }
 
     pub fn compute(
-        params: &Arc<PvwParameters>,
+        t: usize,
+        n_parties: usize,
+        degree: usize,
+        moduli: &[u64],
         mut rng: ThreadRng,
     ) -> Result<SkSharesVectors, Box<dyn std::error::Error>> {
-        let t = params.t;
-        let n_parties = params.n;
-        let degree = params.l;
-        let moduli = params.moduli();
         let l = moduli.len();
 
         let x_coords: Vec<BigInt> = (1..=n_parties).map(|k| BigInt::from(k as u64)).collect();
 
-        let sk_bn: Vec<BigUint> = Vec::from(&params.sample_secret_polynomial(&mut rng)?);
-        println!("{:#?}", sk_bn);
-        let mut sk: Vec<BigInt> = sk_bn.iter().map(|x| x.to_bigint().unwrap()).collect();
-        assert!(
-            sk.len() >= degree,
-            "PVW secret returned fewer than N coefficients"
-        );
-        sk.truncate(degree);
+        let sk_cbd: Vec<i64> = sample_vec_cbd_f32(degree, 0.5, &mut rng)?;
+        let sk: Vec<BigInt> = sk_cbd.into_iter().map(|v| BigInt::from(v)).collect();
 
         let mut f = vec![vec![vec![BigInt::zero(); t]; l]; degree];
         let mut y = vec![vec![vec![BigInt::zero(); n_parties]; l]; degree];

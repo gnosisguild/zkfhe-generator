@@ -36,6 +36,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 fhe = { git = "https://github.com/gnosisguild/fhe.rs", branch = "generator" }
 fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs", branch = "generator" }
+fhe-util = { git = "https://github.com/gnosisguild/fhe.rs", branch = "generator" }
 fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git", branch = "generator" }
 pvw = { git = "https://github.com/gnosisguild/pvw-rs", branch = "generator" }
 serde_json = "1.0.133"

@@ -36,7 +36,7 @@ impl Circuit for SkSharesCircuit {
 
     fn generate_toml(
         &self,
-        _bfv_params: &Arc<BfvParameters>,
+        bfv_params: &Arc<BfvParameters>,
         pvw_params: Option<&Arc<PvwParameters>>,
         output_dir: &Path,
     ) -> Result<(), shared::errors::ZkFheError> {
@@ -47,7 +47,13 @@ impl Circuit for SkSharesCircuit {
         // Generate bounds and cryptographic parameters
         let (crypto_params, bounds) = SkSharesBounds::compute(pvw_params)?;
 
-        let vectors = SkSharesVectors::compute(pvw_params, thread_rng())?;
+        let vectors = SkSharesVectors::compute(
+            pvw_params.t,
+            pvw_params.n,
+            bfv_params.degree(),
+            bfv_params.moduli(),
+            thread_rng(),
+        )?;
         let vectors_standard = vectors.standard_form();
 
         let circuit_params = CircuitParams {

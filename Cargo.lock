@@ -1586,6 +1586,7 @@ dependencies = [
  "fhe",
  "fhe-math",
  "fhe-traits",
+ "fhe-util",
  "itertools 0.14.0",
  "num-bigint",
  "num-integer",

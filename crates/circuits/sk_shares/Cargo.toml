@@ -19,6 +19,7 @@ num-integer = { workspace = true }
 bigint-poly = { workspace = true }
 blake3 = { workspace = true }
 fhe = { workspace = true }
+fhe-util = { workspace = true }
 fhe-math = { workspace = true }
 fhe-traits = { workspace = true }
 num-bigint = { workspace = true }
