@@ -1,27 +1,58 @@
+//! Witness generation for the `sk_shares` circuit.
+//!
+//! This module produces the full set of vectors required by the circuit:
+//! - the secret key coefficients `sk`,
+//! - per‐coefficient/per‐modulus Shamir polynomials `f[i][j]`,
+//! - residue shares `y[i][j][k]` and quotient shares `r[i][j][k]` s.t.
+//!   `f_{i,j}(x_k) = r_{i,j,k} * q_j + y_{i,j,k}` with `0 ≤ y < q_j`,
+//! - lift gaps `d[i][j] = (a_i - f_{i,j}(0)) / q_j`,
+//! - commitment randomness `f_randomness[i][j]`,
+//! - and public evaluation points `x_coords[k] = k`.
+//!
+//! Coefficient order:
+//! - Internally, Shamir polynomials are built in **constant-first** order
+//!   `[c0, c1, …, c_T]` with `c0 = a_i`.
+//! - Before returning, each `f[i][j]` is **reversed** to highest-first order
+//!   to match circuit evaluation semantics.
+
 use fhe::trbfv::ShamirSecretSharing;
 use fhe_util::sample_vec_cbd_f32;
 use num_bigint::{BigInt, RandBigInt, Sign};
 use num_traits::Zero;
 use rand::rngs::ThreadRng;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use shared::{
     get_zkp_modulus,
     utils::{reduce_1d, reduce_2d, reduce_3d},
 };
 
-/// Full set of witness vectors for sk_shares circuit.
+/// Container for all witness vectors consumed by the `sk_shares` circuit.
+///
+/// Shapes:
+/// - `sk`: `[N]`
+/// - `f`: `[N][L][T+1]` (returned highest-first)
+/// - `y`: `[N][L][P]`
+/// - `r`: `[N][L][P]`
+/// - `d`: `[N][L]`
+/// - `f_randomness`: `[N][L]`
+/// - `x_coords`: `[P]`
 #[derive(Clone, Debug)]
 pub struct SkSharesVectors {
-    pub sk: Vec<BigInt>,                // [N] constant-first
-    pub f: Vec<Vec<Vec<BigInt>>>,       // [N][L][t+1] constant-first with c0 = a_i
-    pub y: Vec<Vec<Vec<BigInt>>>,       // [N][L][P] residues
-    pub r: Vec<Vec<Vec<BigInt>>>,       // [N][L][P] quotients
-    pub d: Vec<Vec<BigInt>>,            // [N][L]
-    pub f_randomness: Vec<Vec<BigInt>>, // [N][L]
-    pub x_coords: Vec<BigInt>,          // [P]
+    pub sk: Vec<BigInt>,
+    pub f: Vec<Vec<Vec<BigInt>>>,
+    pub y: Vec<Vec<Vec<BigInt>>>,
+    pub r: Vec<Vec<Vec<BigInt>>>,
+    pub d: Vec<Vec<BigInt>>,
+    pub f_randomness: Vec<Vec<BigInt>>,
+    pub x_coords: Vec<BigInt>,
 }
 
 impl SkSharesVectors {
+    /// Allocates zero-initialized buffers with the requested dimensions.
+    ///
+    /// - `n_parties` → P
+    /// - `n` → N
+    /// - `num_moduli` → L
+    /// - `t` → degree (allocates `t` coefficients per polynomial)
     pub fn new(n_parties: usize, n: usize, num_moduli: usize, t: usize) -> Self {
         SkSharesVectors {
             sk: vec![BigInt::zero(); n],
@@ -34,10 +65,33 @@ impl SkSharesVectors {
         }
     }
 
+    /// Generates all witness vectors.
+    ///
+    /// Inputs:
+    /// - `degree` (`N`): number of secret coefficients.
+    /// - `moduli` (`[q_j]`, length `L`): CRT moduli.
+    /// - `n_parties` (`P`): number of evaluation points (`x_k = 1..=P`).
+    /// - `t` (`T`): Shamir polynomial degree (each polynomial has `T+1` coefficients).
+    /// - `rng`: randomness source.
+    ///
+    /// Process:
+    /// 1. Builds `x_coords = [1,2,…,P]`.
+    /// 2. Samples `sk` via centered binomial (CBD) with small variance.
+    /// 3. For each `(i,j)`, samples a degree-`t` Shamir polynomial over `Z_{q_j}`
+    ///    with constant term `a_i`, then computes `d[i][j]`, and splits
+    ///    evaluations at each `x_k` into `(r,y)` by Euclidean division.
+    /// 4. Samples symmetric commitment randomness per `(i,j)`.
+    /// 5. Reverses each `f[i][j]` to highest-first order for the circuit.
+    ///
+    /// Returns the populated `SkSharesVectors`.
+    ///
+    /// Panics if:
+    /// - `moduli` is empty,
+    /// - `n_parties >= min_j q_j` (evaluation points would collide mod `q_j`).
     pub fn compute(
-        degree: usize,    // BFV ring N (number of SK coefficients)
-        moduli: &[u64],   // BFV RNS moduli
-        n_parties: usize, // number of shares (x_k = 1..=n_parties)
+        degree: usize,
+        moduli: &[u64],
+        n_parties: usize,
         t: usize,
         mut rng: ThreadRng,
     ) -> Result<SkSharesVectors, Box<dyn std::error::Error>> {
@@ -47,7 +101,6 @@ impl SkSharesVectors {
 
         let x_coords: Vec<BigInt> = (1..=n_parties).map(|k| BigInt::from(k as u64)).collect();
 
-        // CBD(1) secret, len = degree
         let sk_cbd = sample_vec_cbd_f32(degree, 0.5, &mut rng)?;
         let sk: Vec<BigInt> = sk_cbd.into_iter().map(BigInt::from).collect();
 
@@ -65,9 +118,8 @@ impl SkSharesVectors {
 
                 // Degree-t Shamir over Z_qj ⇒ returns t+1 coeffs (c0=a_i plus t randoms)
                 let sss = ShamirSecretSharing::new(t, n_parties, qj.clone());
-                f[i][j] = sample_f_polynomial(&sss, a_i); // len == t+1
+                f[i][j] = sss.sample_polynomial(a_i.clone());
 
-                // a_i - c0 = d_{i,j} * q_j  (here d_{i,j} == 0)
                 let c0 = f[i][j][0].clone();
                 let (d_ij, rem) = div_rem_euclid(&(a_i - &c0), &qj);
                 debug_assert!(rem.is_zero());
@@ -84,12 +136,12 @@ impl SkSharesVectors {
                     y[i][j][k_idx] = yk;
                 }
 
-                // symmetric commitment randomness
                 let bj = BigInt::from((qj_u - 1) / 2);
                 f_randomness[i][j] = rng.gen_bigint_range(&-bj.clone(), &(&bj + 1));
             }
         }
 
+        // Convert polynomials from constant-first to highest-first for the circuit.
         let f: Vec<Vec<Vec<BigInt>>> = f
             .into_iter()
             .map(|row| {
@@ -113,6 +165,10 @@ impl SkSharesVectors {
         })
     }
 
+    /// Reduces all vectors into the circuit’s base field.
+    ///
+    /// Applies modular reduction with the global ZK modulus to each component and
+    /// returns a new `SkSharesVectors` in canonical form for serialization.
     pub fn standard_form(&self) -> Self {
         let p = get_zkp_modulus();
 
@@ -128,6 +184,11 @@ impl SkSharesVectors {
     }
 }
 
+/// Euclidean division with non-negative remainder.
+///
+/// Returns `(quotient, remainder)` such that:
+/// - `a = quotient * n + remainder`
+/// - `0 ≤ remainder < |n|`
 fn div_rem_euclid(a: &BigInt, n: &BigInt) -> (BigInt, BigInt) {
     let mut r = a % n;
     if r.sign() == Sign::Minus {
@@ -135,24 +196,4 @@ fn div_rem_euclid(a: &BigInt, n: &BigInt) -> (BigInt, BigInt) {
     }
     let q = (a - &r) / n;
     (q, r)
-}
-
-fn sample_f_polynomial(sss: &ShamirSecretSharing, secret: &BigInt) -> Vec<BigInt> {
-    let c0 = secret.clone();
-
-    // other coeffs uniform in [0, q_j) to keep coefficients well-bounded
-    let low = BigInt::from(0);
-    let high = sss.prime.clone();
-    let random_coefficients: Vec<BigInt> = (0..sss.threshold)
-        .into_par_iter()
-        .map(|_| {
-            let mut rng = rand::thread_rng();
-            rng.gen_bigint_range(&low, &high)
-        })
-        .collect();
-
-    let mut coefficients = Vec::with_capacity(1 + sss.threshold);
-    coefficients.push(c0);
-    coefficients.extend(random_coefficients);
-    coefficients
 }

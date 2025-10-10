@@ -4,24 +4,37 @@ use pvw::PvwParameters;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
+/// Cryptographic parameters required by the SK-shares pipeline.
+/// Holds the list of CRT moduli `q_j` in native form.
 #[derive(Clone, Debug)]
 pub struct SkSharesCryptographicParameters {
     pub qis: Vec<u64>,
 }
 
+/// Numeric bounds used when constructing and validating SK-shares.
+/// These values are consumed by generators/serializers and by circuits
+/// to range-check secret coefficients, quotient terms, and commitment
+/// randomness.
 #[derive(Clone, Debug)]
 pub struct SkSharesBounds {
-    /// Bound for secret key coefficients
+    /// Absolute bound for each secret-key coefficient.
     pub sk_bound: u64,
-    /// Lower bound for r polynomials
+    /// Global lower bound for quotient values `r`.
     pub r_lower_bound: i64,
-    /// Upper bound for r polynomials
+    /// Global upper bound for quotient values `r`.
     pub r_upper_bound: u64,
-    /// Bound for commitment randomness
+    /// Absolute bound for commitment randomness.
     pub randomness_bound: u64,
 }
 
 impl SkSharesBounds {
+    /// Computes the cryptographic parameters and numeric bounds from PVW parameters.
+    ///
+    /// Returns `(crypto_params, bounds)` where:
+    /// - `crypto_params.qis` is copied from `pvw_params.moduli()`.
+    /// - `randomness_bound = max_j floor((q_j - 1) / 2)`.
+    /// - `(r_lower_bound, r_upper_bound)` is derived by `r_bounds(pvw_params.n, pvw_params.t, moduli)`.
+    /// - `sk_bound` is set to `1`.
     pub fn compute(
         pvw_params: &Arc<PvwParameters>,
     ) -> ZkFheResult<(SkSharesCryptographicParameters, Self)> {
@@ -42,6 +55,8 @@ impl SkSharesBounds {
         Ok((crypto_params, bounds))
     }
 
+    /// Serializes the bounds into a JSON object with keys:
+    /// `sk_bound`, `r_lower_bound`, `r_upper_bound`, and `randomness_bound`.
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "sk_bound": self.sk_bound,
@@ -72,7 +87,8 @@ pub fn r_bounds(n: usize, t: usize, qjs: &[u64]) -> (i64, u64) {
         let num = &qm1 * &s; // (q-1) * S
         let den = &q_big << 1; // 2*q
 
-        // TODO: Doesnt fit
+        // ---------------- TODO ---------------
+        // TODO: Doesnt fit -- -- Returns i64 MAX
         let _r_abs: BigUint = (&num + (&den - BigUint::one())) / &den;
 
         let r_abs_u64 = i64::MAX as u64 - 1;
