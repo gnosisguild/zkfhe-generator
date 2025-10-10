@@ -4,22 +4,19 @@ use num_bigint::{BigInt, RandBigInt, Sign};
 use num_traits::Zero;
 use rand::rngs::ThreadRng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use serde_json::json;
 use shared::{
     get_zkp_modulus,
-    utils::{
-        reduce_1d, reduce_2d, reduce_3d, to_string_1d_vec, to_string_2d_vec, to_string_3d_vec,
-    },
+    utils::{reduce_1d, reduce_2d, reduce_3d},
 };
 
 /// Full set of witness vectors for sk_shares circuit.
 #[derive(Clone, Debug)]
 pub struct SkSharesVectors {
-    pub sk: Vec<BigInt>,                // [N] constant-first (flat)
-    pub f: Vec<Vec<Vec<BigInt>>>,       // [N][L][t] constant-first with c0 = a_i
+    pub sk: Vec<BigInt>,                // [N] constant-first
+    pub f: Vec<Vec<Vec<BigInt>>>,       // [N][L][t+1] constant-first with c0 = a_i
     pub y: Vec<Vec<Vec<BigInt>>>,       // [N][L][P] residues
     pub r: Vec<Vec<Vec<BigInt>>>,       // [N][L][P] quotients
-    pub d: Vec<Vec<BigInt>>,            // [N][L] (will be 0)
+    pub d: Vec<Vec<BigInt>>,            // [N][L]
     pub f_randomness: Vec<Vec<BigInt>>, // [N][L]
     pub x_coords: Vec<BigInt>,          // [P]
 }
@@ -38,20 +35,24 @@ impl SkSharesVectors {
     }
 
     pub fn compute(
+        degree: usize,    // BFV ring N (number of SK coefficients)
+        moduli: &[u64],   // BFV RNS moduli
+        n_parties: usize, // number of shares (x_k = 1..=n_parties)
         t: usize,
-        n_parties: usize,
-        degree: usize,
-        moduli: &[u64],
         mut rng: ThreadRng,
     ) -> Result<SkSharesVectors, Box<dyn std::error::Error>> {
-        let l = moduli.len();
+        assert!(degree > 0 && n_parties > 0 && !moduli.is_empty());
+        let min_q = *moduli.iter().min().unwrap();
+        assert!((n_parties as u64) < min_q, "need n_parties < min(q_j)");
 
         let x_coords: Vec<BigInt> = (1..=n_parties).map(|k| BigInt::from(k as u64)).collect();
 
-        let sk_cbd: Vec<i64> = sample_vec_cbd_f32(degree, 0.5, &mut rng)?;
-        let sk: Vec<BigInt> = sk_cbd.into_iter().map(|v| BigInt::from(v)).collect();
+        // CBD(1) secret, len = degree
+        let sk_cbd = sample_vec_cbd_f32(degree, 0.5, &mut rng)?;
+        let sk: Vec<BigInt> = sk_cbd.into_iter().map(BigInt::from).collect();
 
-        let mut f = vec![vec![vec![BigInt::zero(); t]; l]; degree];
+        let l = moduli.len();
+        let mut f = vec![vec![vec![BigInt::zero(); t + 1]; l]; degree];
         let mut y = vec![vec![vec![BigInt::zero(); n_parties]; l]; degree];
         let mut r = vec![vec![vec![BigInt::zero(); n_parties]; l]; degree];
         let mut d = vec![vec![BigInt::zero(); l]; degree];
@@ -62,18 +63,17 @@ impl SkSharesVectors {
             for (j, &qj_u) in moduli.iter().enumerate() {
                 let qj = BigInt::from(qj_u);
 
-                // Shamir poly over Z_qj, degree t-1, with exact c0 = a_i
-                let sss = ShamirSecretSharing::new(t - 1, n_parties, qj.clone());
-                f[i][j] = sample_f_polynomial(&sss, a_i); // c0 = a_i
+                // Degree-t Shamir over Z_qj ⇒ returns t+1 coeffs (c0=a_i plus t randoms)
+                let sss = ShamirSecretSharing::new(t, n_parties, qj.clone());
+                f[i][j] = sample_f_polynomial(&sss, a_i); // len == t+1
 
+                // a_i - c0 = d_{i,j} * q_j  (here d_{i,j} == 0)
                 let c0 = f[i][j][0].clone();
-
-                // a_i - c0 = d_{i,j} * q_j
                 let (d_ij, rem) = div_rem_euclid(&(a_i - &c0), &qj);
                 debug_assert!(rem.is_zero());
                 d[i][j] = d_ij;
 
-                // shares: f(x_k) = r*q_j + y, with 0 ≤ y < q_j
+                // shares: f(x_k) = r*q_j + y, 0 ≤ y < q_j
                 for (k_idx, xk) in x_coords.iter().enumerate() {
                     let mut acc = BigInt::zero();
                     for coeff in f[i][j].iter().rev() {
@@ -84,12 +84,23 @@ impl SkSharesVectors {
                     y[i][j][k_idx] = yk;
                 }
 
-                // commitment randomness in symmetric range
+                // symmetric commitment randomness
                 let bj = BigInt::from((qj_u - 1) / 2);
-                let rand_ij = rng.gen_bigint_range(&-bj.clone(), &(&bj + 1)); // upper bound exclusive
-                f_randomness[i][j] = rand_ij;
+                f_randomness[i][j] = rng.gen_bigint_range(&-bj.clone(), &(&bj + 1));
             }
         }
+
+        let f: Vec<Vec<Vec<BigInt>>> = f
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|mut coeffs_const_first| {
+                        coeffs_const_first.reverse();
+                        coeffs_const_first
+                    })
+                    .collect()
+            })
+            .collect();
 
         Ok(SkSharesVectors {
             sk,
@@ -115,19 +126,6 @@ impl SkSharesVectors {
             x_coords: reduce_1d(&self.x_coords, &p),
         }
     }
-
-    /// Convert to JSON format for serialization (arrays of strings, no wrappers)
-    pub fn to_json(&self) -> serde_json::Value {
-        json!({
-            "sk": to_string_1d_vec(&self.sk),                    // [N]
-            "f": to_string_3d_vec(&self.f),                      // [N][L][T]
-            "y": to_string_3d_vec(&self.y),                      // [N][L][P]
-            "r": to_string_3d_vec(&self.r),                      // [N][L][P]
-            "d": to_string_2d_vec(&self.d),                      // [N][L]
-            "f_randomness": to_string_2d_vec(&self.f_randomness),// [N][L]
-            "x_coords": to_string_1d_vec(&self.x_coords),        // [P]
-        })
-    }
 }
 
 fn div_rem_euclid(a: &BigInt, n: &BigInt) -> (BigInt, BigInt) {
@@ -140,7 +138,6 @@ fn div_rem_euclid(a: &BigInt, n: &BigInt) -> (BigInt, BigInt) {
 }
 
 fn sample_f_polynomial(sss: &ShamirSecretSharing, secret: &BigInt) -> Vec<BigInt> {
-    // c0 equals the actual secret coefficient a_i (not reduced mod q_j)
     let c0 = secret.clone();
 
     // other coeffs uniform in [0, q_j) to keep coefficients well-bounded

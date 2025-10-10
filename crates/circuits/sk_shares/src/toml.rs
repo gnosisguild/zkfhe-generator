@@ -1,12 +1,9 @@
+use crate::bounds::{SkSharesBounds, SkSharesCryptographicParameters};
+use crate::vectors::SkSharesVectors;
 use serde::Serialize;
-use serde_json::{Value, json};
 use shared::{TomlGenerator, ZkFheResult};
 use toml::to_string;
 
-use crate::bounds::{SkSharesBounds, SkSharesCryptographicParameters};
-use crate::vectors::SkSharesVectors;
-
-/// Generator for sk_shares circuit TOML files
 pub struct SkSharesTomlGenerator {
     crypto_params: SkSharesCryptographicParameters,
     bounds: SkSharesBounds,
@@ -16,36 +13,28 @@ pub struct SkSharesTomlGenerator {
 
 #[derive(Clone, Debug)]
 pub struct CircuitParams {
-    pub n: usize,         // Ring dimension/polynomial degree
-    pub n_parties: usize, // Number of parties
+    pub n: usize,
+    pub n_parties: usize,
     pub t: usize,
 }
 
-impl SkSharesTomlGenerator {
-    pub fn new(
-        crypto_params: SkSharesCryptographicParameters,
-        bounds: SkSharesBounds,
-        vectors: SkSharesVectors,
-        circuit_params: CircuitParams,
-    ) -> Self {
-        Self {
-            crypto_params,
-            bounds,
-            vectors,
-            circuit_params,
-        }
-    }
+#[derive(Serialize)]
+struct PolynomialToml {
+    coefficients: Vec<String>, // constant-first: a0, a1, ..., a_T
 }
 
 #[derive(Serialize)]
 struct SkSharesTomlFormat {
-    sk: Value,                      // {"coefficients": [..]}
-    f: Vec<Vec<Value>>,             // [N][L] of {"coefficients": [..]} (highest-first)
-    y: Vec<Vec<Value>>,             // [N][L] of {"coefficients": [..]}
-    r: Vec<Vec<Value>>,             // [N][L] of {"coefficients": [..]}
+    // --- Struct-encoded polynomials ---
+    sk: PolynomialToml,          // Polynomial<N>
+    f: Vec<Vec<PolynomialToml>>, // [N][L] of Polynomial<T+1>
+    // --- Raw arrays (Fields as strings are fine) ---
+    y: Vec<Vec<Vec<String>>>,       // [N][L][P]
+    r: Vec<Vec<Vec<String>>>,       // [N][L][P]
     d: Vec<Vec<String>>,            // [N][L]
     f_randomness: Vec<Vec<String>>, // [N][L]
     x_coords: Vec<String>,          // [P]
+    // --- Params ---
     params: ParamsSection,
 }
 
@@ -76,89 +65,92 @@ struct CircuitSection {
     t: String,
 }
 
+impl SkSharesTomlGenerator {
+    pub fn new(
+        crypto_params: SkSharesCryptographicParameters,
+        bounds: SkSharesBounds,
+        vectors: SkSharesVectors,
+        circuit_params: CircuitParams,
+    ) -> Self {
+        Self {
+            crypto_params,
+            bounds,
+            vectors,
+            circuit_params,
+        }
+    }
+}
+
 impl TomlGenerator for SkSharesTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
-        let sk: Value = json!({
-            "coefficients": self.vectors.sk
-                .iter()
-                .map(|c| c.to_string())
-                .collect::<Vec<String>>()
-        });
+        // sk
+        let sk = PolynomialToml {
+            coefficients: self.vectors.sk.iter().map(|c| c.to_string()).collect(),
+        };
 
-        let f: Vec<Vec<Value>> = self
+        // f: [N][L] of Polynomial (STRUCT), constant-first (NO reverse)
+        let f: Vec<Vec<PolynomialToml>> = self
             .vectors
             .f
             .iter()
             .map(|row| {
                 row.iter()
-                    .map(|poly_cf| {
-                        let mut tmp = poly_cf.clone();
-                        tmp.reverse(); // highest-first
-                        json!({
-                            "coefficients": tmp.into_iter()
-                                .map(|c| c.to_string())
-                                .collect::<Vec<String>>()
-                        })
+                    .map(|poly_cf| PolynomialToml {
+                        coefficients: poly_cf.iter().map(|c| c.to_string()).collect(),
                     })
-                    .collect::<Vec<Value>>()
+                    .collect::<Vec<PolynomialToml>>()
             })
-            .collect::<Vec<Vec<Value>>>();
+            .collect::<Vec<Vec<PolynomialToml>>>();
 
-        let y: Vec<Vec<Value>> = self
+        // y: [N][L][P] raw arrays
+        let y: Vec<Vec<Vec<String>>> = self
             .vectors
             .y
             .iter()
             .map(|row| {
                 row.iter()
-                    .map(|col| {
-                        json!({
-                            "coefficients": col.iter()
-                                .map(|v| v.to_string())
-                                .collect::<Vec<String>>()
-                        })
-                    })
-                    .collect::<Vec<Value>>()
+                    .map(|col| col.iter().map(|v| v.to_string()).collect::<Vec<String>>())
+                    .collect::<Vec<Vec<String>>>()
             })
-            .collect::<Vec<Vec<Value>>>();
+            .collect();
 
-        let r: Vec<Vec<Value>> = self
+        // r: [N][L][P] raw arrays
+        let r: Vec<Vec<Vec<String>>> = self
             .vectors
             .r
             .iter()
             .map(|row| {
                 row.iter()
-                    .map(|col| {
-                        json!({
-                            "coefficients": col.iter()
-                                .map(|v| v.to_string())
-                                .collect::<Vec<String>>()
-                        })
-                    })
-                    .collect::<Vec<Value>>()
+                    .map(|col| col.iter().map(|v| v.to_string()).collect::<Vec<String>>())
+                    .collect::<Vec<Vec<String>>>()
             })
-            .collect::<Vec<Vec<Value>>>();
+            .collect();
 
+        // d: [N][L]
         let d: Vec<Vec<String>> = self
             .vectors
             .d
             .iter()
             .map(|row| row.iter().map(|v| v.to_string()).collect::<Vec<String>>())
-            .collect::<Vec<Vec<String>>>();
+            .collect();
 
+        // f_randomness: [N][L]
         let f_randomness: Vec<Vec<String>> = self
             .vectors
             .f_randomness
             .iter()
             .map(|row| row.iter().map(|v| v.to_string()).collect::<Vec<String>>())
-            .collect::<Vec<Vec<String>>>();
+            .collect();
 
+        // x_coords: [P]
         let x_coords: Vec<String> = self
             .vectors
             .x_coords
             .iter()
             .map(|x| x.to_string())
-            .collect::<Vec<String>>();
+            .collect();
 
+        // params
         let params = ParamsSection {
             bounds: BoundsSection {
                 sk_bound: self.bounds.sk_bound.to_string(),
@@ -191,7 +183,6 @@ impl TomlGenerator for SkSharesTomlGenerator {
             x_coords,
             params,
         };
-
         Ok(to_string(&toml_data)?)
     }
 }

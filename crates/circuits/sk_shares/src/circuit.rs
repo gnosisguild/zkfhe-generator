@@ -48,10 +48,10 @@ impl Circuit for SkSharesCircuit {
         let (crypto_params, bounds) = SkSharesBounds::compute(pvw_params)?;
 
         let vectors = SkSharesVectors::compute(
-            pvw_params.t,
-            pvw_params.n,
             bfv_params.degree(),
             bfv_params.moduli(),
+            pvw_params.n,
+            pvw_params.t,
             thread_rng(),
         )?;
         let vectors_standard = vectors.standard_form();
