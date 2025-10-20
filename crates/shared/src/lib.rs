@@ -15,6 +15,7 @@
 pub mod circuit;
 pub mod constants;
 pub mod errors;
+pub mod template;
 pub mod toml;
 pub mod utils;
 
@@ -22,4 +23,5 @@ pub mod utils;
 pub use circuit::{Circuit, SupportedParameterType};
 pub use constants::{ZKP_MODULUS, get_zkp_modulus};
 pub use errors::{BfvError, CircuitError, TomlError, ValidationError, ZkFheError, ZkFheResult};
+pub use template::{BaseTemplateParams, MainTemplateGenerator};
 pub use toml::TomlGenerator;

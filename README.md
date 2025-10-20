@@ -5,6 +5,7 @@ A modular Rust workspace for generating cryptographic parameters and TOML files 
 - Clean separation between shared utilities and circuit-specific implementations in order to add new circuits with the trait-based interface.
 - Pre-configured security levels (dev, test, prod) with comprehensive parameter validation and error handling.
 - Generates Prover TOML files compatible with Noir circuits.
+- Generates template `main.nr` files with correct function signatures and parameter types for each circuit.
 
 ## Installation
 
@@ -47,6 +48,12 @@ cargo run -p zkfhe-generator -- generate --circuit greco --bfv-n 16384 --z 2000 
 # Generate with custom output directory
 cargo run -p zkfhe-generator -- generate --circuit greco --preset prod --output ./my-output
 
+# Generate TOML + main.nr template
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --main
+
+# Generate PVW circuit with template
+cargo run -p zkfhe-generator -- generate --circuit pk_pvw --preset dev --main
+
 # Note: Currently no circuits accept both BFV and PVW parameters
 # PVW parameters can be provided but will show a warning for BFV-only circuits like greco
 cargo run -p zkfhe-generator -- generate --circuit greco --pvw-n 1000 --verbose
@@ -70,12 +77,13 @@ The generator creates a `Prover.toml` file containing the following. Please, not
 
 #### PVW Parameters  
 - Used for zero-knowledge proof systems
-- **Currently not supported by any existing circuits**
-- Infrastructure is in place for future circuits that require PVW parameters
+- **Required by pk_pvw circuit**
 - Include redundancy factors (ℓ), LWE dimensions (k), and error bounds (σ₁, σ₂)
+- Automatically computed based on BFV parameters and security requirements
 
 #### Current Circuit Support
 - **greco**: BFV only (will show warning if PVW parameters are provided)
+- **pk_pvw**: PVW parameters required (BFV + PVW)
 
 ## Architecture
 

@@ -3,8 +3,8 @@ This crate provides common functionality used across all zkFHE circuit implement
 The crate is organized into several modules:
 
 - **`lib.rs`**: Main exports and validation module
-- **`bfv.rs`**: BFV configuration and encryption helpers
 - **`circuit.rs`**: Circuit traits and configuration structures
 - **`constants.rs`**: Cryptographic constants (ZKP modulus)
+- **`template.rs`**: Main template generation traits and base parameters
 - **`toml.rs`**: TOML generation traits
 - **`utils.rs`**: Utility functions for string conversion and serialization
