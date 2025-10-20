@@ -840,7 +840,7 @@ dependencies = [
 [[package]]
 name = "pvw"
 version = "0.1.0"
-source = "git+https://github.com/gnosisguild/pvw-rs?branch=fixes#fa7a736b675f39725abfd044d9a1418fafb3093e"
+source = "git+https://github.com/gnosisguild/pvw-rs#0c6e9e8928b3e2fdc58b723dfc2dfad55e9ba6d9"
 dependencies = [
  "console",
  "fhe-math",

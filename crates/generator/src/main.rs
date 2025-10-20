@@ -810,8 +810,10 @@ fn generate_main_template(
             // Import the Greco template generator
             use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
 
-            let greco_template_params =
-                GrecoTemplateParams::from_bounds(BaseTemplateParams::new(bfv_params.degree(), l, circuit_type), &bounds_data)?;
+            let greco_template_params = GrecoTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                &bounds_data,
+            )?;
 
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;

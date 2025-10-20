@@ -36,7 +36,7 @@ thiserror = "1.0"
 fhe = { git = "https://github.com/gnosisguild/fhe.rs", branch = "refactor/pvw-compat" }
 fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs", branch = "refactor/pvw-compat" }
 fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git", branch = "refactor/pvw-compat" }
-pvw = { git = "https://github.com/gnosisguild/pvw-rs", branch = "fixes" }
+pvw = { git = "https://github.com/gnosisguild/pvw-rs"}
 serde_json = "1.0.133"
 rand = "0.8.5"
 bigint-poly = { git = "https://github.com/gnosisguild/bigint-poly", features = ["serde"] }
