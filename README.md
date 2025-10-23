@@ -39,8 +39,14 @@ cargo run -p zkfhe-generator -- list
 
 #### Generate parameters for a specific circuit
 ```bash
-# Basic generation with dev preset (BFV only)
+# Basic generation with dev preset (defaults to BFV parameters)
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev
+
+# Generate with trBFV parameters (threshold BFV, stricter security, 40-61 bit primes)
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv
+
+# Generate with BFV parameters (simpler conditions, 40-63 bit primes)
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv
 
 # Generate with custom BFV parameters
 cargo run -p zkfhe-generator -- generate --circuit greco --bfv-n 16384 --z 2000 --lambda 128
@@ -63,13 +69,12 @@ The generator creates a `Prover.toml` file containing the following. Please, not
 
 ### Parameter Types and Circuit Compatibility
 
-#### BFV Parameters
-- Used for homomorphic encryption operations
-- Required by all circuits
-- Automatically computed based on security requirements
+#### Parameter Types
+- **trBFV**: Threshold BFV parameters with stricter security constraints (40-61 bit primes)
+- **BFV**: Standard BFV parameters with simpler conditions (40-63 bit primes including 62-bit primes)
 
 #### Current Circuit Support
-- **greco**: BFV only
+- **greco**: Supports both trBFV and BFV parameter types
 
 ## Architecture
 
@@ -105,6 +110,20 @@ pub trait TomlGenerator {
 3. Add circuit-specific modules (bounds, vectors, toml)
 4. Register the circuit in the generator CLI
 5. (optional) Add tests to ensure correctness
+
+### Examples
+
+#### Generate with different parameter types
+```bash
+# Generate with trBFV parameters (threshold BFV, stricter security)
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --verbose
+
+# Generate with BFV parameters (default, simpler conditions)
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --verbose
+
+# List available options
+cargo run -p zkfhe-generator -- list
+```
 
 ### Run all tests
 ```bash
