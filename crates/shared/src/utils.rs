@@ -32,6 +32,16 @@ pub fn reduce_coefficients_2d(vec: &[Vec<BigInt>], modulus: &BigInt) -> Vec<Vec<
         .collect()
 }
 
+/// Exact variance string for Uniform(-B..B): Var = B(B+1)/3 (exact)
+pub fn variance_uniform_sym_str_u128(b: u128) -> String {
+    let num = b.checked_mul(b + 1).expect("overflow in B(B+1)");
+    if num % 3 == 0 {
+        (num / 3).to_string()
+    } else {
+        format!("{num}/3")
+    }
+}
+
 pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
     let three = BigUint::from(3u32);
     let num = b * (b + BigUint::from(1u32));

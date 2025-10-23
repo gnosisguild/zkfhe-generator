@@ -14,9 +14,11 @@ use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
 use crypto_params::bfv::{BfvSearchConfig, bfv_search};
-use crypto_params::utils::{fmt_big_summary, variance_uniform_sym_str_u128};
+use crypto_params::utils::approx_bits_from_log2;
+use crypto_params::utils::fmt_big_summary;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
-use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator, variance_uniform_sym_str_big};
+use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
+use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
 use std::sync::Arc;
 
 /// Main CLI structure using clap for argument parsing
@@ -199,6 +201,7 @@ fn create_bfv_config(
         // TODO: there's currently no difference between dev and test.
         "dev" => BfvSearchConfig {
             n: 1,
+            k: 1000,
             z: 1000,
             lambda: 80,
             b: 20,
@@ -207,6 +210,7 @@ fn create_bfv_config(
         },
         "test" => BfvSearchConfig {
             n: 1,
+            k: 1000,
             z: 1000,
             lambda: 80,
             b: 20,
@@ -215,6 +219,7 @@ fn create_bfv_config(
         },
         "prod" => BfvSearchConfig {
             n: 1000,
+            k: 1000,
             z: 1000,
             lambda: 80,
             b: 20,
@@ -332,11 +337,16 @@ fn generate_circuit_params(
             param_config.bfv_config.n
         );
         println!(
-            "z (also k, that is, maximum number of votes, also plaintext space)            = {}",
+            "z (number of votes)                      = {}",
             param_config.bfv_config.z
         );
         println!(
-            "λ (Statistical security parameter)               = {}",
+            "k (plaintext space)                      = {} ({} bits)",
+            bfv_result.k_plain_eff,
+            approx_bits_from_log2((bfv_result.k_plain_eff as f64).log2())
+        );
+        println!(
+            "λ (Statistical security parameter)       = {}",
             param_config.bfv_config.lambda
         );
         println!(
@@ -347,8 +357,7 @@ fn generate_circuit_params(
             "B_chi (bound on sk) = {}   [Dist: {}, Var = {}]",
             param_config.bfv_config.b_chi, dist_b_chi, var_chi
         );
-        println!("d (LWE dimension)               f= {}", bfv_result.d);
-        println!("k (plaintext)    = {}", bfv_result.k_plain_eff);
+        println!("d (LWE dimension)               = {}", bfv_result.d);
         println!("q_BFV (decimal)  = {}", bfv_result.q_bfv.to_str_radix(10));
         println!("|q_BFV|          = {}", fmt_big_summary(&bfv_result.q_bfv));
         println!("Δ (decimal)      = {}", bfv_result.delta.to_str_radix(10));
