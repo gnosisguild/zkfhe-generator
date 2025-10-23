@@ -25,5 +25,4 @@ fhe-math = { workspace = true }
 fhe-traits = { workspace = true }
 rand = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
-pvw = { workspace = true }
 bigint-poly = { workspace = true }

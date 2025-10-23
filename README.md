@@ -50,13 +50,6 @@ cargo run -p zkfhe-generator -- generate --circuit greco --preset prod --output 
 
 # Generate TOML + main.nr template
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --main
-
-# Generate PVW circuit with template
-cargo run -p zkfhe-generator -- generate --circuit pk_pvw --preset dev --main
-
-# Note: Currently no circuits accept both BFV and PVW parameters
-# PVW parameters can be provided but will show a warning for BFV-only circuits like greco
-cargo run -p zkfhe-generator -- generate --circuit greco --pvw-n 1000 --verbose
 ```
 
 ### Generated Output
@@ -75,15 +68,8 @@ The generator creates a `Prover.toml` file containing the following. Please, not
 - Required by all circuits
 - Automatically computed based on security requirements
 
-#### PVW Parameters  
-- Used for zero-knowledge proof systems
-- **Required by pk_pvw circuit**
-- Include redundancy factors (ℓ), LWE dimensions (k), and error bounds (σ₁, σ₂)
-- Automatically computed based on BFV parameters and security requirements
-
 #### Current Circuit Support
-- **greco**: BFV only (will show warning if PVW parameters are provided)
-- **pk_pvw**: PVW parameters required (BFV + PVW)
+- **greco**: BFV only
 
 ## Architecture
 
