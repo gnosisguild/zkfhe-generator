@@ -13,14 +13,14 @@
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
-use crypto_params::bfv::{BfvSearchConfig, bfv_search};
+use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
 use crypto_params::utils::approx_bits_from_log2;
 use crypto_params::utils::fmt_big_summary;
+use crypto_params::utils::log2_big;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
 use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
 use std::sync::Arc;
-
 /// Main CLI structure using clap for argument parsing
 ///
 /// This structure defines the command-line interface using clap's derive macros.
@@ -114,7 +114,7 @@ pub struct BfvParams {
     /// This parameter affects the security analysis and noise bounds.
     /// If not specified, uses the preset default or 1000.
     #[arg(long)]
-    bfv_n: Option<u128>,
+    n: Option<u128>,
 
     /// Number of fresh ciphertext additions z (number of votes)
     ///
@@ -122,6 +122,12 @@ pub struct BfvParams {
     /// If not specified, uses the preset default or 1000.
     #[arg(long)]
     z: Option<u128>,
+
+    /// Plaintext modulus k (plaintext space).
+    ///
+    /// If not specified, uses the preset default or 1000.
+    #[arg(long)]
+    k: Option<u128>,
 
     /// Statistical Security parameter λ (negl(λ)=2^{-λ})
     ///
@@ -136,6 +142,12 @@ pub struct BfvParams {
     /// If not specified, uses the preset default or 20.
     #[arg(long)]
     b: Option<u128>,
+
+    /// Bound B_{\chi} on the distribution \chi used generate the secret key sk_i of each party i.
+    ///
+    /// If not specified, uses the preset default or 1.
+    #[arg(long)]
+    b_chi: Option<u128>,
 }
 
 /// Circuit registry - maps circuit names to their implementations
@@ -231,8 +243,11 @@ fn create_bfv_config(
 
     // Override with custom values if provided
     if let Some(bfv_params) = bfv_params {
-        if let Some(n_val) = bfv_params.bfv_n {
+        if let Some(n_val) = bfv_params.n {
             config.n = n_val;
+        }
+        if let Some(k_val) = bfv_params.k {
+            config.k = k_val;
         }
         if let Some(z_val) = bfv_params.z {
             config.z = z_val;
@@ -242,6 +257,9 @@ fn create_bfv_config(
         }
         if let Some(b_val) = bfv_params.b {
             config.b = b_val;
+        }
+        if let Some(b_chi_val) = bfv_params.b_chi {
+            config.b_chi = b_chi_val;
         }
     }
 
@@ -286,15 +304,17 @@ fn generate_circuit_params(
 
     // Generate BFV parameters (always needed)
     println!(
-        "🔐 BFV Configuration: n={}, z={}, λ={}, B={}",
+        "🔐 BFV Configuration: n={}, z={}, k={}, λ={}, B={}, B_chi={}",
         param_config.bfv_config.n,
         param_config.bfv_config.z,
+        param_config.bfv_config.k,
         param_config.bfv_config.lambda,
-        param_config.bfv_config.b
+        param_config.bfv_config.b,
+        param_config.bfv_config.b_chi
     );
     println!("⚙️  Searching for optimal BFV parameters...");
 
-    let bfv_result = bfv_search(&param_config.bfv_config)?;
+    let trbfv = bfv_search(&param_config.bfv_config)?;
 
     // Decide distributions for B and B_chi per your rule:
     // CBD for B when Var_CBD = B/2 ≤ 16  <=>  B ≤ 32, otherwise Uniform over [-B..B]
@@ -327,11 +347,11 @@ fn generate_circuit_params(
     // BEnc is treated as uniform over [-BEnc..BEnc] for variance reporting
     let (dist_benc, var_benc) = (
         "Uniform".to_string(),
-        variance_uniform_sym_str_big(&bfv_result.benc_min),
+        variance_uniform_sym_str_big(&trbfv.benc_min),
     );
 
     if verbose {
-        println!("\n=== BFV Result (summary dump) ===");
+        println!("\n=== FIRST BFV PARAMETER SET ===");
         println!(
             "n (number of ciphernodes)                = {}",
             param_config.bfv_config.n
@@ -342,8 +362,8 @@ fn generate_circuit_params(
         );
         println!(
             "k (plaintext space)                      = {} ({} bits)",
-            bfv_result.k_plain_eff,
-            approx_bits_from_log2((bfv_result.k_plain_eff as f64).log2())
+            trbfv.k_plain_eff,
+            approx_bits_from_log2((trbfv.k_plain_eff as f64).log2())
         );
         println!(
             "λ (Statistical security parameter)       = {}",
@@ -357,26 +377,26 @@ fn generate_circuit_params(
             "B_chi (bound on sk) = {}   [Dist: {}, Var = {}]",
             param_config.bfv_config.b_chi, dist_b_chi, var_chi
         );
-        println!("d (LWE dimension)               = {}", bfv_result.d);
-        println!("q_BFV (decimal)  = {}", bfv_result.q_bfv.to_str_radix(10));
-        println!("|q_BFV|          = {}", fmt_big_summary(&bfv_result.q_bfv));
-        println!("Δ (decimal)      = {}", bfv_result.delta.to_str_radix(10));
-        println!("r_k(q)           = {}", bfv_result.rkq);
+        println!("d (LWE dimension)               = {}", trbfv.d);
+        println!("q_BFV (decimal)  = {}", trbfv.q_bfv.to_str_radix(10));
+        println!("|q_BFV|          = {}", fmt_big_summary(&trbfv.q_bfv));
+        println!("Δ (decimal)      = {}", trbfv.delta.to_str_radix(10));
+        println!("r_k(q)           = {}", trbfv.rkq);
         println!(
             "BEnc (bound on e2)  = {}   [Dist: {}, Var = {}]",
-            bfv_result.benc_min.to_str_radix(10),
+            trbfv.benc_min.to_str_radix(10),
             dist_benc,
             var_benc
         );
-        println!("B_fresh          = {}", bfv_result.b_fresh.to_str_radix(10));
-        println!("B_C              = {}", bfv_result.b_c.to_str_radix(10));
-        println!("B_sm         = {}", bfv_result.b_sm_min.to_str_radix(10));
-        println!("log2(LHS)        = {:.6}", bfv_result.lhs_log2);
-        println!("log2(Δ)          = {:.6}", bfv_result.rhs_log2);
+        println!("B_fresh          = {}", trbfv.b_fresh.to_str_radix(10));
+        println!("B_C              = {}", trbfv.b_c.to_str_radix(10));
+        println!("B_sm         = {}", trbfv.b_sm_min.to_str_radix(10));
+        println!("log2(LHS)        = {:.6}", trbfv.lhs_log2);
+        println!("log2(Δ)          = {:.6}", trbfv.rhs_log2);
         println!(
             "q_i used ({}): {}",
-            bfv_result.selected_primes.len(),
-            bfv_result
+            trbfv.selected_primes.len(),
+            trbfv
                 .selected_primes
                 .iter()
                 .map(|p| format!("{} ({} bits)", p.hex, p.bitlen))
@@ -385,11 +405,79 @@ fn generate_circuit_params(
         );
     }
 
+    let bfv2 = match bfv_search_second_param(&param_config.bfv_config, &trbfv) {
+        Some(bfv2) => bfv2,
+        None => anyhow::bail!("No second BFV parameter set found"),
+    };
+
+    if verbose {
+        println!("\n=== SECOND BFV PARAMETER SET ===");
+        println!(
+            "k (plaintext space)                      = {} ({} bits)",
+            bfv2.k_plain_eff,
+            approx_bits_from_log2((bfv2.k_plain_eff as f64).log2())
+        );
+        println!(
+            "λ (Statistical security parameter)       = {}",
+            param_config.bfv_config.lambda
+        );
+        println!(
+            "B (bound on e1)     = {}   [Dist: {}, Var = {}]",
+            param_config.bfv_config.b, dist_b, var_b
+        );
+        println!(
+            "B_chi (bound on sk) = {}   [Dist: {}, Var = {}]",
+            param_config.bfv_config.b_chi, dist_b_chi, var_chi
+        );
+        println!("d (LWE dimension)               = {}", bfv2.d);
+        println!("q_BFV (decimal)  = {}", bfv2.q_bfv.to_str_radix(10));
+        println!("|q_BFV|          = {}", fmt_big_summary(&bfv2.q_bfv));
+        println!("Δ (decimal)      = {}", bfv2.delta.to_str_radix(10));
+        println!("r_k(q)           = {}", bfv2.rkq);
+        println!(
+            "BEnc (bound on e2, taken as B)  = {}   [Dist: {}, Var = {}]",
+            param_config.bfv_config.b, dist_b, var_b
+        );
+        println!("B_fresh          = {}", bfv2.b_fresh.to_str_radix(10));
+        println!("B_C              = {}", bfv2.b_c.to_str_radix(10));
+        println!("log2(2*B_C)      = {:.6}", log2_big(&(&bfv2.b_c << 1)));
+        println!("log2(Δ)          = {:.6}", bfv2.rhs_log2);
+        println!(
+            "q_i used ({}): {}",
+            bfv2.selected_primes.len(),
+            bfv2.selected_primes
+                .iter()
+                .map(|p| format!("{} ({} bits)", p.hex, p.bitlen))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    // Build trBFV parameters for circuit use
+    let trbfv_params = BfvParametersBuilder::new()
+        .set_degree(trbfv.d as usize)
+        .set_plaintext_modulus(trbfv.k_plain_eff as u64)
+        .set_moduli(trbfv.qi_values().as_slice())
+        .build_arc()
+        .unwrap();
+
+    println!(
+        "🔐 trBFV Parameters: degree={}, plaintext_modulus={}, moduli=[{}]",
+        trbfv_params.degree(),
+        trbfv_params.plaintext(),
+        trbfv_params
+            .moduli()
+            .iter()
+            .map(|m| m.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     // Build BFV parameters for circuit use
     let bfv_params = BfvParametersBuilder::new()
-        .set_degree(bfv_result.d as usize)
-        .set_plaintext_modulus(bfv_result.k_plain_eff as u64)
-        .set_moduli(bfv_result.qi_values().as_slice())
+        .set_degree(bfv2.d as usize)
+        .set_plaintext_modulus(bfv2.k_plain_eff as u64)
+        .set_moduli(bfv2.qi_values().as_slice())
         .build_arc()
         .unwrap();
 
@@ -405,10 +493,6 @@ fn generate_circuit_params(
             .join(", ")
     );
 
-    // Generate parameters
-    circuit
-        .generate_params(&bfv_params)
-        .map_err(|e| anyhow::anyhow!("Failed to generate parameters: {e}"))?;
     println!("✅ Parameters generated successfully");
 
     // Generate TOML file

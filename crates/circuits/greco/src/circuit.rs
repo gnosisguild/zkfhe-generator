@@ -37,14 +37,6 @@ impl Circuit for GrecoCircuit {
         "Greco zero-knowledge proof circuit for BFV homomorphic encryption"
     }
 
-    fn generate_params(
-        &self,
-        _bfv_params: &Arc<BfvParameters>,
-    ) -> Result<(), shared::errors::ZkFheError> {
-        // Nothing to do - parameters are generated on-demand in generate_toml
-        Ok(())
-    }
-
     fn generate_toml(
         &self,
         bfv_params: &Arc<BfvParameters>,
