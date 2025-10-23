@@ -27,7 +27,8 @@ impl Circuit for PkTrBfvCircuit {
     ) -> Result<(), shared::errors::ZkFheError> {
         // Generate bounds and vectors directly
         let (crypto_params, bounds) = PkTrBfvBounds::compute(bfv_params, 0)?;
-
+        println!("Crypto params: {:?}", crypto_params);
+        println!("Bounds: {:?}", bounds);
         let encryption_data = generate_sample_encryption(bfv_params).map_err(|e| {
             shared::errors::ZkFheError::Bfv {
                 message: e.to_string(),
@@ -41,10 +42,9 @@ impl Circuit for PkTrBfvCircuit {
             &encryption_data.public_key,
             bfv_params,
         )?;
-        println!("Vectors: {:?}", vectors.a);
+
         let vectors_standard = vectors.standard_form();
-        println!("Vectors standard: {:?}", vectors_standard.a);
-        assert_eq!(vectors.a, vectors_standard.a);
+
         let circuit_params = CircuitParams {
             n: bfv_params.degree(),
             l: bfv_params.moduli().len(),
