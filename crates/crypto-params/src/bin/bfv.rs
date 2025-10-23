@@ -3,9 +3,11 @@
 //! Standalone command-line tool for searching BFV parameters using NTT-friendly primes.
 
 use clap::Parser;
-use zkfhe_crypto_params::bfv::{BfvSearchConfig, bfv_search};
+use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
+use zkfhe_crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
 use zkfhe_crypto_params::constants::K_MAX;
-use zkfhe_crypto_params::utils::fmt_big_summary;
+use zkfhe_crypto_params::utils::log2_big;
+use zkfhe_crypto_params::utils::{approx_bits_from_log2, fmt_big_summary};
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -20,6 +22,10 @@ struct Args {
     /// Number of fresh ciphertext z, i.e. number of votes. Note that the BFV plaintext modulus k will be defined as k = z
     #[arg(long, default_value_t = 1000u128)]
     z: u128,
+
+    /// Plaintext modulus k (plaintext space).
+    #[arg(long, default_value_t = 1000u128)]
+    k: u128,
 
     /// Statistical Security parameter λ (negl(λ)=2^{-λ}).
     #[arg(long, default_value_t = 80u32)]
@@ -43,15 +49,18 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    println!("== BFV search with NTT-friendly primes (40..63 bits) ==");
-    println!(
-        "Inputs: n={}  z(k)={}  λ={}  B={} B_chi={}",
-        args.n, args.z, args.lambda, args.b, args.b_chi
-    );
-    println!("Degree sweep: d = 1024, 2048, 4096, 8192, 16384, 32768");
-    println!("Constraint: k := z and z ≤ 2^25 (≈33.5M)\n");
+    if args.verbose {
+        println!(
+            "== BFV parameter search (NTT-friendly primes 40..61 bits; 62-bit and 63-bit are excluded) =="
+        );
+        println!(
+            "Inputs: n={}  z={} k(user)={}  λ={}  B={} B_chi={}",
+            args.n, args.z, args.k, args.lambda, args.b, args.b_chi
+        );
+        println!("Constraint: z ≤ k(effective) and z ≤ 2^25 (≈33.5M)\n");
+    }
 
-    // Enforce BFV k := z and k ≤ 2^25
+    // Enforce constraints on z and k
     if args.z == 0 {
         eprintln!("ERROR: z must be positive.");
         std::process::exit(1);
@@ -63,11 +72,15 @@ fn main() {
         );
         std::process::exit(1);
     }
-    println!("Setting BFV plaintext modulus k := z = {}", args.z);
+    if args.k == 0 {
+        eprintln!("ERROR: user-supplied plaintext space k must be positive.");
+        std::process::exit(1);
+    }
 
     let config = BfvSearchConfig {
         n: args.n,
         z: args.z,
+        k: args.k,
         lambda: args.lambda,
         b: args.b,
         b_chi: args.b_chi,
@@ -75,55 +88,145 @@ fn main() {
     };
 
     // Search across all powers of two; stop at the first feasible candidate
-    match bfv_search(&config) {
-        Ok(bfv) => {
-            // Final summary of all parameters
-            println!("\n=== BFV Result (summary dump) ===");
-            println!("n (number of ciphernodes)                = {}", config.n);
-            println!(
-                "z (also k, that is, maximum number of votes, also plaintext space)            = {}",
-                config.z
-            );
-            println!(
-                "λ (Statistical security parameter)               = {}",
-                config.lambda
-            );
-            println!(
-                "B (Bound on error distribution psi, the one used to genereate e1 when encrypting, also the same for the secret key)               = {}",
-                config.b
-            );
-            println!("d (LWE dimension)               = {}", bfv.d);
-            println!("k (plaintext)    = {}", bfv.k_plain_eff);
-            println!("q_BFV (decimal)  = {}", bfv.q_bfv.to_str_radix(10));
-            println!("|q_BFV|          = {}", fmt_big_summary(&bfv.q_bfv));
-            println!("Δ (decimal)      = {}", bfv.delta.to_str_radix(10));
-            println!("r_k(q)           = {}", bfv.rkq);
-            println!(
-                "BEnc (Bound on the encryption-noise distribution, the one used to generate e2) = {}",
-                bfv.benc_min.to_str_radix(10)
-            );
-            println!("B_fresh          = {}", bfv.b_fresh.to_str_radix(10));
-            println!("B_C              = {}", bfv.b_c.to_str_radix(10));
-            println!("B_sm         = {}", bfv.b_sm_min.to_str_radix(10));
-            println!("log2(LHS)        = {:.6}", bfv.lhs_log2);
-            println!("log2(Δ)          = {:.6}", bfv.rhs_log2);
-            println!(
-                "q_i used ({}): {}",
-                bfv.selected_primes.len(),
-                bfv.selected_primes
-                    .iter()
-                    .map(|p| format!("{} ({} bits)", p.hex, p.bitlen))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        Err(e) => {
-            eprintln!(
-                "\nNo feasible BFV parameter set found across d∈{{1024,2048,4096,8192,16384,32768}}."
-            );
-            eprintln!("Try increasing d, or reducing n, z, λ, or B.");
-            eprintln!("❌ Error: {e}");
-            std::process::exit(1);
-        }
+    let Ok(bfv) = bfv_search(&config) else {
+        eprintln!(
+            "\nNo feasible BFV parameter set found across d∈{{256, 512, 1024,2048,4096,8192,16384,32768}}."
+        );
+        eprintln!("Try increasing d, or reducing n, z, λ, or B.");
+        std::process::exit(1);
+    };
+
+    // Decide distributions for B and B_chi per your rule:
+    // CBD for B when Var_CBD = B/2 ≤ 16  <=>  B ≤ 32, otherwise Uniform over [-B..B]
+    let (dist_b, var_b) = if args.b <= 32 {
+        // CBD for small bounds
+        let var = if args.b % 2 == 0 {
+            (args.b / 2).to_string()
+        } else {
+            format!("{}/2", args.b)
+        };
+        ("CBD".to_string(), var)
+    } else {
+        // Uniform otherwise
+        ("Uniform".to_string(), variance_uniform_sym_str_u128(args.b))
+    };
+
+    // B_chi stays CBD with variance B_chi/2
+    let (dist_b_chi, var_chi) = (
+        "CBD".to_string(),
+        if args.b_chi % 2 == 0 {
+            (args.b_chi / 2).to_string()
+        } else {
+            format!("{}/2", args.b_chi)
+        },
+    );
+
+    // BEnc is treated as uniform over [-BEnc..BEnc] for variance reporting
+    let (dist_benc, var_benc) = (
+        "Uniform".to_string(),
+        variance_uniform_sym_str_big(&bfv.benc_min),
+    );
+
+    // ===== Second BFV parameter set (simpler conditions) =====
+    let bfv2_opt = bfv_search_second_param(&config, &bfv);
+
+    // ===== Final summary: both parameter sets =====
+    println!("\n\n");
+    println!("================================================================================");
+    println!("                         FINAL BFV PARAMETER SETS");
+    println!("================================================================================");
+
+    println!("\n=== FIRST BFV PARAMETER SET ===");
+    println!("n (number of ciphernodes)                = {}", config.n);
+    println!("z (number of votes)                      = {}", config.z);
+    println!(
+        "k (plaintext space)                      = {} ({} bits)",
+        bfv.k_plain_eff,
+        approx_bits_from_log2((bfv.k_plain_eff as f64).log2())
+    );
+    println!(
+        "λ (Statistical security parameter)       = {}",
+        config.lambda
+    );
+    println!(
+        "B (bound on e1)     = {}   [Dist: {}, Var = {}]",
+        config.b, dist_b, var_b
+    );
+    println!(
+        "B_chi (bound on sk) = {}   [Dist: {}, Var = {}]",
+        config.b_chi, dist_b_chi, var_chi
+    );
+    println!("d (LWE dimension)               = {}", bfv.d);
+    println!("q_BFV (decimal)  = {}", bfv.q_bfv.to_str_radix(10));
+    println!("|q_BFV|          = {}", fmt_big_summary(&bfv.q_bfv));
+    println!("Δ (decimal)      = {}", bfv.delta.to_str_radix(10));
+    println!("r_k(q)           = {}", bfv.rkq);
+    println!(
+        "BEnc (bound on e2)  = {}   [Dist: {}, Var = {}]",
+        bfv.benc_min.to_str_radix(10),
+        dist_benc,
+        var_benc
+    );
+    println!("B_fresh          = {}", bfv.b_fresh.to_str_radix(10));
+    println!("B_C              = {}", bfv.b_c.to_str_radix(10));
+    println!("B_sm         = {}", bfv.b_sm_min.to_str_radix(10));
+    println!("log2(LHS)        = {:.6}", bfv.lhs_log2);
+    println!("log2(Δ)          = {:.6}", bfv.rhs_log2);
+    println!(
+        "q_i used ({}): {}",
+        bfv.selected_primes.len(),
+        bfv.selected_primes
+            .iter()
+            .map(|p| format!("{} ({} bits)", p.hex, p.bitlen))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    if let Some(bfv2) = bfv2_opt {
+        println!("\n=== SECOND BFV PARAMETER SET ===");
+        println!(
+            "k (plaintext space)                      = {} ({} bits)",
+            bfv2.k_plain_eff,
+            approx_bits_from_log2((bfv2.k_plain_eff as f64).log2())
+        );
+        println!(
+            "λ (Statistical security parameter)       = {}",
+            config.lambda
+        );
+        println!(
+            "B (bound on e1)     = {}   [Dist: {}, Var = {}]",
+            config.b, dist_b, var_b
+        );
+        println!(
+            "B_chi (bound on sk) = {}   [Dist: {}, Var = {}]",
+            config.b_chi, dist_b_chi, var_chi
+        );
+        println!("d (LWE dimension)               = {}", bfv2.d);
+        println!("q_BFV (decimal)  = {}", bfv2.q_bfv.to_str_radix(10));
+        println!("|q_BFV|          = {}", fmt_big_summary(&bfv2.q_bfv));
+        println!("Δ (decimal)      = {}", bfv2.delta.to_str_radix(10));
+        println!("r_k(q)           = {}", bfv2.rkq);
+        println!(
+            "BEnc (bound on e2, taken as B)  = {}   [Dist: {}, Var = {}]",
+            config.b, dist_b, var_b
+        );
+        println!("B_fresh          = {}", bfv2.b_fresh.to_str_radix(10));
+        println!("B_C              = {}", bfv2.b_c.to_str_radix(10));
+        println!("log2(2*B_C)      = {:.6}", log2_big(&(&bfv2.b_c << 1)));
+        println!("log2(Δ)          = {:.6}", bfv2.rhs_log2);
+        println!(
+            "q_i used ({}): {}",
+            bfv2.selected_primes.len(),
+            bfv2.selected_primes
+                .iter()
+                .map(|p| format!("{} ({} bits)", p.hex, p.bitlen))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    } else {
+        println!("\n=== SECOND BFV PARAMETER SET ===");
+        println!("No second BFV parameter set found.");
     }
+
+    println!("\n================================================================================");
 }
