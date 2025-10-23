@@ -4,7 +4,6 @@ members = [
     "crates/generator",
     "crates/shared",
     "crates/circuits/greco",
-    "crates/circuits/pk_pvw",
     "crates/crypto-params"
 ]
 
@@ -22,7 +21,6 @@ rust-version = "1.86.0"
 
 [workspace.dependencies]
 greco = { package = "zkfhe-greco", path = "./crates/circuits/greco" }
-pk_pvw = { package = "zkfhe-pk-pvw", path = "./crates/circuits/pk_pvw" }
 generator = { package = "zkfhe-generator", path = "./crates/generator" }
 shared = { package = "zkfhe-shared", path = "./crates/shared" }
 crypto-params = { package = "zkfhe-crypto-params", path = "./crates/crypto-params" }
@@ -33,10 +31,9 @@ toml = "0.8"
 clap = { version = "4.0", features = ["derive"] }
 anyhow = "1.0"
 thiserror = "1.0"
-fhe = { git = "https://github.com/gnosisguild/fhe.rs", branch = "refactor/pvw-compat" }
-fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs", branch = "refactor/pvw-compat" }
-fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git", branch = "refactor/pvw-compat" }
-pvw = { git = "https://github.com/gnosisguild/pvw-rs"}
+fhe = { git = "https://github.com/gnosisguild/fhe.rs" }
+fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs" }
+fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git" }
 serde_json = "1.0.133"
 rand = "0.8.5"
 bigint-poly = { git = "https://github.com/gnosisguild/bigint-poly", features = ["serde"] }

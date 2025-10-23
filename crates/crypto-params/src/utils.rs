@@ -1,6 +1,5 @@
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
-use std::cmp::Ordering;
 
 pub fn parse_hex_big(s: &str) -> BigUint {
     let t = s.trim_start_matches("0x");
@@ -60,74 +59,4 @@ pub fn variance_uniform_sym_str_u128(b: u128) -> String {
     } else {
         format!("{num}/3")
     }
-}
-
-pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
-    let three = BigUint::from(3u32);
-    let num = b * (b + BigUint::from(1u32));
-    if (&num % &three).is_zero() {
-        (num / three).to_str_radix(10)
-    } else {
-        format!("{}/3", num.to_str_radix(10))
-    }
-}
-
-pub fn cap_ok_log2(x: &BigUint, limit_log2: f64) -> bool {
-    log2_big(x) <= limit_log2 + 1.0 + 1e-12
-}
-
-pub fn comb_indices(n: usize, k: usize, res: &mut Vec<Vec<usize>>) {
-    fn rec(start: usize, n: usize, k: usize, cur: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-        if cur.len() == k {
-            out.push(cur.clone());
-            return;
-        }
-        let need = k - cur.len();
-        for i in start..=n - need {
-            cur.push(i);
-            rec(i + 1, n, k, cur, out);
-            cur.pop();
-        }
-    }
-    res.clear();
-    rec(0, n, k, &mut Vec::new(), res);
-}
-
-pub fn sum_bits_exact(sel: &[&BigUint]) -> f64 {
-    let mut acc = BigUint::one();
-    for v in sel {
-        acc *= *v;
-    }
-    log2_big(&acc)
-}
-
-pub fn big_pow(base: &BigUint, exp: u64) -> BigUint {
-    let mut res = BigUint::one();
-    for _ in 0..exp {
-        res *= base;
-    }
-    res
-}
-
-pub fn nth_root_floor(a: &BigUint, n: u32) -> BigUint {
-    if n <= 1 {
-        return a.clone();
-    }
-    if a.is_zero() {
-        return BigUint::zero();
-    }
-    let bits: usize = a.bits() as usize;
-    let n_usize: usize = n as usize;
-    let ub = BigUint::one() << bits.div_ceil(n_usize);
-    let mut lo = BigUint::one();
-    let mut hi = ub;
-    while lo < hi {
-        let mid = (&lo + &hi + BigUint::one()) >> 1;
-        let mid_pow = big_pow(&mid, n as u64);
-        match mid_pow.cmp(a) {
-            Ordering::Less | Ordering::Equal => lo = mid,
-            Ordering::Greater => hi = mid - BigUint::one(),
-        }
-    }
-    lo
 }

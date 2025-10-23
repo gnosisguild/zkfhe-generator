@@ -228,19 +228,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
-name = "console"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b430743a6eb14e9764d4260d4c0d8123087d504eeb9c48f2b2a5e810dd369df4"
-dependencies = [
- "encode_unicode",
- "libc",
- "once_cell",
- "unicode-width",
- "windows-sys 0.61.0",
-]
-
-[[package]]
 name = "constant_time_eq"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,12 +306,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
-name = "encode_unicode"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -355,7 +336,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fhe"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs#8b921cf1ddf5d6c51ebab4ac454d200f434c0832"
 dependencies = [
  "doc-comment",
  "fhe-math",
@@ -380,7 +361,7 @@ dependencies = [
 [[package]]
 name = "fhe-math"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs#8b921cf1ddf5d6c51ebab4ac454d200f434c0832"
 dependencies = [
  "ethnum",
  "fhe-traits",
@@ -394,7 +375,6 @@ dependencies = [
  "prost-build",
  "rand",
  "rand_chacha",
- "rayon",
  "sha2",
  "thiserror",
  "zeroize",
@@ -403,7 +383,7 @@ dependencies = [
 [[package]]
 name = "fhe-traits"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs#8b921cf1ddf5d6c51ebab4ac454d200f434c0832"
 dependencies = [
  "rand",
 ]
@@ -411,7 +391,7 @@ dependencies = [
 [[package]]
 name = "fhe-util"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=refactor%2Fpvw-compat#549969e8103a89fb8caad81e08339b59c1b32b66"
+source = "git+https://github.com/gnosisguild/fhe.rs#8b921cf1ddf5d6c51ebab4ac454d200f434c0832"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint-dig",
@@ -838,26 +818,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pvw"
-version = "0.1.0"
-source = "git+https://github.com/gnosisguild/pvw-rs#0c6e9e8928b3e2fdc58b723dfc2dfad55e9ba6d9"
-dependencies = [
- "console",
- "fhe-math",
- "fhe-traits",
- "fhe-util",
- "ndarray",
- "num-bigint",
- "num-traits",
- "rand",
- "rand_chacha",
- "rayon",
- "thiserror",
- "zeroize",
- "zeroize_derive",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1177,12 +1137,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
 
 [[package]]
-name = "unicode-width"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
-
-[[package]]
 name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1500,10 +1454,8 @@ dependencies = [
  "clap",
  "fhe",
  "num-bigint",
- "pvw",
  "zkfhe-crypto-params",
  "zkfhe-greco",
- "zkfhe-pk-pvw",
  "zkfhe-shared",
 ]
 
@@ -1520,37 +1472,11 @@ dependencies = [
  "itertools 0.14.0",
  "num-bigint",
  "num-traits",
- "pvw",
  "rand",
  "rayon",
  "serde",
  "serde_json",
  "tempfile",
- "toml",
- "zkfhe-shared",
-]
-
-[[package]]
-name = "zkfhe-pk-pvw"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bigint-poly",
- "blake3",
- "fhe",
- "fhe-math",
- "fhe-traits",
- "itertools 0.14.0",
- "num-bigint",
- "num-integer",
- "num-traits",
- "pvw",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
  "toml",
  "zkfhe-shared",
 ]
@@ -1567,7 +1493,6 @@ dependencies = [
  "fhe-traits",
  "num-bigint",
  "num-traits",
- "pvw",
  "rand",
  "serde",
  "serde_json",

@@ -5,18 +5,8 @@
 //! for parameter generation, TOML file creation, and configuration validation.
 use crate::errors::ZkFheResult;
 use fhe::bfv::BfvParameters;
-use pvw::PvwParameters;
 use std::path::Path;
 use std::sync::Arc;
-
-/// Supported parameter types for circuits
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SupportedParameterType {
-    /// Circuit supports BFV parameters
-    Bfv,
-    /// Circuit supports PVW parameters  
-    Pvw,
-}
 
 /// Circuit trait that all circuit implementations must implement
 ///
@@ -36,31 +26,16 @@ pub trait Circuit {
     /// and its intended use case.
     fn description(&self) -> &'static str;
 
-    /// Returns the parameter types supported by this circuit
-    ///
-    /// This method should return what types of parameters this circuit
-    /// can work with (BFV only, PVW only, or both).
-    fn supported_parameter_types(&self) -> SupportedParameterType;
-
     /// Generate parameters for the circuit
     ///
     /// This method should generate all the circuit-specific parameters
     /// needed for the zero-knowledge proof, including bounds, vectors,
     /// and any other circuit-specific data.
-    fn generate_params(
-        &self,
-        bfv_params: &Arc<BfvParameters>,
-        pvw_params: Option<&Arc<PvwParameters>>,
-    ) -> ZkFheResult<()>;
+    fn generate_params(&self, bfv_params: &Arc<BfvParameters>) -> ZkFheResult<()>;
 
     /// Generate TOML file for the circuit
     ///
     /// This method should create a TOML file containing all the parameters
     /// needed for the Noir circuit to function correctly.
-    fn generate_toml(
-        &self,
-        bfv_params: &Arc<BfvParameters>,
-        pvw_params: Option<&Arc<PvwParameters>>,
-        output_dir: &Path,
-    ) -> ZkFheResult<()>;
+    fn generate_toml(&self, bfv_params: &Arc<BfvParameters>, output_dir: &Path) -> ZkFheResult<()>;
 }
