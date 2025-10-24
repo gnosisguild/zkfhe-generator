@@ -4,12 +4,22 @@ use fhe_math::rq::{Poly, Representation};
 use itertools::izip;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use rayon::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 
 use shared::errors::ZkFheResult;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
+
+/// Type alias for the complex tuple used in parallel computation results
+type ModulusComputationResult = (
+    usize,
+    Vec<BigInt>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+);
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
@@ -46,7 +56,7 @@ impl PkTrBfvVectors {
         let ctx = params.ctx_at_level(0)?;
         let n: u64 = ctx.degree as u64;
 
-        // Extract single vectors of a, eek, and sk as Vec<BigInt>, center and reverse
+        // Prepare RNS copies for extraction per modulus
         let mut a_rns_copy = a_rns.clone();
         let mut eek_rns_copy = eek_rns.clone();
         let mut sk_rns_copy = sk_rns.clone();
@@ -55,36 +65,6 @@ impl PkTrBfvVectors {
         eek_rns_copy.change_representation(Representation::PowerBasis);
         sk_rns_copy.change_representation(Representation::PowerBasis);
 
-        let a: Vec<BigInt> = unsafe {
-            ctx.moduli_operators()[0]
-                .center_vec_vt(
-                    a_rns_copy
-                        .coefficients()
-                        .row(0)
-                        .as_slice()
-                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
-                )
-                .iter()
-                .rev()
-                .map(|&x| BigInt::from(x))
-                .collect()
-        };
-        println!("A: {:?}", a.len());
-        let eek: Vec<BigInt> = unsafe {
-            ctx.moduli_operators()[0]
-                .center_vec_vt(
-                    eek_rns_copy
-                        .coefficients()
-                        .row(0)
-                        .as_slice()
-                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
-                )
-                .iter()
-                .rev()
-                .map(|&x| BigInt::from(x))
-                .collect()
-        };
-        println!("Eek: {:?}", eek.len());
         let sk: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
                 .center_vec_vt(
@@ -99,7 +79,22 @@ impl PkTrBfvVectors {
                 .map(|&x| BigInt::from(x))
                 .collect()
         };
-        println!("Sk: {:?}", sk.len());
+
+        let eek: Vec<BigInt> = unsafe {
+            ctx.moduli_operators()[0]
+                .center_vec_vt(
+                    eek_rns_copy
+                        .coefficients()
+                        .row(0)
+                        .as_slice()
+                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
+                )
+                .iter()
+                .rev()
+                .map(|&x| BigInt::from(x))
+                .collect()
+        };
+
         // Extract and convert public key polynomials
         let mut pk0: Poly = pk.c.c[0].clone();
         let mut pk1: Poly = pk.c.c[1].clone();
@@ -118,22 +113,29 @@ impl PkTrBfvVectors {
 
         let pk0_coeffs = pk0.coefficients();
         let pk1_coeffs = pk1.coefficients();
+        let a_coeffs = a_rns_copy.coefficients();
+        let sk_coeffs = sk_rns_copy.coefficients();
+        let eek_coeffs = eek_rns_copy.coefficients();
 
         let pk0_coeffs_rows = pk0_coeffs.rows();
         let pk1_coeffs_rows = pk1_coeffs.rows();
+        let a_coeffs_rows = a_coeffs.rows();
+        let sk_coeffs_rows = sk_coeffs.rows();
+        let eek_coeffs_rows = eek_coeffs.rows();
 
         // Perform the main computation logic
-        let results: Vec<(
-            usize,
-            Vec<BigInt>,
-            Vec<BigInt>,
-            Vec<BigInt>,
-            Vec<BigInt>,
-            Vec<BigInt>,
-        )> = izip!(ctx.moduli_operators(), pk0_coeffs_rows, pk1_coeffs_rows)
-            .enumerate()
-            // .par_bridge()  // Temporarily disabled to see validation warnings in order
-            .map(|(i, (qi, pk0_coeffs, pk1_coeffs))| {
+        let results: Vec<ModulusComputationResult> = izip!(
+            ctx.moduli_operators(),
+            pk0_coeffs_rows,
+            pk1_coeffs_rows,
+            a_coeffs_rows,
+            sk_coeffs_rows,
+            eek_coeffs_rows
+        )
+        .enumerate()
+        .par_bridge()
+        .map(
+            |(i, (qi, pk0_coeffs, pk1_coeffs, a_coeffs, sk_coeffs, eek_coeffs))| {
                 let mut pk0i: Vec<BigInt> =
                     pk0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
                 let mut pk1i: Vec<BigInt> =
@@ -143,36 +145,71 @@ impl PkTrBfvVectors {
 
                 reduce_and_center_coefficients_mut(&mut pk0i, &qi_bigint);
                 reduce_and_center_coefficients_mut(&mut pk1i, &qi_bigint);
+
+                // Extract a, sk, eek for this specific modulus qi
+                let ai: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(
+                        a_coeffs
+                            .as_slice()
+                            .ok_or_else(|| "Cannot center coefficients.".to_string())
+                            .unwrap(),
+                    )
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
+
+                let ski: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(
+                        sk_coeffs
+                            .as_slice()
+                            .ok_or_else(|| "Cannot center coefficients.".to_string())
+                            .unwrap(),
+                    )
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
+
+                let eeki: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(
+                        eek_coeffs
+                            .as_slice()
+                            .ok_or_else(|| "Cannot center coefficients.".to_string())
+                            .unwrap(),
+                    )
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
+
                 // Calculate pk0i_hat = -a * sk + e
                 let pk0i_hat = {
-                    let neg_a: Vec<BigInt> = a.iter().map(|a| -a).collect();
+                    let neg_a: Vec<BigInt> = ai.iter().map(|a| -a).collect();
                     let pk0i_poly = Polynomial::new(neg_a.clone());
-                    let sk_poly = Polynomial::new(sk.clone());
+                    let sk_poly = Polynomial::new(ski.clone());
                     let pk0i_times_sk = pk0i_poly.mul(&sk_poly);
                     if (pk0i_times_sk.coefficients().len() as u64) - 1 != 2 * (n - 1) {
                         println!("⚠️  i={}: pk0i_times_sk length check failed", i);
                     }
-                    let e_poly = Polynomial::new(eek.clone());
+                    let e_poly = Polynomial::new(eeki.clone());
                     pk0i_times_sk.add(&e_poly).coefficients().to_vec()
                 };
-                if (pk0i_hat.len() as u64) - 1 != 2 * (n - 1) {
-                    println!("⚠️  i={}: pk0i_hat length check failed", i);
-                }
+                assert_eq!((pk0i_hat.len() as u64) - 1, 2 * (n - 1));
 
                 // Check whether pk0i_hat mod R_qi (the ring) is equal to pk0i
                 let mut pk0i_hat_mod_rqi = pk0i_hat.clone();
                 reduce_in_ring(&mut pk0i_hat_mod_rqi, &cyclo, &qi_bigint);
-                if &pk0i != &pk0i_hat_mod_rqi {
-                    println!("⚠️  i={}: pk0i != pk0i_hat_mod_rqi", i);
-                }
+                assert_eq!(&pk0i, &pk0i_hat_mod_rqi);
 
                 // Compute r2i numerator = pk0i - pk0i_hat and reduce/center the polynomial
                 let pk0i_poly = Polynomial::new(pk0i.clone());
                 let pk0i_hat_poly = Polynomial::new(pk0i_hat.clone());
                 let pk0i_minus_pk0i_hat = pk0i_poly.sub(&pk0i_hat_poly).coefficients().to_vec();
-                if (pk0i_minus_pk0i_hat.len() as u64) - 1 != 2 * (n - 1) {
-                    println!("⚠️  i={}: pk0i_minus_pk0i_hat length check failed", i);
-                }
+                assert_eq!((pk0i_minus_pk0i_hat.len() as u64) - 1, 2 * (n - 1));
                 let mut pk0i_minus_pk0i_hat_mod_zqi = pk0i_minus_pk0i_hat.clone();
                 reduce_and_center_coefficients_mut(&mut pk0i_minus_pk0i_hat_mod_zqi, &qi_bigint);
 
@@ -183,32 +220,16 @@ impl PkTrBfvVectors {
                 let (r2i_poly, r2i_rem_poly) = pk0i_minus_pk0i_hat_poly.div(&cyclo_poly).unwrap();
                 let r2i = r2i_poly.coefficients().to_vec();
                 let r2i_rem = r2i_rem_poly.coefficients().to_vec();
-                if !r2i_rem.iter().all(|x| x.is_zero()) {
-                    println!("⚠️  i={}: r2i_rem not all zeros", i);
-                }
-                if (r2i.len() as u64) - 1 != n - 2 {
-                    println!(
-                        "⚠️  i={}: r2i length check failed (expected {}, got {})",
-                        i,
-                        n - 2,
-                        (r2i.len() as u64) - 1
-                    );
-                }
+                assert!(r2i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r2i.len() as u64) - 1, n - 2); // Order(r2i) = N - 2
 
                 // Assert that (pk0i - pk0i_hat) = (r2i * cyclo) mod Z_qi
                 let r2i_poly = Polynomial::new(r2i.clone());
                 let r2i_times_cyclo = r2i_poly.mul(&cyclo_poly).coefficients().to_vec();
                 let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
                 reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
-                if &pk0i_minus_pk0i_hat_mod_zqi != &r2i_times_cyclo_mod_zqi {
-                    println!(
-                        "⚠️  i={}: pk0i_minus_pk0i_hat_mod_zqi != r2i_times_cyclo_mod_zqi",
-                        i
-                    );
-                }
-                if (r2i_times_cyclo.len() as u64) - 1 != 2 * (n - 1) {
-                    println!("⚠️  i={}: r2i_times_cyclo length check failed", i);
-                }
+                assert_eq!(&pk0i_minus_pk0i_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
+                assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (n - 1));
 
                 // Calculate r1i = (pk0i - pk0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
                 let pk0i_minus_pk0i_hat_poly = Polynomial::new(pk0i_minus_pk0i_hat.clone());
@@ -217,25 +238,20 @@ impl PkTrBfvVectors {
                     .sub(&r2i_times_cyclo_poly)
                     .coefficients()
                     .to_vec();
-                if (r1i_num.len() as u64) - 1 != 2 * (n - 1) {
-                    println!("⚠️  i={}: r1i_num length check failed", i);
-                }
+                assert_eq!((r1i_num.len() as u64) - 1, 2 * (n - 1));
 
                 let r1i_num_poly = Polynomial::new(r1i_num.clone());
                 let qi_poly = Polynomial::new(vec![qi_bigint.clone()]);
                 let (r1i_poly, r1i_rem_poly) = r1i_num_poly.div(&qi_poly).unwrap();
                 let r1i = r1i_poly.coefficients().to_vec();
                 let r1i_rem = r1i_rem_poly.coefficients().to_vec();
-                if !r1i_rem.iter().all(|x| x.is_zero()) {
-                    println!("⚠️  i={}: r1i_rem not all zeros", i);
-                }
-                if (r1i.len() as u64) - 1 != 2 * (n - 1) {
-                    println!("⚠️  i={}: r1i length check failed", i);
-                }
+                assert!(r1i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r1i.len() as u64) - 1, 2 * (n - 1)); // Order(r1i) = 2*(N-1)
                 let r1i_poly_check = Polynomial::new(r1i.clone());
-                if &r1i_num != &r1i_poly_check.mul(&qi_poly).coefficients().to_vec() {
-                    println!("⚠️  i={}: r1i_num verification failed", i);
-                }
+                assert_eq!(
+                    &r1i_num,
+                    &r1i_poly_check.mul(&qi_poly).coefficients().to_vec()
+                );
 
                 // Assert that pk0i = pk0i_hat + r1i * qi + r2i * cyclo mod Z_p
                 let r1i_poly = Polynomial::new(r1i.clone());
@@ -249,13 +265,18 @@ impl PkTrBfvVectors {
                     .coefficients()
                     .to_vec();
 
-                while pk0i_calculated.len() > 0 && pk0i_calculated[0].is_zero() {
+                while !pk0i_calculated.is_empty() && pk0i_calculated[0].is_zero() {
                     pk0i_calculated.remove(0);
                 }
+                assert_eq!(&pk0i, &pk0i_calculated);
 
-                (i, r2i, r1i, pk0i, pk1i, a.clone())
-            })
-            .collect();
+                // pk1i = ai
+                assert_eq!(&pk1i, &ai);
+
+                (i, r2i, r1i, pk0i, pk1i, ai.clone())
+            },
+        )
+        .collect();
 
         // Merge results into the `res` structure after parallel execution
         for (i, r2i, r1i, pk0i, pk1i, a) in results.into_iter() {

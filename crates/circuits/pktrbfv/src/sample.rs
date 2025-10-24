@@ -32,7 +32,7 @@ pub fn generate_sample_encryption(
     let mut rng = StdRng::seed_from_u64(0);
 
     // Generate a random secret key
-    let secret_key = SecretKey::random(&params, &mut rng);
+    let secret_key = SecretKey::random(params, &mut rng);
 
     // Perform encryption and extract intermediate values (a, sk, e)
     let (public_key, a, sk_rns, e_rns) = PublicKey::new_extended(&secret_key, &mut rng)?;
