@@ -1,7 +1,7 @@
 use shared::errors::ZkFheResult;
 use shared::template::{BaseTemplateParams, MainTemplateGenerator};
 
-/// Greco bounds data for template parameter calculation
+/// TrBFV Public Key bounds data for template parameter calculation
 #[derive(Debug, Clone)]
 pub struct PkTrBfvBoundsData {
     pub eek_bound: String,
@@ -23,16 +23,16 @@ impl PkTrBfvTemplateParams {
     }
 }
 
-/// Generator for Greco circuit main.nr templates
+/// Generator for TrBFV Public Key circuit main.nr templates
 pub struct PkTrBfvMainTemplate;
 
 impl MainTemplateGenerator<PkTrBfvTemplateParams> for PkTrBfvMainTemplate {
     fn generate_template(&self, params: &PkTrBfvTemplateParams) -> ZkFheResult<String> {
-        let import_example = "// use greco::{Greco, Params};
+        let import_example = "// use pk_trbfv::{BfvPublicKeyCircuit, Params};
 // use polynomial::Polynomial;";
 
         let template = format!(
-            r#"//! Generated main.nr template for Greco circuit
+            r#"//! Generated main.nr template for TrBFV Public Key circuit
 // TODO: Your imports here (example below)
 {}
 
