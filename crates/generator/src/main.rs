@@ -22,6 +22,7 @@ use shared::circuit::ParameterType;
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
 use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
 use std::sync::Arc;
+
 /// Main CLI structure using clap for argument parsing
 ///
 /// This structure defines the command-line interface using clap's derive macros.
@@ -76,9 +77,8 @@ enum Commands {
         /// Choose between trBFV (threshold BFV, stricter security, 40-61 bit primes) and BFV
         /// (simpler conditions, 40-63 bit primes including 62-bit primes).
         /// Available parameter types can be listed using the `list` command.
-        /// Defaults to BFV if not specified.
-        #[arg(long, short = 't')]
-        parameter_type: Option<String>,
+        #[arg(long, short = 't', required = true)]
+        parameter_type: String,
 
         /// Verbose output showing detailed parameter search process
         #[arg(long, short)]
@@ -178,6 +178,10 @@ fn get_circuit(circuit_name: &str) -> anyhow::Result<Box<dyn Circuit>> {
             let circuit = greco::circuit::GrecoCircuit;
             Ok(Box::new(circuit))
         }
+        "pktrbfv" => {
+            let circuit = pktrbfv::circuit::PkTrBfvCircuit;
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -186,6 +190,7 @@ fn get_circuit(circuit_name: &str) -> anyhow::Result<Box<dyn Circuit>> {
 pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<ParameterType> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "pktrbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -276,7 +281,7 @@ fn create_bfv_config(
 fn generate_circuit_params(
     circuit_name: &str,
     preset: Option<&str>,
-    parameter_type: Option<ParameterType>,
+    parameter_type: ParameterType,
     verbose: bool,
     output_dir: &Path,
     generate_main: bool,
@@ -285,20 +290,14 @@ fn generate_circuit_params(
         println!("📋 Using preset: {preset_name}");
     }
 
-    if let Some(param_type) = parameter_type {
-        println!("📋 Using parameter type: {}", param_type.as_str());
-    } else {
-        anyhow::bail!("Parameter type is required");
-    }
+    println!("📋 Using parameter type: {}", parameter_type.as_str());
 
     // Get circuit implementation
     let circuit = get_circuit(circuit_name)?;
     println!("✅ Loaded circuit: {}", circuit.name());
 
-    if let Some(param_type) = parameter_type {
-        if !is_compatible(circuit_name, &param_type) {
-            anyhow::bail!("Parameter type is not compatible with circuit");
-        }
+    if !is_compatible(circuit_name, &parameter_type) {
+        anyhow::bail!("Parameter type is not compatible with circuit");
     }
 
     let bfv_params: Arc<BfvParameters> = if preset == Some("dev") {
@@ -418,8 +417,8 @@ fn generate_circuit_params(
 
         // Choose which parameter set to use based on parameter type
         let final_params = match parameter_type {
-            Some(ParameterType::Trbfv) => trbfv,
-            Some(ParameterType::Bfv) | None => {
+            ParameterType::Trbfv => trbfv,
+            ParameterType::Bfv => {
                 // Generate BFV parameters (second parameter set)
                 bfv_search_second_param(&param_config, &trbfv)
                     .ok_or_else(|| anyhow::anyhow!("No second BFV parameter set found"))?
@@ -437,7 +436,7 @@ fn generate_circuit_params(
 
     println!(
         "🔐 {} Parameters: degree={}, plaintext_modulus={}, moduli=[{}]",
-        parameter_type.unwrap().as_str(),
+        parameter_type.as_str(),
         bfv_params.degree(),
         bfv_params.plaintext(),
         bfv_params
@@ -521,6 +520,18 @@ fn generate_main_template(
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;
         }
+        "pktrbfv" => {
+            use pktrbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
+
+            let pktrbfv_template_params = PkTrBfvTemplateParams::new(BaseTemplateParams::new(
+                bfv_params.degree(),
+                l,
+                circuit_type,
+            ))?;
+
+            let template_generator = PkTrBfvMainTemplate;
+            template_generator.generate_main_file(&pktrbfv_template_params, output_dir)?;
+        }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }
@@ -554,16 +565,12 @@ fn main() -> anyhow::Result<()> {
             std::fs::create_dir_all(&output)?;
 
             // Parse parameter type
-            let param_type = if let Some(param_type_str) = parameter_type {
-                ParameterType::to_str(&param_type_str)?
-            } else {
-                ParameterType::Bfv // Default to BFV
-            };
+            let param_type = ParameterType::to_str(&parameter_type)?;
 
             generate_circuit_params(
                 &circuit,
                 preset.as_deref(),
-                Some(param_type),
+                param_type,
                 verbose,
                 &output,
                 main,
@@ -573,6 +580,7 @@ fn main() -> anyhow::Result<()> {
             if circuits {
                 println!("📋 Available circuits:");
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
+                println!("  • pktrbfv   - PkTrBfv circuit implementation (supports trbfv, bfv)");
             }
             if presets {
                 println!("\n⚙️  Available presets:");
@@ -588,6 +596,7 @@ fn main() -> anyhow::Result<()> {
             if !circuits && !presets {
                 println!("📋 Available circuits:");
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
+                println!("  • pktrbfv   - PkTrBfv circuit implementation (supports trbfv, bfv)");
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
@@ -597,7 +606,7 @@ fn main() -> anyhow::Result<()> {
                 println!("\n🔧 Available parameter types:");
                 println!("  • trbfv - Threshold BFV (stricter security, 40-61 bit primes)");
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
-                println!("\n💡 Use --parameter-type to choose between trbfv and bfv");
+                println!("\n💡 Use --parameter-type to choose between trbfv and bfv (required)");
                 println!("   Example: --parameter-type trbfv");
             }
         }
