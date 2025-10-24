@@ -190,7 +190,7 @@ fn get_circuit(circuit_name: &str) -> anyhow::Result<Box<dyn Circuit>> {
 pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<ParameterType> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
-        "pktrbfv" => vec![ParameterType::Trbfv],
+        "pktrbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
