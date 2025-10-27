@@ -1,4 +1,5 @@
 use crate::bounds::GrecoBounds;
+use crate::mode::GrecoMode;
 use crate::sample::generate_sample_encryption;
 use crate::toml::GrecoTomlGenerator;
 use crate::vectors::GrecoVectors;
@@ -18,7 +19,28 @@ use std::sync::Arc;
 /// encryption without revealing the secret key or plaintext. It achieves this
 /// by generating bounds and validation vectors that can be used in zero-knowledge
 /// proofs.
-pub struct GrecoCircuit;
+///
+/// The circuit supports two modes:
+/// - `Key`: Encrypt arbitrary plaintexts (messages, votes, keys)
+/// - `Share`: Encrypt threshold secret key shares for threshold cryptography
+pub struct GrecoCircuit {
+    /// Encryption mode for sample data generation
+    pub mode: GrecoMode,
+}
+
+impl GrecoCircuit {
+    /// Create a new GrecoCircuit with the specified mode
+    pub fn new(mode: GrecoMode) -> Self {
+        GrecoCircuit { mode }
+    }
+
+    /// Create a new GrecoCircuit with default mode (Key)
+    pub fn new_default() -> Self {
+        GrecoCircuit {
+            mode: GrecoMode::default_mode(),
+        }
+    }
+}
 
 impl Circuit for GrecoCircuit {
     /// Returns the name of the Greco circuit
@@ -45,7 +67,7 @@ impl Circuit for GrecoCircuit {
         // Generate bounds and vectors directly
         let (crypto_params, bounds) = GrecoBounds::compute(bfv_params, 0)?;
 
-        let encryption_data = generate_sample_encryption(bfv_params).map_err(|e| {
+        let encryption_data = generate_sample_encryption(bfv_params, self.mode).map_err(|e| {
             shared::errors::ZkFheError::Bfv {
                 message: e.to_string(),
             }
