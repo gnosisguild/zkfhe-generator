@@ -308,6 +308,14 @@ fn generate_circuit_params(
     // Print mode for Greco circuit
     if circuit_name.to_lowercase() == "greco" {
         println!("🔐 Using Greco mode: {}", mode);
+
+        // Validate: share mode only works with BFV parameter type
+        if mode.to_lowercase() == "share" && parameter_type == ParameterType::Trbfv {
+            anyhow::bail!(
+                "Greco share mode only supports BFV parameter type, not trBFV. \
+                 Use --parameter-type bfv with --mode share"
+            );
+        }
     }
 
     // Get circuit implementation

@@ -79,9 +79,12 @@ cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --paramete
 Encrypts threshold secret key shares for threshold cryptography protocols.
 
 ```bash
-# Generate with share mode
+# Generate with share mode (only works with BFV parameter type)
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode share
 ```
+
+**Requirements:**
+- Must use `--parameter-type bfv` (share mode does not support trBFV)
 
 **Use cases:**
 - Threshold BFV setup phase where parties distribute encrypted shares
