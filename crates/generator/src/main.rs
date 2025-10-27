@@ -80,13 +80,16 @@ enum Commands {
         #[arg(long, short = 't', required = true)]
         parameter_type: String,
 
-        /// Greco mode (key or share)
+        /// Greco operation mode (encryption or decryption)
         ///
+        /// For Greco circuit only: specifies which operation is being proven.
+        /// - encryption (or enc): Prove encryption operation (Circuit 4 or 6)
+        /// - decryption (or dec): Prove decryption via encryption (Circuit 5)
+        ///
+        /// Note: Circuits 1&2 use the pktrbfv circuit for key generation proofs.
+        /// Note: trBFV + Decryption is not supported (requires separate circuits 7&8).
         /// This flag is ignored for non-Greco circuits.
-        /// For Greco circuit only: specifies the encryption mode for sample data generation.
-        /// - key: Encrypt messages/votes/keys (default)
-        /// - share: Encrypt threshold secret key shares
-        #[arg(long, default_value = "key")]
+        #[arg(long, default_value = "encryption")]
         mode: String,
 
         /// Verbose output showing detailed parameter search process
@@ -177,17 +180,23 @@ pub struct BfvParams {
 /// # Arguments
 ///
 /// * `circuit_name` - The name of the circuit to load
-/// * `mode` - The mode for Greco circuit (ignored for other circuits)
+/// * `mode` - The operation mode for Greco circuit (ignored for other circuits)
+/// * `parameter_type` - The parameter type (BFV or trBFV)
 ///
 /// # Returns
 ///
 /// Returns a boxed circuit implementation or an error if the circuit is not found.
-fn get_circuit(circuit_name: &str, mode: &str) -> anyhow::Result<Box<dyn Circuit>> {
+fn get_circuit(
+    circuit_name: &str,
+    mode: &str,
+    parameter_type: ParameterType,
+) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => {
             let greco_mode = greco::mode::GrecoMode::from_str_to_mode(mode)
                 .map_err(|e| anyhow::anyhow!("Invalid Greco mode: {}", e))?;
-            let circuit = greco::circuit::GrecoCircuit::new(greco_mode);
+            let is_threshold = parameter_type == ParameterType::Trbfv;
+            let circuit = greco::circuit::GrecoCircuit::new(greco_mode, is_threshold);
             Ok(Box::new(circuit))
         }
         "pktrbfv" => {
@@ -308,18 +317,10 @@ fn generate_circuit_params(
     // Print mode for Greco circuit
     if circuit_name.to_lowercase() == "greco" {
         println!("🔐 Using Greco mode: {}", mode);
-
-        // Validate: share mode only works with BFV parameter type
-        if mode.to_lowercase() == "share" && parameter_type == ParameterType::Trbfv {
-            anyhow::bail!(
-                "Greco share mode only supports BFV parameter type, not trBFV. \
-                 Use --parameter-type bfv with --mode share"
-            );
-        }
     }
 
     // Get circuit implementation
-    let circuit = get_circuit(circuit_name, mode)?;
+    let circuit = get_circuit(circuit_name, mode, parameter_type)?;
     println!("✅ Loaded circuit: {}", circuit.name());
 
     if !is_compatible(circuit_name, &parameter_type) {
@@ -621,14 +622,16 @@ fn main() -> anyhow::Result<()> {
                 println!("\n🔧 Available parameter types:");
                 println!("  • trbfv - Threshold BFV (stricter security, 40-61 bit primes)");
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
-                println!("\n🔐 Greco modes:");
-                println!("  • key   - Encrypt messages/votes/keys (default)");
-                println!("  • share - Encrypt threshold secret key shares");
+                println!("\n🔐 Greco operation modes:");
+                println!("  • encryption (enc) - Prove encryption (Circuit 4 or 6)");
+                println!("  • decryption (dec) - Prove decryption via encryption (Circuit 5)");
+                println!("\n💡 Circuits 1&2 use the pktrbfv circuit for key generation proofs");
             }
             if !circuits && !presets {
                 println!("📋 Available circuits:");
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
-                println!("              Modes: key (default), share");
+                println!("              Modes: encryption (default), decryption");
+                println!("              Circuits: 4, 5, 6");
                 println!("  • pktrbfv - PkTrBfv circuit implementation (supports trbfv, bfv)");
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
@@ -641,10 +644,11 @@ fn main() -> anyhow::Result<()> {
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n💡 Use --parameter-type to choose between trbfv and bfv (required)");
                 println!("   Example: --parameter-type trbfv");
-                println!("\n🔐 Greco modes (use --mode flag):");
-                println!("  • key   - Encrypt messages/votes/keys (default)");
-                println!("  • share - Encrypt threshold secret key shares");
-                println!("   Example: --mode share");
+                println!("\n🔐 Greco operation modes (use --mode flag):");
+                println!("  • encryption (enc) - Prove encryption (Circuit 4 or 6)");
+                println!("  • decryption (dec) - Prove decryption via encryption (Circuit 5)");
+                println!("   Example: --mode encryption");
+                println!("\n💡 For Circuits 1&2, use the pktrbfv circuit instead");
             }
         }
     }

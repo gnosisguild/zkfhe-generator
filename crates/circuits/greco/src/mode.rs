@@ -1,33 +1,36 @@
-/// Encryption mode for Greco circuit
+/// Operation mode for Greco circuit
 ///
-/// Greco can prove correct encryption of different types of data.
-/// This enum allows generating appropriate sample data for testing each use case.
+/// Greco proves correct BFV encryption operations.
+/// The mode determines what type of sample data is generated and which phase
+/// of the protocol is being proven.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrecoMode {
-    /// Encrypt arbitrary plaintexts (messages, votes, keys)
-    /// Default mode for standard BFV encryption
-    Key,
-    /// Encrypt secret shares for threshold cryptography
-    /// Used in threshold BFV setup phase where parties distribute shares
-    Share,
+    /// Encryption operation (sending phase)
+    /// - BFV: Encrypt threshold shares for distribution (Circuit 4)
+    /// - trBFV: Encrypt votes/messages (Circuit 6)
+    Encryption,
+    /// Decryption operation (receiving phase)
+    /// - BFV: Prove aggregated share encryption (Circuit 5)
+    /// - trBFV: NOT SUPPORTED (requires separate threshold decryption circuits)
+    Decryption,
 }
 
 impl GrecoMode {
     /// Get the string representation of the mode
     pub fn as_str(&self) -> &'static str {
         match self {
-            GrecoMode::Key => "key",
-            GrecoMode::Share => "share",
+            GrecoMode::Encryption => "encryption",
+            GrecoMode::Decryption => "decryption",
         }
     }
 
     /// Parse mode from string
     pub fn from_str_to_mode(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
-            "key" => Ok(GrecoMode::Key),
-            "share" => Ok(GrecoMode::Share),
+            "encryption" | "enc" => Ok(GrecoMode::Encryption),
+            "decryption" | "dec" => Ok(GrecoMode::Decryption),
             _ => Err(format!(
-                "Unknown Greco mode: {}. Supported modes: key, share",
+                "Unknown Greco mode: {}. Supported modes: encryption, decryption (or enc, dec)",
                 s
             )),
         }
@@ -35,6 +38,6 @@ impl GrecoMode {
 
     /// Get the default mode
     pub fn default_mode() -> Self {
-        GrecoMode::Key
+        GrecoMode::Encryption
     }
 }

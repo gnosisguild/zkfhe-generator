@@ -58,38 +58,53 @@ cargo run -p zkfhe-generator -- generate --circuit greco --preset prod --output 
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --main
 ```
 
+### PkTrBfv Circuit (Circuits 1 & 2 - Key Generation)
+
+The `pktrbfv` circuit proves correct key generation for threshold BFV.
+
+**Circuit 1: trBFV Key Generation**
+```bash
+cargo run -p zkfhe-generator -- generate --circuit pktrbfv --preset prod --parameter-type trbfv --main --output ./circuit_1
+```
+
+**Circuit 2: BFV Key Generation**
+```bash
+cargo run -p zkfhe-generator -- generate --circuit pktrbfv --preset prod --parameter-type bfv --main --output ./circuit_2
+```
+
 ### Greco Circuit Modes
 
-The Greco circuit proves correct BFV **encryption** and supports two operation modes:
+The Greco circuit proves correct BFV encryption operations and supports two operation modes that work with both BFV and trBFV parameter types.
 
-#### Key Mode (default)
-Encrypts arbitrary plaintexts such as messages, votes, or secret keys.
+**Note:** Circuits 1 & 2 (key generation proofs) use the **`pktrbfv` circuit**, not Greco.
 
+#### Encryption Mode (Sending Phase - Circuits 4 & 6)
+Proves correct encryption operation for distributing data to other parties.
+
+**BFV + Encryption**: Encrypt threshold secret key shares (Circuit 4 - threshold setup protocol)
 ```bash
-# Generate with key mode (default)
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode key
+# Default mode is "encryption" with BFV
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv
+
+# Explicit mode specification
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode encryption
 ```
 
-**Use cases:**
-- Proving correct encryption of votes in e-voting systems
-- Proving correct encryption of messages
-- Proving correct encryption of secret keys
-
-#### Share Mode
-Encrypts threshold secret key shares for threshold cryptography protocols.
-
+**trBFV + Encryption**: Encrypt messages/votes (Circuit 6 - application layer)
 ```bash
-# Generate with share mode (only works with BFV parameter type)
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode share
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --mode encryption
 ```
 
-**Requirements:**
-- Must use `--parameter-type bfv` (share mode does not support trBFV)
+#### Decryption Mode (Receiving Phase - Circuit 5)
+Proves correct "decryption" by proving the encryption equation: `c = Enc(m, pk)`.  
+This cleverly avoids revealing the secret key while proving decryption correctness.
 
-**Use cases:**
-- Threshold BFV setup phase where parties distribute encrypted shares
-- Each party encrypts their generated shares with recipients' public keys
-- Proves: "Party i correctly encrypted a share for Party j using Party j's public key"
+**BFV + Decryption**: Prove aggregated share encryption (Circuit 5 - threshold setup protocol)
+```bash
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode decryption
+```
+
+**trBFV + Decryption**: tbd
 
 ### Generated Output
 
@@ -108,8 +123,14 @@ The generator creates a `Prover.toml` file containing the following. Please, not
 
 #### Current Circuit Support
 - **greco**: Supports both trBFV and BFV parameter types
-  - Proves correct BFV **encryption** (not decryption)
-  - Two operation modes: `key` and `share`
+  - Proves correct BFV **encryption** operations
+  - Two operation modes: `encryption` (sending phase) and `decryption` (receiving phase)
+  - Covers Circuits 4, 5, and 6 from the threshold BFV protocol
+  - Note: trBFV + Decryption is not supported (Circuits 7 & 8 require separate implementation)
+
+- **pktrbfv**: Supports both trBFV and BFV parameter types
+  - Proves correct **key generation**
+  - Covers Circuits 1 and 2 from the threshold BFV protocol
 
 ## Architecture
 
