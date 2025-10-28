@@ -72,39 +72,24 @@ cargo run -p zkfhe-generator -- generate --circuit pktrbfv --preset prod --param
 cargo run -p zkfhe-generator -- generate --circuit pktrbfv --preset prod --parameter-type bfv --main --output ./circuit_2
 ```
 
-### Greco Circuit Modes
+### Greco Circuit Usage
 
-The Greco circuit proves correct BFV encryption operations and supports two operation modes that work with both BFV and trBFV parameter types.
+The Greco circuit proves correct BFV encryption operations. The type of encryption proven depends on the parameter type:
 
-**Note:** Circuits 1 & 2 (key generation proofs) use the **`pktrbfv` circuit**, not Greco.
-
-#### Encryption Mode (Sending Phase - Circuits 4 & 6)
-Proves correct encryption operation for distributing data to other parties.
-
-**BFV + Encryption**: Encrypt threshold secret key shares (Circuit 4 - threshold setup protocol)
+**Circuit 4 - BFV: Encrypt Threshold Shares**
 ```bash
-# Default mode is "encryption" with BFV
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv
-
-# Explicit mode specification
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode encryption
+# Encrypt threshold secret key shares for distribution
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --main --output ./circuit_4
 ```
+Use case: During threshold setup, Party i encrypts shares for Party j using Party j's public key.
 
-**trBFV + Encryption**: Encrypt messages/votes (Circuit 6 - application layer)
+**Circuit 6 - trBFV: Encrypt Messages/Votes**
 ```bash
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --mode encryption
+# Encrypt messages or votes in threshold voting system
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --main --output ./circuit_6
 ```
+Use case: Application layer encryption (e.g., e-voting with trBFV parameters).
 
-#### Decryption Mode (Receiving Phase - Circuit 5)
-Proves correct "decryption" by proving the encryption equation: `c = Enc(m, pk)`.  
-This cleverly avoids revealing the secret key while proving decryption correctness.
-
-**BFV + Decryption**: Prove aggregated share encryption (Circuit 5 - threshold setup protocol)
-```bash
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode decryption
-```
-
-**trBFV + Decryption**: tbd
 
 ### Generated Output
 
@@ -124,9 +109,9 @@ The generator creates a `Prover.toml` file containing the following. Please, not
 #### Current Circuit Support
 - **greco**: Supports both trBFV and BFV parameter types
   - Proves correct BFV **encryption** operations
-  - Two operation modes: `encryption` (sending phase) and `decryption` (receiving phase)
-  - Covers Circuits 4, 5, and 6 from the threshold BFV protocol
-  - Note: trBFV + Decryption is not supported (Circuits 7 & 8 require separate implementation)
+  - BFV parameter type: Encrypts threshold shares (Circuit 4)
+  - trBFV parameter type: Encrypts messages/votes (Circuit 6)
+  - Note: Circuit 5 (decryption proof) requires a custom circuit
 
 - **pktrbfv**: Supports both trBFV and BFV parameter types
   - Proves correct **key generation**
@@ -169,22 +154,19 @@ pub trait TomlGenerator {
 
 ### Examples
 
-#### Generate with different parameter types and modes
+#### Generate with different parameter types
 ```bash
-# Generate with trBFV parameters (threshold BFV, stricter security)
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --verbose
-
-# Generate with BFV parameters (default, simpler conditions)
+# Generate with BFV parameters (threshold shares - Circuit 4)
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --verbose
 
-# Generate for key encryption (default mode)
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode key
+# Generate with trBFV parameters (messages/votes - Circuit 6)
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --verbose
 
-# Generate for threshold share encryption
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode share
+# Generate with custom output and main.nr template for Circuit 4
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --output ./circuit_4 --main
 
-# Generate with custom output and main.nr template for share encryption
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --mode share --output ./threshold-setup --main
+# Generate with custom output and main.nr template for Circuit 6
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --output ./circuit_6 --main
 
 # List available options
 cargo run -p zkfhe-generator -- list

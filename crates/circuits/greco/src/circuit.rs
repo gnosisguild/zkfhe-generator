@@ -1,5 +1,4 @@
 use crate::bounds::GrecoBounds;
-use crate::mode::GrecoMode;
 use crate::sample::generate_sample_encryption;
 use crate::toml::GrecoTomlGenerator;
 use crate::vectors::GrecoVectors;
@@ -20,28 +19,23 @@ use std::sync::Arc;
 /// by generating bounds and validation vectors that can be used in zero-knowledge
 /// proofs.
 ///
-/// The circuit supports two operation modes and two parameter types:
-/// - `Encryption`: Prove encryption operation (sending phase)
-/// - `Decryption`: Prove decryption via encryption (receiving phase)
-/// - `BFV`: Standard BFV operations
-/// - `trBFV`: Threshold BFV operations
+/// The circuit supports two parameter types:
+/// - `BFV`: Encrypt threshold shares for distribution (Circuit 4)
+/// - `trBFV`: Encrypt messages/votes in threshold system (Circuit 6)
 pub struct GrecoCircuit {
-    /// Operation mode for sample data generation
-    pub mode: GrecoMode,
     /// Whether to use threshold BFV sample data
     pub is_threshold: bool,
 }
 
 impl GrecoCircuit {
-    /// Create a new GrecoCircuit with the specified mode and threshold flag
-    pub fn new(mode: GrecoMode, is_threshold: bool) -> Self {
-        GrecoCircuit { mode, is_threshold }
+    /// Create a new GrecoCircuit with the specified threshold flag
+    pub fn new(is_threshold: bool) -> Self {
+        GrecoCircuit { is_threshold }
     }
 
-    /// Create a new GrecoCircuit with default settings (Encryption, non-threshold)
+    /// Create a new GrecoCircuit with default settings (non-threshold BFV)
     pub fn new_default() -> Self {
         GrecoCircuit {
-            mode: GrecoMode::default_mode(),
             is_threshold: false,
         }
     }
@@ -72,9 +66,11 @@ impl Circuit for GrecoCircuit {
         // Generate bounds and vectors directly
         let (crypto_params, bounds) = GrecoBounds::compute(bfv_params, 0)?;
 
-        let encryption_data = generate_sample_encryption(bfv_params, self.mode, self.is_threshold)
-            .map_err(|e| shared::errors::ZkFheError::Bfv {
-                message: e.to_string(),
+        let encryption_data =
+            generate_sample_encryption(bfv_params, self.is_threshold).map_err(|e| {
+                shared::errors::ZkFheError::Bfv {
+                    message: e.to_string(),
+                }
             })?;
 
         let vectors = GrecoVectors::compute(

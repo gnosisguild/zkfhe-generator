@@ -6,7 +6,6 @@
 //! the secret key or plaintext.
 pub mod bounds;
 pub mod circuit;
-pub mod mode;
 pub mod sample;
 pub mod template;
 pub mod toml;
