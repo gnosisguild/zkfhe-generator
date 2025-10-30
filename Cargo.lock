@@ -1456,7 +1456,7 @@ dependencies = [
  "num-bigint",
  "zkfhe-crypto-params",
  "zkfhe-greco",
- "zkfhe-pktrbfv",
+ "zkfhe-pk-trbfv",
  "zkfhe-shared",
 ]
 
@@ -1483,7 +1483,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zkfhe-pktrbfv"
+name = "zkfhe-pk-trbfv"
 version = "0.1.0"
 dependencies = [
  "anyhow",

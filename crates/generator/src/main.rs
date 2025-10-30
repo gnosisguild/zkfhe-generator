@@ -178,8 +178,8 @@ fn get_circuit(circuit_name: &str) -> anyhow::Result<Box<dyn Circuit>> {
             let circuit = greco::circuit::GrecoCircuit;
             Ok(Box::new(circuit))
         }
-        "pktrbfv" => {
-            let circuit = pktrbfv::circuit::PkTrBfvCircuit;
+        "pk-trbfv" => {
+            let circuit = pk_trbfv::circuit::PkTrBfvCircuit;
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
@@ -190,7 +190,7 @@ fn get_circuit(circuit_name: &str) -> anyhow::Result<Box<dyn Circuit>> {
 pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<ParameterType> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
-        "pktrbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "pk-trbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -520,17 +520,17 @@ fn generate_main_template(
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;
         }
-        "pktrbfv" => {
-            use pktrbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
+        "pk-trbfv" => {
+            use pk_trbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
 
-            let pktrbfv_template_params = PkTrBfvTemplateParams::new(BaseTemplateParams::new(
+            let pk_trbfv_template_params = PkTrBfvTemplateParams::new(BaseTemplateParams::new(
                 bfv_params.degree(),
                 l,
                 circuit_type,
             ))?;
 
             let template_generator = PkTrBfvMainTemplate;
-            template_generator.generate_main_file(&pktrbfv_template_params, output_dir)?;
+            template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
         }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
@@ -580,7 +580,9 @@ fn main() -> anyhow::Result<()> {
             if circuits {
                 println!("📋 Available circuits:");
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
-                println!("  • pktrbfv   - PkTrBfv circuit implementation (supports trbfv, bfv)");
+                println!(
+                    "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
+                );
             }
             if presets {
                 println!("\n⚙️  Available presets:");
@@ -596,7 +598,9 @@ fn main() -> anyhow::Result<()> {
             if !circuits && !presets {
                 println!("📋 Available circuits:");
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
-                println!("  • pktrbfv   - PkTrBfv circuit implementation (supports trbfv, bfv)");
+                println!(
+                    "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
+                );
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
