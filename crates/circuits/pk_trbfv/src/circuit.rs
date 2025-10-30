@@ -13,11 +13,11 @@ pub struct PkTrBfvCircuit;
 
 impl Circuit for PkTrBfvCircuit {
     fn name(&self) -> &'static str {
-        "pktrbfv"
+        "pk-trbfv"
     }
 
     fn description(&self) -> &'static str {
-        "PkTrBfv zero-knowledge proof circuit for BFV homomorphic public key"
+        "Public Key TRBFV zero-knowledge proof circuit for BFV homomorphic public key"
     }
 
     fn generate_toml(

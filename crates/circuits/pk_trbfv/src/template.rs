@@ -49,7 +49,7 @@ fn main(
 ) {{
     // TODO: Your logic here...
 
-    // Create PkTrBfv circuit instance.
+    // Create Public Key TRBFV circuit instance.
     let pk_trbfv: BfvPublicKeyCircuit<{}, {}> = BfvPublicKeyCircuit::new(
         params,
         a,

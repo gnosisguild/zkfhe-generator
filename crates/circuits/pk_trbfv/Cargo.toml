@@ -1,5 +1,5 @@
 [package]
-name = "zkfhe-pktrbfv"
+name = "zkfhe-pk-trbfv"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
