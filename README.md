@@ -58,8 +58,39 @@ cargo run -p zkfhe-generator -- generate --circuit greco --preset prod --output 
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --main
 ```
 
-<<<<<<< Updated upstream
-=======
+### Public Key TrBfv Circuit (Circuits 1 & 2 - Key Generation)
+
+The `pk_trbfv` circuit proves correct key generation for threshold BFV.
+
+**Circuit 1: trBFV Key Generation**
+```bash
+cargo run -p zkfhe-generator -- generate --circuit pk-trbfv --preset prod --parameter-type trbfv --main --output ./circuit_1
+```
+
+**Circuit 2: BFV Key Generation**
+```bash
+cargo run -p zkfhe-generator -- generate --circuit pk-trbfv --preset prod --parameter-type bfv --main --output ./circuit_2
+```
+
+### Greco Circuit Usage
+
+The Greco circuit proves correct BFV encryption operations. The type of encryption proven depends on the parameter type:
+
+**Circuit 4 - BFV: Encrypt Threshold Shares**
+```bash
+# Encrypt threshold secret key shares for distribution
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --main --output ./circuit_4
+```
+Use case: During threshold setup, Party i encrypts shares for Party j using Party j's public key.
+
+**Circuit 6 - trBFV: Encrypt Messages/Votes**
+```bash
+# Encrypt messages or votes in threshold voting system
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --main --output ./circuit_6
+```
+Use case: Application layer encryption (e.g., e-voting with trBFV parameters).
+
+
 ### Public Key TRBFV Circuit (Circuits 1 & 2 - Key Generation)
 
 The `pk_trbfv` circuit proves correct key generation for threshold BFV.
@@ -93,7 +124,6 @@ cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --paramete
 Use case: Application layer encryption (e.g., e-voting with trBFV parameters).
 
 
->>>>>>> Stashed changes
 ### Generated Output
 
 The generator creates a `Prover.toml` file containing the following. Please, note that these might vary a bit based on the circuit.
@@ -111,8 +141,6 @@ The generator creates a `Prover.toml` file containing the following. Please, not
 
 #### Current Circuit Support
 - **greco**: Supports both trBFV and BFV parameter types
-<<<<<<< Updated upstream
-=======
   - Proves correct BFV **encryption** operations
   - BFV parameter type: Encrypts threshold shares (Circuit 4)
   - trBFV parameter type: Encrypts messages/votes (Circuit 6)
@@ -121,7 +149,6 @@ The generator creates a `Prover.toml` file containing the following. Please, not
 - **pk_trbfv**: Supports both trBFV and BFV parameter types
   - Proves correct **key generation**
   - Covers Circuits 1 and 2 from the threshold BFV protocol
->>>>>>> Stashed changes
 
 ## Architecture
 
@@ -162,11 +189,17 @@ pub trait TomlGenerator {
 
 #### Generate with different parameter types
 ```bash
-# Generate with trBFV parameters (threshold BFV, stricter security)
+# Generate with BFV parameters (threshold shares - Circuit 4)
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --verbose
+
+# Generate with trBFV parameters (messages/votes - Circuit 6)
 cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --verbose
 
-# Generate with BFV parameters (default, simpler conditions)
-cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --verbose
+# Generate with custom output and main.nr template for Circuit 4
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type bfv --output ./circuit_4 --main
+
+# Generate with custom output and main.nr template for Circuit 6
+cargo run -p zkfhe-generator -- generate --circuit greco --preset dev --parameter-type trbfv --output ./circuit_6 --main
 
 # List available options
 cargo run -p zkfhe-generator -- list
