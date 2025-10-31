@@ -153,9 +153,9 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cc"
-version = "1.2.43"
+version = "1.2.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "739eb0f94557554b3ca9a86d2d37bebd49c5e6d0c1d2bda35ba5bdac830befc2"
+checksum = "37521ac7aabe3d13122dc382493e20c9416f299d2ccd5b3a5340a2570cdeb0f3"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -336,7 +336,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fhe"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#fca826375dd6eafda6024c0cec449bffef940756"
+source = "git+https://github.com/gnosisguild/fhe.rs#c4f01896ac4c017e68ae986ba1237f27be353863"
 dependencies = [
  "doc-comment",
  "fhe-math",
@@ -361,7 +361,7 @@ dependencies = [
 [[package]]
 name = "fhe-math"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#fca826375dd6eafda6024c0cec449bffef940756"
+source = "git+https://github.com/gnosisguild/fhe.rs#c4f01896ac4c017e68ae986ba1237f27be353863"
 dependencies = [
  "ethnum",
  "fhe-traits",
@@ -383,7 +383,7 @@ dependencies = [
 [[package]]
 name = "fhe-traits"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#fca826375dd6eafda6024c0cec449bffef940756"
+source = "git+https://github.com/gnosisguild/fhe.rs#c4f01896ac4c017e68ae986ba1237f27be353863"
 dependencies = [
  "rand",
 ]
@@ -391,7 +391,7 @@ dependencies = [
 [[package]]
 name = "fhe-util"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#fca826375dd6eafda6024c0cec449bffef940756"
+source = "git+https://github.com/gnosisguild/fhe.rs#c4f01896ac4c017e68ae986ba1237f27be353863"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint-dig",

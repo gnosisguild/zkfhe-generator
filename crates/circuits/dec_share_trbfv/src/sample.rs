@@ -10,6 +10,8 @@ use std::sync::Arc;
 /// Output structure representing all components involved in a sample decryption share computation.
 /// Useful for validating inputs or simulating end-to-end threshold decryption.
 pub struct DecryptionShareData {
+    /// The number of ciphertexts being decrypted
+    pub num_ciphertexts: usize,
     /// The ciphertext being decrypted
     pub ciphertext: Ciphertext,
     /// The aggregated sum of shares s = ∑ y_i (in RNS representation)
@@ -39,7 +41,7 @@ pub fn generate_sample_decryption_share(
 
     let num_parties = 3;
     let threshold = 1;
-    let num_summed = 10;
+    let num_ciphertexts = 10;
 
     // Create TRBFV instance for share generation
     let trbfv = TRBFV::new(num_parties, threshold, params.clone())
@@ -100,7 +102,7 @@ pub fn generate_sample_decryption_share(
         all_party_sk_shares.push(sk_sss);
 
         let esi_coeffs = trbfv
-            .generate_smudging_error(num_summed, &mut rng)
+            .generate_smudging_error(num_ciphertexts, &mut rng)
             .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
         let esi_poly = share_manager
             .bigints_to_poly(&esi_coeffs)
@@ -162,6 +164,7 @@ pub fn generate_sample_decryption_share(
         .map_err(|e| format!("Failed to compute decryption share: {:?}", e))?;
 
     Ok(DecryptionShareData {
+        num_ciphertexts,
         ciphertext,
         s_rns: sk_poly_sum,
         e_rns: es_poly_sum,
