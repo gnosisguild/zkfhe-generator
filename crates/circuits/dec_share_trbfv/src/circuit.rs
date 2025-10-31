@@ -1,5 +1,6 @@
 use crate::bounds::DecShareTrBfvBounds;
 use crate::sample::generate_sample_decryption_share;
+use crate::toml::DecShareTrBfvTomlGenerator;
 use crate::vectors::DecShareTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
@@ -30,10 +31,12 @@ impl Circuit for DecShareTrBfvCircuit {
             }
         })?;
 
-        let bounds = DecShareTrBfvBounds::compute(bfv_params, decryption_data.num_ciphertexts, 0)
-            .map_err(|e| shared::errors::ZkFheError::Bfv {
-            message: e.to_string(),
-        })?;
+        let (crypto_params, bounds) =
+            DecShareTrBfvBounds::compute(bfv_params, decryption_data.num_ciphertexts, 0).map_err(
+                |e| shared::errors::ZkFheError::Bfv {
+                    message: e.to_string(),
+                },
+            )?;
 
         let vectors = DecShareTrBfvVectors::compute(
             &decryption_data.ciphertext,
@@ -45,8 +48,10 @@ impl Circuit for DecShareTrBfvCircuit {
 
         let vectors_standard = vectors.standard_form();
 
-        // let toml_generator = DecShareTrBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
-        // toml_generator.generate_toml(output_dir)?;
+        // Create TOML generator and generate file
+        let toml_generator =
+            DecShareTrBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        toml_generator.generate_toml(output_dir)?;
 
         Ok(())
     }
