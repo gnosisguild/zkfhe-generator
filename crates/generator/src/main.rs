@@ -436,12 +436,23 @@ fn generate_circuit_params(
         };
 
         // Build parameters for circuit use based on selected parameter type
-        BfvParametersBuilder::new()
-            .set_degree(final_params.d as usize)
-            .set_plaintext_modulus(final_params.k_plain_eff as u64)
-            .set_moduli(final_params.qi_values().as_slice())
-            .build_arc()
-            .unwrap()
+        if parameter_type == ParameterType::Trbfv {
+            BfvParametersBuilder::new()
+                .set_degree(final_params.d as usize)
+                .set_plaintext_modulus(final_params.k_plain_eff as u64)
+                .set_moduli(final_params.qi_values().as_slice())
+                .set_variance(var_b.parse::<usize>().unwrap())
+                .set_error2_variance_str(var_benc.as_str())?
+                .build_arc()
+                .unwrap()
+        } else {
+            BfvParametersBuilder::new()
+                .set_degree(final_params.d as usize)
+                .set_plaintext_modulus(final_params.k_plain_eff as u64)
+                .set_moduli(final_params.qi_values().as_slice())
+                .build_arc()
+                .unwrap()
+        }
     };
 
     println!(
