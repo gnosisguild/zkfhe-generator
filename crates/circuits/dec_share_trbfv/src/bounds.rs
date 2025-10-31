@@ -103,10 +103,10 @@ impl DecShareTrBfvBounds {
             r2_bounds.push(qi_bound.clone());
 
             // r_1j bounds: based on the formula from the notes
-            // r_1j: [((q_j-1)/2 * (BS.N+3) - Be) / q_j , ((q_j-1)/2 * (BS.N+3) + Be) / q_j]
+            // r_1j: [(-(q_j-1)/2 * (BS.N+3) - Be) / q_j , ((q_j-1)/2 * (BS.N+3) + Be) / q_j]
             // Where BS = s_bound, Be = e_bound, N = n (degree)
             let r1_low: BigInt =
-                (&qi_bound * (&s_bound_big * &n + BigInt::from(3)) - &e_bound_big) / &qi_bigint;
+                -(&qi_bound * (&s_bound_big * &n + BigInt::from(3)) - &e_bound_big) / &qi_bigint;
             let r1_up: BigInt =
                 (&qi_bound * (&s_bound_big * &n + BigInt::from(3)) + &e_bound_big) / &qi_bigint;
 
