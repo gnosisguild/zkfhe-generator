@@ -68,7 +68,7 @@ pub fn generate_sample_decryption_share(
     // Aggregate public key shares to get the full public key
     let public_key: PublicKey = pk_shares
         .iter()
-        .map(|s| s.clone())
+        .cloned()
         .aggregate()
         .map_err(|e| format!("Failed to aggregate public key: {:?}", e))?;
 
@@ -90,8 +90,8 @@ pub fn generate_sample_decryption_share(
     let mut all_party_sk_shares = Vec::new(); // [party][modulus][receiver][coefficient]
     let mut all_party_esi_shares = Vec::new(); // [party][modulus][receiver][coefficient]
 
-    for party_idx in 0..num_parties {
-        let sk = &party_secret_keys[party_idx];
+    for party_sk in party_secret_keys.iter().take(num_parties) {
+        let sk = &party_sk;
         let sk_poly = share_manager
             .coeffs_to_poly_level0(sk.coeffs.clone().as_ref())
             .map_err(|e| format!("Failed to convert SK coeffs to poly: {:?}", e))?;

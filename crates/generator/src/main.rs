@@ -187,6 +187,10 @@ fn get_circuit(
             let circuit = pk_trbfv::circuit::PkTrBfvCircuit;
             Ok(Box::new(circuit))
         }
+        "dec-share-trbfv" => {
+            let circuit = dec_share_trbfv::circuit::DecShareTrBfvCircuit;
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -196,6 +200,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
     match circuit_name.to_lowercase().as_str() {
         "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "pk-trbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "dec-share-trbfv" => vec![ParameterType::Trbfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -537,6 +542,18 @@ fn generate_main_template(
             let template_generator = PkTrBfvMainTemplate;
             template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
         }
+        "dec-share-trbfv" => {
+            use dec_share_trbfv::template::{
+                DecShareTrBfvMainTemplate, DecShareTrBfvTemplateParams,
+            };
+
+            let dec_share_trbfv_template_params = DecShareTrBfvTemplateParams::new(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+            )?;
+
+            let template_generator = DecShareTrBfvMainTemplate;
+            template_generator.generate_main_file(&dec_share_trbfv_template_params, output_dir)?;
+        }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }
@@ -587,6 +604,9 @@ fn main() -> anyhow::Result<()> {
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
                 println!(
                     "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
+                );
+                println!(
+                    "  • dec-share-trbfv   - Decryption Share TRBFV circuit implementation (supports trbfv)"
                 );
             }
             if presets {

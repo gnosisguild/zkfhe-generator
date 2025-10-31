@@ -13,7 +13,7 @@ use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
 use shared::errors::ZkFheResult;
-use shared::utils::{to_string_1d_vec, to_string_2d_vec};
+use shared::utils::to_string_2d_vec;
 use std::sync::Arc;
 
 /// Set of vectors for input validation of a decryption share
