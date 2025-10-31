@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 /// Output structure representing all components involved in a sample decryption share computation.
 /// Useful for validating inputs or simulating end-to-end threshold decryption.
+#[derive(Debug, Clone)]
 pub struct DecryptionShareData {
     /// The number of ciphertexts being decrypted
     pub num_ciphertexts: usize,
@@ -126,6 +127,26 @@ pub fn generate_sample_decryption_share(
         // For each party i, party 0 collects the share that party i sent to party 0
         // This is all_party_sk_shares[i][modulus_idx].row(0) (share for party 0)
         for party_idx in 0..honest_parties {
+            // Check bounds before accessing
+            if modulus_idx >= all_party_sk_shares[party_idx].len() {
+                return Err(format!(
+                    "Modulus index {} out of bounds for party {} (has {} moduli)",
+                    modulus_idx,
+                    party_idx,
+                    all_party_sk_shares[party_idx].len()
+                )
+                .into());
+            }
+            if modulus_idx >= all_party_esi_shares[party_idx].len() {
+                return Err(format!(
+                    "Modulus index {} out of bounds for party {} error shares (has {} moduli)",
+                    modulus_idx,
+                    party_idx,
+                    all_party_esi_shares[party_idx].len()
+                )
+                .into());
+            }
+
             // Collect the share that party_idx sent to party 0
             let sk_share_row = all_party_sk_shares[party_idx][modulus_idx].row(0);
             let sk_share_vec = sk_share_row.to_vec();
@@ -145,12 +166,37 @@ pub fn generate_sample_decryption_share(
     }
 
     // Aggregate collected shares to get s and e polynomials
+    // First, sum across parties for each modulus, then restructure to match
+    // the format expected by aggregate_collected_shares: one Array2 of shape [num_moduli, degree]
+    let ctx = params.ctx_at_level(0)?;
+    let num_moduli = sk_sss_collected.len();
+
+    // Sum across parties for each modulus to create [num_moduli, degree] matrices
+    let mut sk_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, params.degree()));
+    let mut es_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, params.degree()));
+
+    for modulus_idx in 0..num_moduli {
+        // Sum across parties (rows) for this modulus
+        for party_idx in 0..sk_sss_collected[modulus_idx].nrows() {
+            for coeff_idx in 0..params.degree() {
+                sk_sum_matrix[[modulus_idx, coeff_idx]] = (sk_sum_matrix[[modulus_idx, coeff_idx]]
+                    + sk_sss_collected[modulus_idx][[party_idx, coeff_idx]])
+                    % ctx.moduli()[modulus_idx];
+                es_sum_matrix[[modulus_idx, coeff_idx]] = (es_sum_matrix[[modulus_idx, coeff_idx]]
+                    + es_sss_collected[modulus_idx][[party_idx, coeff_idx]])
+                    % ctx.moduli()[modulus_idx];
+            }
+        }
+    }
+
+    // Use aggregate_collected_shares with the correctly formatted data
+    // It expects a slice with one Array2 of shape [num_moduli, degree]
     let sk_poly_sum = trbfv
-        .aggregate_collected_shares(&sk_sss_collected)
+        .aggregate_collected_shares(&[sk_sum_matrix])
         .map_err(|e| format!("Failed to aggregate SK shares: {:?}", e))?;
 
     let es_poly_sum = trbfv
-        .aggregate_collected_shares(&es_sss_collected)
+        .aggregate_collected_shares(&[es_sum_matrix])
         .map_err(|e| format!("Failed to aggregate ES shares: {:?}", e))?;
 
     // Compute the decryption share using TRBFV
