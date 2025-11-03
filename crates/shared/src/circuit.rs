@@ -65,10 +65,7 @@ impl CircuitBase {
 /// Macro to generate common circuit struct and constructor
 ///
 /// This macro generates a struct with a `parameter_type` field and a `new` constructor.
-/// Usage:
-/// ```
-/// shared::circuit::circuit_struct!(MyCircuit);
-/// ```
+/// Usage: shared::circuit::circuit_struct!(MyCircuit);
 #[macro_export]
 macro_rules! circuit_struct {
     ($struct_name:ident) => {
