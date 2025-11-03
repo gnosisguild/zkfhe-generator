@@ -179,12 +179,11 @@ fn get_circuit(
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => {
-            let is_threshold = parameter_type == ParameterType::Trbfv;
-            let circuit = greco::circuit::GrecoCircuit::new(is_threshold);
+            let circuit = greco::circuit::GrecoCircuit::new(parameter_type);
             Ok(Box::new(circuit))
         }
         "pk-trbfv" => {
-            let circuit = pk_trbfv::circuit::PkTrBfvCircuit;
+            let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type);
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),

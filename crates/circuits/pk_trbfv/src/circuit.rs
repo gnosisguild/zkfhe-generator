@@ -5,11 +5,12 @@ use crate::toml::PkTrBfvTomlGenerator;
 use crate::vectors::PkTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
+use shared::circuit::ParameterType;
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
 
-pub struct PkTrBfvCircuit;
+shared::circuit_struct!(PkTrBfvCircuit);
 
 impl Circuit for PkTrBfvCircuit {
     fn name(&self) -> &'static str {
@@ -20,6 +21,10 @@ impl Circuit for PkTrBfvCircuit {
         "Public Key TRBFV zero-knowledge proof circuit for BFV homomorphic public key"
     }
 
+    fn parameter_type(&self) -> ParameterType {
+        self.parameter_type
+    }
+
     fn generate_toml(
         &self,
         bfv_params: &Arc<BfvParameters>,
@@ -27,11 +32,12 @@ impl Circuit for PkTrBfvCircuit {
     ) -> Result<(), shared::errors::ZkFheError> {
         // Generate bounds and vectors directly
         let (crypto_params, bounds) = PkTrBfvBounds::compute(bfv_params, 0)?;
-        let encryption_data = generate_sample_encryption(bfv_params).map_err(|e| {
-            shared::errors::ZkFheError::Bfv {
-                message: e.to_string(),
-            }
-        })?;
+        let encryption_data =
+            generate_sample_encryption(bfv_params, self.parameter_type).map_err(|e| {
+                shared::errors::ZkFheError::Bfv {
+                    message: e.to_string(),
+                }
+            })?;
 
         let vectors: PkTrBfvVectors = PkTrBfvVectors::compute(
             &encryption_data.a,
