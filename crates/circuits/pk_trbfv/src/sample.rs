@@ -58,15 +58,6 @@ pub fn generate_sample_encryption(
         (PublicKeyOrPoly::Full(public_key), a, sk_rns, e_rns)
     };
 
-    // crp is a
-    // PublicKeyShare returns p0_share the first item of PublicKey. If we extract this we get a polynomial
-    // which is the first element of the public key.
-    // We need a new_extended also for PublicKeyShare
-    // let (pk0, pk1, a, sk_rns, e_rns) = PublicKeyShare::new_extended(&secret_key, &mut rng)?;
-
-    // Perform encryption and extract intermediate values (a, sk, e)
-    // let (public_key, a, sk_rns, e_rns) = PublicKey::new_extended(&secret_key, &mut rng)?;
-
     Ok(EncryptionData {
         public_key,
         a,
