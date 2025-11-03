@@ -45,6 +45,47 @@ impl ParameterType {
     }
 }
 
+/// Base configuration for all circuit implementations
+///
+/// This struct holds the common configuration that all circuits share.
+/// It can be embedded in circuit structs to avoid duplication.
+#[derive(Debug, Clone)]
+pub struct CircuitBase {
+    /// The parameter type this circuit is configured with
+    pub parameter_type: ParameterType,
+}
+
+impl CircuitBase {
+    /// Create a new CircuitBase with the specified parameter type
+    pub fn new(parameter_type: ParameterType) -> Self {
+        CircuitBase { parameter_type }
+    }
+}
+
+/// Macro to generate common circuit struct and constructor
+///
+/// This macro generates a struct with a `parameter_type` field and a `new` constructor.
+/// Usage:
+/// ```
+/// shared::circuit::circuit_struct!(MyCircuit);
+/// ```
+#[macro_export]
+macro_rules! circuit_struct {
+    ($struct_name:ident) => {
+        pub struct $struct_name {
+            /// The parameter type this circuit is configured with
+            pub parameter_type: ParameterType,
+        }
+
+        impl $struct_name {
+            /// Create a new $struct_name with the specified parameter type
+            pub fn new(parameter_type: ParameterType) -> Self {
+                $struct_name { parameter_type }
+            }
+        }
+    };
+}
+
 /// Circuit trait that all circuit implementations must implement
 ///
 /// This trait defines the contract that every zkFHE circuit implementation
@@ -62,6 +103,13 @@ pub trait Circuit {
     /// This should provide a brief description of what the circuit does
     /// and its intended use case.
     fn description(&self) -> &'static str;
+
+    /// Get the parameter type this circuit is configured with
+    ///
+    /// This method returns the parameter type (BFV or trBFV) that this
+    /// circuit instance is configured to use. This allows circuits to
+    /// discriminate behavior based on the parameter type.
+    fn parameter_type(&self) -> ParameterType;
 
     /// Generate TOML file for the circuit
     ///

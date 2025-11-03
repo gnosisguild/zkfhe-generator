@@ -1,5 +1,5 @@
 use bigint_poly::*;
-use fhe::bfv::{BfvParameters, PublicKey};
+use fhe::bfv::BfvParameters;
 use fhe_math::rq::{Poly, Representation};
 use itertools::izip;
 use num_bigint::BigInt;
@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 
+use crate::sample::PublicKeyOrPoly;
 use shared::errors::ZkFheResult;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 
@@ -50,7 +51,7 @@ impl PkTrBfvVectors {
         a_rns: &Poly,
         eek_rns: &Poly,
         sk_rns: &Poly,
-        pk: &PublicKey,
+        pk: &PublicKeyOrPoly,
         params: &Arc<BfvParameters>,
     ) -> ZkFheResult<PkTrBfvVectors> {
         let ctx = params.ctx_at_level(0)?;
@@ -96,8 +97,17 @@ impl PkTrBfvVectors {
         };
 
         // Extract and convert public key polynomials
-        let mut pk0: Poly = pk.c.c[0].clone();
-        let mut pk1: Poly = pk.c.c[1].clone();
+        let (mut pk0, mut pk1): (Poly, Poly) = match pk {
+            PublicKeyOrPoly::Full(public_key) => {
+                let pk0 = public_key.c.c[0].clone();
+                let pk1 = public_key.c.c[1].clone();
+                (pk0, pk1)
+            }
+            PublicKeyOrPoly::Share(pk0_share) => {
+                // For threshold BFV, pk0 is the share and pk1 = a (since pk1 = a in public key construction)
+                (pk0_share.clone(), a_rns.clone())
+            }
+        };
         pk0.change_representation(Representation::PowerBasis);
         pk1.change_representation(Representation::PowerBasis);
 
@@ -355,9 +365,13 @@ mod tests {
 
         // Use extended encryption to get the polynomial data
         let mut rng = StdRng::seed_from_u64(0);
+        use fhe::bfv::PublicKey;
         let (pk, a, sk_rns, eek_rns) = PublicKey::new_extended(&sk, &mut rng).unwrap();
         // Compute vectors
-        let vecs = PkTrBfvVectors::compute(&a, &eek_rns, &sk_rns, &pk, &params).unwrap();
+        use crate::sample::PublicKeyOrPoly;
+        let vecs =
+            PkTrBfvVectors::compute(&a, &eek_rns, &sk_rns, &PublicKeyOrPoly::Full(pk), &params)
+                .unwrap();
 
         let json = vecs.to_json();
 
