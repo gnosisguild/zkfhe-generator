@@ -4,11 +4,11 @@ use crate::toml::DecShareTrBfvTomlGenerator;
 use crate::vectors::DecShareTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
+use shared::circuit::ParameterType;
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
-
-pub struct DecShareTrBfvCircuit;
+shared::circuit_struct!(DecShareTrBfvCircuit);
 
 impl Circuit for DecShareTrBfvCircuit {
     fn name(&self) -> &'static str {
@@ -17,6 +17,10 @@ impl Circuit for DecShareTrBfvCircuit {
 
     fn description(&self) -> &'static str {
         "Decryption share TRBFV zero-knowledge proof circuit"
+    }
+
+    fn parameter_type(&self) -> ParameterType {
+        self.parameter_type
     }
 
     fn generate_toml(

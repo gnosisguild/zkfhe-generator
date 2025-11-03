@@ -3,6 +3,7 @@ use fhe::trbfv::{ShareManager, TRBFV};
 use fhe_math::rq::Poly;
 use fhe_traits::FheEncoder;
 use rand::{SeedableRng, rngs::StdRng};
+use shared::circuit::ParameterType;
 use std::sync::Arc;
 
 /// Data from a sample BFV encryption
@@ -37,7 +38,7 @@ pub struct EncryptionData {
 /// * Circuit 5 (decryption proof) uses a custom circuit
 pub fn generate_sample_encryption(
     params: &Arc<BfvParameters>,
-    is_threshold: bool,
+    parameter_type: ParameterType,
 ) -> Result<EncryptionData, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -45,7 +46,7 @@ pub fn generate_sample_encryption(
     let sk = SecretKey::random(params, &mut rng);
     let pk = PublicKey::new(&sk, &mut rng);
 
-    let pt = if is_threshold {
+    let pt = if parameter_type == ParameterType::Trbfv {
         // trBFV: Encrypt a message/vote (Circuit 6)
         // Create a sample plaintext with some random values, in here we are assigning 3 to all the
         // coefficients
