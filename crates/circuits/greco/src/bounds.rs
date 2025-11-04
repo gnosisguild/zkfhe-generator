@@ -6,6 +6,7 @@
 use bigint_poly::{reduce_and_center_scalar, reduce_scalar};
 use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
+use num_bigint::ToBigInt;
 use num_traits::{Signed, ToPrimitive};
 use shared::constants::get_zkp_modulus;
 use shared::errors::ZkFheResult;
@@ -58,15 +59,16 @@ impl GrecoBounds {
         // Reduce q_mod_t to standard form for Noir compatibility
         let q_mod_t_mod_p = reduce_scalar(&q_mod_t, &p);
 
-        // Gaussian bound for error polynomials (6σ)
-        let gauss_bound = BigInt::from(
-            f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
-                .to_i64()
-                .ok_or_else(|| "Failed to convert variance to i64".to_string())?,
-        );
+        // CBD bound
+        let cbd_bound = (params.variance() * 2) as u64;
+        // Uniform bound
+        let uniform_bound = (params.variance() as f64 * 3.0)
+            .sqrt()
+            .to_bigint()
+            .ok_or_else(|| "Failed to convert uniform bound to BigInt".to_string())?;
 
-        let u_bound = gauss_bound.clone();
-        let e_bound = gauss_bound.clone();
+        let u_bound = cbd_bound;
+        let e_bound = cbd_bound;
 
         // Note we have two different variables for lower bound and upper bound, as in the case
         // where the plaintext modulus is even, the lower bound cannot be calculated by just
@@ -112,10 +114,10 @@ impl GrecoBounds {
 
             // R1 bounds (more complex calculation)
             let r1_low: BigInt = (&ptxt_low_bound * k0qi.abs()
-                - &((&n * &gauss_bound + BigInt::from(2)) * &qi_bound + &gauss_bound))
+                - &((&n * &uniform_bound + BigInt::from(2)) * &qi_bound + &uniform_bound))
                 / &qi_bigint;
             let r1_up: BigInt = (&ptxt_up_bound * k0qi.abs()
-                + ((&n * &gauss_bound + BigInt::from(2)) * &qi_bound + &gauss_bound))
+                + ((&n * &uniform_bound + BigInt::from(2)) * &qi_bound + &uniform_bound))
                 / &qi_bigint;
 
             r1_low_bounds.push(r1_low.clone());
@@ -123,7 +125,7 @@ impl GrecoBounds {
 
             // P1 and P2 bounds
             let p1_bound: BigInt =
-                ((&n * &gauss_bound + BigInt::from(2)) * &qi_bound + &gauss_bound) / &qi_bigint;
+                ((&n * &uniform_bound + BigInt::from(2)) * &qi_bound + &uniform_bound) / &qi_bigint;
             p1_bounds.push(p1_bound.clone());
             p2_bounds.push(qi_bound.clone());
         }
