@@ -180,11 +180,13 @@ impl GrecoVectors {
         let ct1_coeffs = ct1.coefficients();
         let pk0_coeffs = pk0.coefficients();
         let pk1_coeffs = pk1.coefficients();
+        let e1_rns_coeffs = e1_rns_copy.coefficients();
 
         let ct0_coeffs_rows = ct0_coeffs.rows();
         let ct1_coeffs_rows = ct1_coeffs.rows();
         let pk0_coeffs_rows = pk0_coeffs.rows();
         let pk1_coeffs_rows = pk1_coeffs.rows();
+        let e1_rns_coeffs_rows = e1_rns_coeffs.rows();
 
         // Perform the main computation logic
         let results: Vec<_> = izip!(
@@ -193,11 +195,12 @@ impl GrecoVectors {
             ct1_coeffs_rows,
             pk0_coeffs_rows,
             pk1_coeffs_rows,
+            e1_rns_coeffs_rows,
         )
         .enumerate()
         .par_bridge()
         .map(
-            |(i, (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs))| {
+            |(i, (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs, e1_rns_coeffs_row))| {
                 // --------------------------------------------------- ct0i ---------------------------------------------------
 
                 // Convert to vectors of bigint, center, and reverse order.
@@ -216,6 +219,17 @@ impl GrecoVectors {
                 reduce_and_center_coefficients_mut(&mut ct1i, &qi_bigint);
                 reduce_and_center_coefficients_mut(&mut pk0i, &qi_bigint);
                 reduce_and_center_coefficients_mut(&mut pk1i, &qi_bigint);
+
+                // Extract e1i for this modulus (needed when error2_variance is set)
+                let e1i: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(e1_rns_coeffs_row.as_slice().unwrap_or_else(|| {
+                        panic!("Cannot get e1 coefficients slice for modulus {}", i);
+                    }))
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
 
                 // k0qi = -t^{-1} mod qi
                 let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
@@ -321,7 +335,7 @@ impl GrecoVectors {
                     let pk1i_times_u = pk1i_poly.mul(&u_poly);
                     assert_eq!((pk1i_times_u.coefficients().len() as u64) - 1, 2 * (n - 1));
 
-                    let e1_poly = Polynomial::new(e1.clone());
+                    let e1_poly = Polynomial::new(e1i.clone());
                     pk1i_times_u.add(&e1_poly).coefficients().to_vec()
                 };
                 assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (n - 1));
