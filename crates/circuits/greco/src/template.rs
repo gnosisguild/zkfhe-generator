@@ -15,7 +15,8 @@ pub struct GrecoBoundsData {
     pub pk_bounds: Vec<String>,
     pub ct_bounds: Vec<String>,
     pub u_bound: String,
-    pub e_bound: String,
+    pub e0_bound: String,
+    pub e1_bound: String,
     pub k1_low_bound: String,
     pub k1_up_bound: String,
     pub r1_low_bounds: Vec<String>,
@@ -39,8 +40,10 @@ pub struct GrecoTemplateParams {
     pub bit_ct: u32,
     /// Bit width for u bounds
     pub bit_u: u32,
-    /// Bit width for error bounds
-    pub bit_e: u32,
+    /// Bit width for e0 bounds
+    pub bit_e0: u32,
+    /// Bit width for e1 bounds
+    pub bit_e1: u32,
     /// Bit width for k1 bounds
     pub bit_k: u32,
     /// Bit width for r1 bounds
@@ -79,7 +82,8 @@ impl GrecoTemplateParams {
         let bit_pk = Self::calculate_bit_width(&bounds.pk_bounds[0])?;
         let bit_ct = Self::calculate_bit_width(&bounds.ct_bounds[0])?;
         let bit_u = Self::calculate_bit_width(&bounds.u_bound)?;
-        let bit_e = Self::calculate_bit_width(&bounds.e_bound)?;
+        let bit_e0 = Self::calculate_bit_width(&bounds.e0_bound)?;
+        let bit_e1 = Self::calculate_bit_width(&bounds.e1_bound)?;
 
         // For k1, use the maximum of low and up bounds
         let k1_low = Self::calculate_bit_width(&bounds.k1_low_bound)?;
@@ -119,7 +123,8 @@ impl GrecoTemplateParams {
             bit_pk,
             bit_ct,
             bit_u,
-            bit_e,
+            bit_e0,
+            bit_e1,
             bit_k,
             bit_r1,
             bit_r2,
@@ -150,7 +155,7 @@ fn main(
     ct1is: [Polynomial<{}>; {}],
     u: Polynomial<{}>,
     e0: Polynomial<{}>,
-    e1: Polynomial<{}>,
+    e1is: [Polynomial<{}>; {}],
     k1: Polynomial<{}>,
     r1is: [Polynomial<{}>; {}],
     r2is: [Polynomial<{}>; {}],
@@ -161,7 +166,7 @@ fn main(
     // TODO: Your logic here...
 
     // Create Greco circuit instance.
-    let greco: Greco<{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}> = Greco::new(
+    let greco: Greco<{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}> = Greco::new(
         params,
         pk0is,
         pk1is,
@@ -169,14 +174,14 @@ fn main(
         ct1is,
         u,
         e0,
-        e1,
+        e1is,
         k1,
         r1is,
         r2is,
         p1is,
         p2is,
     );
-
+    
     // TODO: Your logic here...
     }}"#,
             import_example,
@@ -191,8 +196,9 @@ fn main(
             params.base.n,
             params.base.l,
             params.base.n,
+            params.base.l,
             params.base.n,
-            params.base.n,
+            params.base.l,
             params.base.n,
             2 * params.base.n - 1,
             params.base.l,
@@ -207,7 +213,8 @@ fn main(
             params.bit_pk,
             params.bit_ct,
             params.bit_u,
-            params.bit_e,
+            params.bit_e0,
+            params.bit_e1,
             params.bit_k,
             params.bit_r1,
             params.bit_r2,

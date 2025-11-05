@@ -43,9 +43,9 @@ struct ProverTomlFormat {
     r2is: Vec<serde_json::Value>,
     p1is: Vec<serde_json::Value>,
     p2is: Vec<serde_json::Value>,
-    u: serde_json::Value,
     e0: serde_json::Value,
-    e1: serde_json::Value,
+    e1is: Vec<serde_json::Value>,
+    u: serde_json::Value,
     k1: serde_json::Value,
 }
 
@@ -64,7 +64,8 @@ impl TomlGenerator for GrecoTomlGenerator {
 
         // Add bounds
         let bounds_json = serde_json::json!({
-            "e_bound": self.bounds.e_bound.to_string(),
+            "e0_bound": self.bounds.e0_bound.to_string(),
+            "e1_bound": self.bounds.e1_bound.to_string(),
             "u_bound": self.bounds.u_bound.to_string(),
             "k1_low_bound": self.bounds.k1_low_bound.to_string(),
             "k1_up_bound": self.bounds.k1_up_bound.to_string(),
@@ -159,14 +160,21 @@ impl TomlGenerator for GrecoTomlGenerator {
                     })
                 })
                 .collect(),
-            u: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.u)
-            }),
+            e1is: self
+                .vectors
+                .e1is
+                .iter()
+                .map(|v| {
+                    serde_json::json!({
+                        "coefficients": to_string_1d_vec(v)
+                    })
+                })
+                .collect(),
             e0: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.e0)
             }),
-            e1: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.e1)
+            u: serde_json::json!({
+                "coefficients": to_string_1d_vec(&self.vectors.u)
             }),
             k1: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.k1)
@@ -210,7 +218,7 @@ mod tests {
 
         // Read and verify the TOML content
         let content = std::fs::read_to_string(&output_path).unwrap();
-        println!("Generated TOML:\n{}", content);
+
         // Check that the file contains the expected sections
         assert!(content.contains("params.crypto"));
         assert!(content.contains("params.bounds"));
@@ -226,7 +234,7 @@ mod tests {
         assert!(content.contains("p2is"));
         assert!(content.contains("u"));
         assert!(content.contains("e0"));
-        assert!(content.contains("e1"));
+        assert!(content.contains("e1is"));
         assert!(content.contains("k1"));
         let toml_string = generator.to_toml_string().unwrap();
 
@@ -241,7 +249,7 @@ mod tests {
         assert!(toml_string.contains("[[p2is]]"));
         assert!(toml_string.contains("[u]"));
         assert!(toml_string.contains("[e0]"));
-        assert!(toml_string.contains("[e1]"));
+        assert!(toml_string.contains("[[e1is]]"));
         assert!(toml_string.contains("[k1]"));
         assert!(toml_string.contains("[params.crypto]"));
         assert!(toml_string.contains("[params.bounds]"));

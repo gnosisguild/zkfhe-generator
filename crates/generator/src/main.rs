@@ -429,13 +429,23 @@ fn generate_circuit_params(
             }
         };
 
-        // Build parameters for circuit use based on selected parameter type
-        BfvParametersBuilder::new()
-            .set_degree(final_params.d as usize)
-            .set_plaintext_modulus(final_params.k_plain_eff as u64)
-            .set_moduli(final_params.qi_values().as_slice())
-            .build_arc()
-            .unwrap()
+        if parameter_type == ParameterType::Trbfv {
+            BfvParametersBuilder::new()
+                .set_degree(final_params.d as usize)
+                .set_plaintext_modulus(final_params.k_plain_eff as u64)
+                .set_moduli(final_params.qi_values().as_slice())
+                .set_variance(var_b.parse::<usize>().unwrap())
+                .set_error2_variance_str(var_benc.as_str())?
+                .build_arc()
+                .unwrap()
+        } else {
+            BfvParametersBuilder::new()
+                .set_degree(final_params.d as usize)
+                .set_plaintext_modulus(final_params.k_plain_eff as u64)
+                .set_moduli(final_params.qi_values().as_slice())
+                .build_arc()
+                .unwrap()
+        }
     };
 
     println!(
@@ -503,7 +513,8 @@ fn generate_main_template(
                 pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
                 ct_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(), // Same as pk_bounds
                 u_bound: bounds.u_bound.to_string(),
-                e_bound: bounds.e_bound.to_string(),
+                e0_bound: bounds.e0_bound.to_string(),
+                e1_bound: bounds.e1_bound.to_string(),
                 k1_low_bound: bounds.k1_low_bound.to_string(),
                 k1_up_bound: bounds.k1_up_bound.to_string(),
                 r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
