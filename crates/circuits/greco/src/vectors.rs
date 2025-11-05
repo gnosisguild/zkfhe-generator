@@ -32,8 +32,9 @@ pub struct GrecoVectors {
     pub p1is: Vec<Vec<BigInt>>,
     pub p2is: Vec<Vec<BigInt>>,
     pub k0is: Vec<BigInt>,
-    pub e0: Vec<BigInt>,
     pub e1is: Vec<Vec<BigInt>>,
+    pub e0: Vec<BigInt>,
+    pub e1: Vec<BigInt>,
     pub u: Vec<BigInt>,
     pub k1: Vec<BigInt>,
 }
@@ -60,6 +61,7 @@ impl GrecoVectors {
             p1is: vec![vec![BigInt::zero(); 2 * (degree - 1) + 1]; num_moduli],
             p2is: vec![vec![BigInt::zero(); degree - 1]; num_moduli],
             e0: vec![BigInt::zero(); degree],
+            e1: vec![BigInt::zero(); degree],
             e1is: vec![vec![BigInt::zero(); degree]; num_moduli],
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
@@ -75,14 +77,17 @@ impl GrecoVectors {
     /// * `pt` - Plaintext from fhe.rs.
     /// * `u_rns` - Private polynomial used in ciphertext sampled from secret key distribution.
     /// * `e0_rns` - Error polynomial used in ciphertext sampled from error distribution.
-    /// * `e1_rns` - Error polynomioal used in cihpertext sampled from error distribution.
+    /// * `e1_rns` - Error polynomial used in cihpertext sampled from error distribution.
+    /// * `e1` - Error polynomial used in cihpertext sampled from error distribution in mod Q.
     /// * `ct` - Ciphertext from fhe.rs.
     /// * `pk` - Public Key from fhe.rs.
+    #[allow(clippy::too_many_arguments)]
     pub fn compute(
         pt: &Plaintext,
         u_rns: &Poly,
         e0_rns: &Poly,
         e1_rns: &Poly,
+        e1: &Poly,
         ct: &Ciphertext,
         pk: &PublicKey,
         params: &Arc<BfvParameters>,
@@ -104,10 +109,12 @@ impl GrecoVectors {
         let mut u_rns_copy = u_rns.clone();
         let mut e0_rns_copy = e0_rns.clone();
         let mut e1_rns_copy = e1_rns.clone();
+        let mut e1_poly_copy = e1.clone();
 
         u_rns_copy.change_representation(Representation::PowerBasis);
         e0_rns_copy.change_representation(Representation::PowerBasis);
         e1_rns_copy.change_representation(Representation::PowerBasis);
+        e1_poly_copy.change_representation(Representation::PowerBasis);
 
         // Extract coefficients using the current API
         let u: Vec<BigInt> = unsafe {
@@ -129,6 +136,21 @@ impl GrecoVectors {
             ctx.moduli_operators()[0]
                 .center_vec_vt(
                     e0_rns_copy
+                        .coefficients()
+                        .row(0)
+                        .as_slice()
+                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
+                )
+                .iter()
+                .rev()
+                .map(|&x| BigInt::from(x))
+                .collect()
+        };
+
+        let e1_vec: Vec<BigInt> = unsafe {
+            ctx.moduli_operators()[0]
+                .center_vec_vt(
+                    e1_poly_copy
                         .coefficients()
                         .row(0)
                         .as_slice()
@@ -166,12 +188,14 @@ impl GrecoVectors {
         let pk0_coeffs = pk0.coefficients();
         let pk1_coeffs = pk1.coefficients();
         let e1_coeffs = e1_rns_copy.coefficients();
+        let e1_poly_coeffs = e1_poly_copy.coefficients();
 
         let ct0_coeffs_rows = ct0_coeffs.rows();
         let ct1_coeffs_rows = ct1_coeffs.rows();
         let pk0_coeffs_rows = pk0_coeffs.rows();
         let pk1_coeffs_rows = pk1_coeffs.rows();
         let e1_coeffs_rows = e1_coeffs.rows();
+        let e1_poly_coeffs_rows = e1_poly_coeffs.rows();
 
         // Perform the main computation logic
         let results: Vec<_> = izip!(
@@ -181,11 +205,15 @@ impl GrecoVectors {
             pk0_coeffs_rows,
             pk1_coeffs_rows,
             e1_coeffs_rows,
+            e1_poly_coeffs_rows,
         )
         .enumerate()
         .par_bridge()
         .map(
-            |(i, (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs, e1_coeffs))| {
+            |(
+                i,
+                (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs, e1_coeffs, e1_poly_coeffs),
+            )| {
                 // --------------------------------------------------- ct0i ---------------------------------------------------
 
                 // Convert to vectors of bigint, center, and reverse order.
@@ -217,6 +245,23 @@ impl GrecoVectors {
                     .map(|&x| BigInt::from(x))
                     .collect()
                 };
+
+                // Explicitly check e1is[i] == e1 mod qi (after centering and reversal)
+                let e1i_from_poly: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(
+                        e1_poly_coeffs
+                            .as_slice()
+                            .ok_or_else(|| "Cannot center coefficients.".to_string())
+                            .unwrap(),
+                    )
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
+
+                // Check that e1i equals e1 reduced modulo q_i (from e1_poly)
+                assert_eq!(e1i, e1i_from_poly);
 
                 // k0qi = -t^{-1} mod qi
                 let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
@@ -422,6 +467,7 @@ impl GrecoVectors {
         res.u = u;
         res.k1 = k1;
         res.e0 = e0;
+        res.e1 = e1_vec;
         Ok(res)
     }
 }
@@ -438,8 +484,9 @@ impl GrecoVectors {
             r2is: reduce_coefficients_2d(&self.r2is, zkp_modulus),
             p1is: reduce_coefficients_2d(&self.p1is, zkp_modulus),
             p2is: reduce_coefficients_2d(&self.p2is, zkp_modulus),
-            e0: reduce_coefficients(&self.e0, zkp_modulus),
             e1is: reduce_coefficients_2d(&self.e1is, zkp_modulus),
+            e0: reduce_coefficients(&self.e0, zkp_modulus),
+            e1: reduce_coefficients(&self.e1, zkp_modulus),
             k0is: self.k0is.clone(),
             u: reduce_coefficients(&self.u, zkp_modulus),
             k1: reduce_coefficients(&self.k1, zkp_modulus),
@@ -450,9 +497,10 @@ impl GrecoVectors {
         json!({
             "pk0is": to_string_2d_vec(&self.pk0is),
             "pk1is": to_string_2d_vec(&self.pk1is),
+            "e1is": to_string_2d_vec(&self.e1is),
             "u": to_string_1d_vec(&self.u),
             "e0": to_string_1d_vec(&self.e0),
-            "e1is": to_string_2d_vec(&self.e1is),
+            "e1": to_string_1d_vec(&self.e1),
             "k1": to_string_1d_vec(&self.k1),
             "r2is": to_string_2d_vec(&self.r2is),
             "r1is": to_string_2d_vec(&self.r1is),
@@ -507,14 +555,15 @@ mod tests {
 
         // Compute vectors
         let vecs =
-            GrecoVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params).unwrap();
+            GrecoVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &e1_rns, &_ct, &pk, &params)
+                .unwrap();
 
         let json = vecs.to_json();
 
         // Check all required fields are present
         let required_fields = [
-            "pk0is", "pk1is", "u", "e0", "e1is", "k1", "r2is", "r1is", "p2is", "p1is", "k0is",
-            "ct0is", "ct1is",
+            "pk0is", "pk1is", "u", "e0", "e1", "e1is", "k1", "r2is", "r1is", "p2is", "p1is",
+            "k0is", "ct0is", "ct1is",
         ];
 
         for field in required_fields.iter() {

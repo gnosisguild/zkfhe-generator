@@ -1,11 +1,14 @@
 use fhe::bfv::{BfvParameters, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey};
 use fhe::trbfv::{ShareManager, TRBFV};
 use fhe_math::rq::Poly;
+use fhe_math::rq::Representation;
 use fhe_traits::FheEncoder;
+use num_bigint::BigInt;
+use num_bigint::BigUint;
+use num_bigint::ToBigInt;
 use rand::{SeedableRng, rngs::StdRng};
 use shared::circuit::ParameterType;
 use std::sync::Arc;
-
 /// Data from a sample BFV encryption
 pub struct EncryptionData {
     pub plaintext: Plaintext,
@@ -15,6 +18,7 @@ pub struct EncryptionData {
     pub u_rns: Poly,
     pub e0_rns: Poly,
     pub e1_rns: Poly,
+    pub e1: Poly,
 }
 
 /// Generate a sample encryption with all the data needed for input validation
@@ -85,6 +89,19 @@ pub fn generate_sample_encryption(
     // Use extended encryption to get the polynomial data
     let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng)?;
 
+    // Reconstruct e1_rns in mod Q.
+    let mut e1_power = e1_rns.clone();
+    e1_power.change_representation(Representation::PowerBasis);
+
+    // This conversion internally calls lift for each coefficient
+    // to make them in mod Q.
+    let e1_mod_q: Vec<BigUint> = Vec::<BigUint>::from(&e1_power);
+
+    // Then, make it a polynomial in mod Q.
+    let ctx = params.ctx()[0].clone();
+    let e1_bigints: Vec<BigInt> = e1_mod_q.iter().map(|c| c.to_bigint().unwrap()).collect();
+    let e1_poly = (*Poly::from_bigints(&e1_bigints, &ctx)?).clone();
+
     Ok(EncryptionData {
         plaintext: pt,
         ciphertext: _ct,
@@ -93,5 +110,6 @@ pub fn generate_sample_encryption(
         u_rns,
         e0_rns,
         e1_rns,
+        e1: e1_poly,
     })
 }

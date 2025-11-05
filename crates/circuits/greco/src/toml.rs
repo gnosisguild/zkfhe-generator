@@ -43,8 +43,9 @@ struct ProverTomlFormat {
     r2is: Vec<serde_json::Value>,
     p1is: Vec<serde_json::Value>,
     p2is: Vec<serde_json::Value>,
-    e0: serde_json::Value,
     e1is: Vec<serde_json::Value>,
+    e0: serde_json::Value,
+    e1: serde_json::Value,
     u: serde_json::Value,
     k1: serde_json::Value,
 }
@@ -173,6 +174,9 @@ impl TomlGenerator for GrecoTomlGenerator {
             e0: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.e0)
             }),
+            e1: serde_json::json!({
+                "coefficients": to_string_1d_vec(&self.vectors.e1)
+            }),
             u: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.u)
             }),
@@ -232,9 +236,10 @@ mod tests {
         assert!(content.contains("r2is"));
         assert!(content.contains("p1is"));
         assert!(content.contains("p2is"));
+        assert!(content.contains("e1is"));
         assert!(content.contains("u"));
         assert!(content.contains("e0"));
-        assert!(content.contains("e1is"));
+        assert!(content.contains("e1"));
         assert!(content.contains("k1"));
         let toml_string = generator.to_toml_string().unwrap();
 
@@ -247,9 +252,10 @@ mod tests {
         assert!(toml_string.contains("[[r2is]]"));
         assert!(toml_string.contains("[[p1is]]"));
         assert!(toml_string.contains("[[p2is]]"));
+        assert!(toml_string.contains("[[e1is]]"));
         assert!(toml_string.contains("[u]"));
         assert!(toml_string.contains("[e0]"));
-        assert!(toml_string.contains("[[e1is]]"));
+        assert!(toml_string.contains("[e1]"));
         assert!(toml_string.contains("[k1]"));
         assert!(toml_string.contains("[params.crypto]"));
         assert!(toml_string.contains("[params.bounds]"));
