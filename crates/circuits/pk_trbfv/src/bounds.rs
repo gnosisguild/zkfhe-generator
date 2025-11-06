@@ -16,7 +16,7 @@ pub struct PkTrBfvBounds {
     // Bounds for different polynomial types
     pub eek_bound: u64,
     pub sk_bound: u64,
-    pub r1_low_bounds: Vec<i64>,
+    pub r1_low_bounds: Vec<u64>,
     pub r1_up_bounds: Vec<u64>,
     pub r2_bounds: Vec<u64>,
 }
@@ -57,17 +57,16 @@ impl PkTrBfvBounds {
             r2_bounds[i] = qi_bound.clone();
 
             // Compute asymmetric range for r1 bounds per modulus
-            r1_low_bounds[i] =
-                (-((&n * &gauss_bound + 2u32) * &qi_bound + &gauss_bound)) / &qi_bigint;
             r1_up_bounds[i] = ((&n * &gauss_bound + 2u32) * &qi_bound + &gauss_bound) / &qi_bigint;
+            r1_low_bounds[i] = ((&n * &gauss_bound + 2u32) * &qi_bound + &gauss_bound) / &qi_bigint;
         }
 
         // Convert bounds to primitive types for serialization into Noir or test fixtures
         let sk_bound_u64 = sk_bound.to_u64().unwrap_or(19);
         let eek_bound_u64 = eek_bound.to_u64().unwrap_or(19);
-        let r1_low_bounds_i64 = r1_low_bounds
+        let r1_low_bounds_u64 = r1_low_bounds
             .iter()
-            .map(|b| b.to_i64().unwrap_or(0))
+            .map(|b| b.to_u64().unwrap_or(0))
             .collect();
         let r1_up_bounds_u64 = r1_up_bounds
             .iter()
@@ -80,7 +79,7 @@ impl PkTrBfvBounds {
         let bounds = PkTrBfvBounds {
             eek_bound: eek_bound_u64,
             sk_bound: sk_bound_u64,
-            r1_low_bounds: r1_low_bounds_i64,
+            r1_low_bounds: r1_low_bounds_u64,
             r1_up_bounds: r1_up_bounds_u64,
             r2_bounds: r2_bounds_u64,
         };

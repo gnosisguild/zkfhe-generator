@@ -25,10 +25,10 @@ pub struct GrecoBounds {
     // Bounds for different polynomial types
     pub u_bound: u64,
     pub e_bound: u64,
-    pub k1_low_bound: i64,
+    pub k1_low_bound: u64,
     pub k1_up_bound: u64,
     pub pk_bounds: Vec<u64>,
-    pub r1_low_bounds: Vec<i64>,
+    pub r1_low_bounds: Vec<u64>,
     pub r1_up_bounds: Vec<u64>,
     pub r2_bounds: Vec<u64>,
     pub p1_bounds: Vec<u64>,
@@ -79,7 +79,7 @@ impl GrecoBounds {
             ((-&(t.clone() - BigInt::from(1))) / BigInt::from(2)) - BigInt::from(1)
         };
 
-        let k1_low_bound = ptxt_low_bound.clone();
+        let k1_low_bound: BigInt = -1 * ptxt_low_bound.clone();
         let k1_up_bound = ptxt_up_bound.clone();
 
         // Calculate bounds for each CRT basis
@@ -118,7 +118,7 @@ impl GrecoBounds {
                 + ((&n * &gauss_bound + BigInt::from(2)) * &qi_bound + &gauss_bound))
                 / &qi_bigint;
 
-            r1_low_bounds.push(r1_low.clone());
+            r1_low_bounds.push(-1 * r1_low.clone());
             r1_up_bounds.push(r1_up.clone());
 
             // P1 and P2 bounds
@@ -137,10 +137,10 @@ impl GrecoBounds {
         let bounds = GrecoBounds {
             u_bound: u_bound.to_u64().unwrap(),
             e_bound: e_bound.to_u64().unwrap(),
-            k1_low_bound: k1_low_bound.to_i64().unwrap(),
+            k1_low_bound: k1_low_bound.to_u64().unwrap(),
             k1_up_bound: k1_up_bound.to_u64().unwrap(),
             pk_bounds: pk_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
-            r1_low_bounds: r1_low_bounds.iter().map(|b| b.to_i64().unwrap()).collect(),
+            r1_low_bounds: r1_low_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
             r1_up_bounds: r1_up_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
             r2_bounds: r2_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
             p1_bounds: p1_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
