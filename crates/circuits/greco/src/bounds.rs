@@ -5,7 +5,10 @@
 
 use bigint_poly::{reduce_and_center_scalar, reduce_scalar};
 use fhe::bfv::BfvParameters;
+use fhe::bfv::SecretKey;
 use num_bigint::BigInt;
+use num_bigint::BigUint;
+use num_bigint::ToBigInt;
 use num_traits::{Signed, ToPrimitive};
 use shared::constants::get_zkp_modulus;
 use shared::errors::ZkFheResult;
@@ -24,7 +27,8 @@ pub struct GrecoCryptographicParameters {
 pub struct GrecoBounds {
     // Bounds for different polynomial types
     pub u_bound: u64,
-    pub e_bound: u64,
+    pub e0_bound: u64,
+    pub e1_bound: u128,
     pub k1_low_bound: u64,
     pub k1_up_bound: u64,
     pub pk_bounds: Vec<u64>,
@@ -58,25 +62,29 @@ impl GrecoBounds {
         // Reduce q_mod_t to standard form for Noir compatibility
         let q_mod_t_mod_p = reduce_scalar(&q_mod_t, &p);
 
-        // Gaussian bound for error polynomials (6σ)
-        let gauss_bound = BigInt::from(
-            f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
-                .to_i64()
-                .ok_or_else(|| "Failed to convert variance to i64".to_string())?,
-        );
+        // CBD bound
+        let cbd_bound = (params.variance() * 2) as u64;
+        // Uniform bound
+        let uniform_bound = (params.get_error2_variance() * BigUint::from(3u32))
+            .sqrt()
+            .to_bigint()
+            .ok_or_else(|| "Failed to convert uniform bound to BigInt".to_string())?;
 
-        let u_bound = gauss_bound.clone();
-        let e_bound = gauss_bound.clone();
+        let e0_bound = cbd_bound; // e0 = e1 in the fhe.rs
+        let u_bound = SecretKey::sk_bound(); // u_bound is the same as sk_bound
 
-        // Note we have two different variables for lower bound and upper bound, as in the case
-        // where the plaintext modulus is even, the lower bound cannot be calculated by just
-        // negating the upper bound. For instance, if t = 8, then the lower bound will be -4 and the
-        // upper bound will be 3
-        let ptxt_up_bound = (t.clone() - BigInt::from(1)) / BigInt::from(2);
-        let ptxt_low_bound = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
-            (-&(t.clone() - BigInt::from(1))) / BigInt::from(2)
+        // e1 = e2 in the fhe.rs
+        let e1_bound: u128 = if params.get_error2_variance() <= &BigUint::from(16u32) {
+            cbd_bound as u128
         } else {
-            ((-&(t.clone() - BigInt::from(1))) / BigInt::from(2)) - BigInt::from(1)
+            uniform_bound.to_u128().unwrap()
+        };
+
+        let ptxt_up_bound = (t.clone() - BigInt::from(1)) / BigInt::from(2);
+        let ptxt_low_bound: BigInt = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
+            -1 * ptxt_up_bound.clone()
+        } else {
+            -1 * ptxt_up_bound.clone() - BigInt::from(1)
         };
 
         let k1_low_bound: BigInt = -1 * ptxt_low_bound.clone();
@@ -111,19 +119,17 @@ impl GrecoBounds {
             r2_bounds.push(qi_bound.clone());
 
             // R1 bounds (more complex calculation)
-            let r1_low: BigInt = (&ptxt_low_bound * k0qi.abs()
-                - &((&n * &gauss_bound + BigInt::from(2)) * &qi_bound + &gauss_bound))
-                / &qi_bigint;
             let r1_up: BigInt = (&ptxt_up_bound * k0qi.abs()
-                + ((&n * &gauss_bound + BigInt::from(2)) * &qi_bound + &gauss_bound))
+                + ((&n * e0_bound + BigInt::from(2)) * &qi_bound + e1_bound))
                 / &qi_bigint;
+            let r1_low: BigInt = -1 * r1_up.clone();
 
             r1_low_bounds.push(-1 * r1_low.clone());
             r1_up_bounds.push(r1_up.clone());
 
             // P1 and P2 bounds
             let p1_bound: BigInt =
-                ((&n * &gauss_bound + BigInt::from(2)) * &qi_bound + &gauss_bound) / &qi_bigint;
+                ((&n * e0_bound + BigInt::from(2)) * &qi_bound + e1_bound) / &qi_bigint;
             p1_bounds.push(p1_bound.clone());
             p2_bounds.push(qi_bound.clone());
         }
@@ -136,7 +142,8 @@ impl GrecoBounds {
 
         let bounds = GrecoBounds {
             u_bound: u_bound.to_u64().unwrap(),
-            e_bound: e_bound.to_u64().unwrap(),
+            e0_bound: e0_bound.to_u64().unwrap(),
+            e1_bound: e1_bound.to_u128().unwrap(),
             k1_low_bound: k1_low_bound.to_u64().unwrap(),
             k1_up_bound: k1_up_bound.to_u64().unwrap(),
             pk_bounds: pk_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
@@ -165,7 +172,8 @@ impl GrecoBounds {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "u_bound": self.u_bound,
-            "e_bound": self.e_bound,
+            "e0_bound": self.e0_bound,
+            "e1_bound": self.e1_bound,
             "k1_low_bound": self.k1_low_bound,
             "k1_up_bound": self.k1_up_bound,
             "pk_bounds": self.pk_bounds,

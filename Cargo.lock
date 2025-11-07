@@ -330,7 +330,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fhe"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#cc029a8094342fcf56cfe553bcb4cccd760a9e73"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#633c0bb0700e18a2cf5bb85779048704c4be0217"
 dependencies = [
  "doc-comment",
  "fhe-math",
@@ -355,7 +355,7 @@ dependencies = [
 [[package]]
 name = "fhe-math"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#cc029a8094342fcf56cfe553bcb4cccd760a9e73"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#633c0bb0700e18a2cf5bb85779048704c4be0217"
 dependencies = [
  "ethnum",
  "fhe-traits",
@@ -377,7 +377,7 @@ dependencies = [
 [[package]]
 name = "fhe-traits"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#cc029a8094342fcf56cfe553bcb4cccd760a9e73"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#633c0bb0700e18a2cf5bb85779048704c4be0217"
 dependencies = [
  "rand",
 ]
@@ -385,7 +385,7 @@ dependencies = [
 [[package]]
 name = "fhe-util"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#cc029a8094342fcf56cfe553bcb4cccd760a9e73"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=feature%2Fadd-error-variance-param#633c0bb0700e18a2cf5bb85779048704c4be0217"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint-dig",

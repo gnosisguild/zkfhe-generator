@@ -1,4 +1,5 @@
 use fhe::bfv::BfvParameters;
+use fhe::bfv::SecretKey;
 use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 use shared::errors::ZkFheResult;
@@ -31,15 +32,11 @@ impl PkTrBfvBounds {
         let n = BigInt::from(params.degree());
         let ctx = params.ctx_at_level(level)?;
 
-        // Gaussian bound for error polynomials (6σ)
-        let gauss_bound = BigInt::from(
-            f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
-                .to_i64()
-                .ok_or_else(|| "Failed to convert variance to i64".to_string())?,
-        );
+        // CBD bound
+        let cbd_bound = (params.variance() * 2) as u64;
 
-        let sk_bound = gauss_bound.clone();
-        let eek_bound = gauss_bound.clone();
+        let sk_bound = SecretKey::sk_bound();
+        let eek_bound = cbd_bound;
 
         // Calculate bounds for each CRT basis
         let num_moduli = ctx.moduli().len();
@@ -57,13 +54,13 @@ impl PkTrBfvBounds {
             r2_bounds[i] = qi_bound.clone();
 
             // Compute asymmetric range for r1 bounds per modulus
-            r1_up_bounds[i] = ((&n * &gauss_bound + 2u32) * &qi_bound + &gauss_bound) / &qi_bigint;
-            r1_low_bounds[i] = ((&n * &gauss_bound + 2u32) * &qi_bound + &gauss_bound) / &qi_bigint;
+            r1_up_bounds[i] = ((&n * eek_bound + 2u32) * &qi_bound + eek_bound) / &qi_bigint;
+            r1_low_bounds[i] = -1 * r1_up_bounds[i].clone();
         }
 
         // Convert bounds to primitive types for serialization into Noir or test fixtures
-        let sk_bound_u64 = sk_bound.to_u64().unwrap_or(19);
-        let eek_bound_u64 = eek_bound.to_u64().unwrap_or(19);
+        let sk_bound_u64 = sk_bound.to_u64().unwrap();
+        let eek_bound_u64 = eek_bound;
         let r1_low_bounds_u64 = r1_low_bounds
             .iter()
             .map(|b| b.to_u64().unwrap_or(0))
@@ -128,8 +125,8 @@ mod tests {
         let (crypto_params, bounds) = PkTrBfvBounds::compute(&params, 0).unwrap();
 
         assert_eq!(crypto_params.moduli.len(), 1);
-        assert_eq!(bounds.eek_bound, 19);
-        assert_eq!(bounds.sk_bound, 19);
+        assert_eq!(bounds.eek_bound, 20);
+        assert_eq!(bounds.sk_bound, 1);
         assert_eq!(bounds.r1_low_bounds.len(), 1);
         assert_eq!(bounds.r1_up_bounds.len(), 1);
         assert_eq!(bounds.r2_bounds.len(), 1);
