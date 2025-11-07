@@ -1,5 +1,7 @@
 use fhe::bfv::BfvParameters;
+use fhe::bfv::SecretKey;
 use num_bigint::BigInt;
+use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
@@ -14,11 +16,10 @@ pub struct PkTrBfvCryptographicParameters {
 #[derive(Clone, Debug)]
 pub struct PkTrBfvBounds {
     // Bounds for different polynomial types
-    pub eek_bound: u64,
-    pub sk_bound: u64,
-    pub r1_low_bounds: Vec<i64>,
-    pub r1_up_bounds: Vec<u64>,
-    pub r2_bounds: Vec<u64>,
+    pub eek_bound: BigUint,
+    pub sk_bound: BigUint,
+    pub r1_bounds: Vec<BigUint>,
+    pub r2_bounds: Vec<BigUint>,
 }
 
 impl PkTrBfvBounds {
@@ -31,21 +32,16 @@ impl PkTrBfvBounds {
         let n = BigInt::from(params.degree());
         let ctx = params.ctx_at_level(level)?;
 
-        // Gaussian bound for error polynomials (6σ)
-        let gauss_bound = BigInt::from(
-            f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
-                .to_i64()
-                .ok_or_else(|| "Failed to convert variance to i64".to_string())?,
-        );
+        // CBD bound
+        let cbd_bound = (params.variance() * 2) as u64;
 
-        let sk_bound = gauss_bound.clone();
-        let eek_bound = gauss_bound.clone();
+        let sk_bound = SecretKey::sk_bound();
+        let eek_bound = cbd_bound;
 
         // Calculate bounds for each CRT basis
         let num_moduli = ctx.moduli().len();
         let mut r2_bounds = vec![BigInt::from(0); num_moduli];
-        let mut r1_low_bounds = vec![BigInt::from(0); num_moduli];
-        let mut r1_up_bounds = vec![BigInt::from(0); num_moduli];
+        let mut r1_bounds = vec![BigInt::from(0); num_moduli];
         let mut moduli = Vec::new();
 
         for (i, qi) in ctx.moduli_operators().iter().enumerate() {
@@ -57,32 +53,22 @@ impl PkTrBfvBounds {
             r2_bounds[i] = qi_bound.clone();
 
             // Compute asymmetric range for r1 bounds per modulus
-            r1_low_bounds[i] =
-                (-((&n * &gauss_bound + 2u32) * &qi_bound + &gauss_bound)) / &qi_bigint;
-            r1_up_bounds[i] = ((&n * &gauss_bound + 2u32) * &qi_bound + &gauss_bound) / &qi_bigint;
+            r1_bounds[i] = ((&n * eek_bound + 2u32) * &qi_bound + eek_bound) / &qi_bigint;
         }
-
-        // Convert bounds to primitive types for serialization into Noir or test fixtures
-        let sk_bound_u64 = sk_bound.to_u64().unwrap_or(19);
-        let eek_bound_u64 = eek_bound.to_u64().unwrap_or(19);
-        let r1_low_bounds_i64 = r1_low_bounds
-            .iter()
-            .map(|b| b.to_i64().unwrap_or(0))
-            .collect();
-        let r1_up_bounds_u64 = r1_up_bounds
-            .iter()
-            .map(|b| b.to_u64().unwrap_or(0))
-            .collect();
-        let r2_bounds_u64 = r2_bounds.iter().map(|b| b.to_u64().unwrap_or(0)).collect();
 
         let crypto_params = PkTrBfvCryptographicParameters { moduli };
 
         let bounds = PkTrBfvBounds {
-            eek_bound: eek_bound_u64,
-            sk_bound: sk_bound_u64,
-            r1_low_bounds: r1_low_bounds_i64,
-            r1_up_bounds: r1_up_bounds_u64,
-            r2_bounds: r2_bounds_u64,
+            eek_bound: BigUint::from(eek_bound),
+            sk_bound: BigUint::from(sk_bound as u128),
+            r1_bounds: r1_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
+            r2_bounds: r2_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
         };
 
         Ok((crypto_params, bounds))
@@ -102,8 +88,7 @@ impl PkTrBfvBounds {
         serde_json::json!({
             "eek_bound": self.eek_bound,
             "sk_bound": self.sk_bound,
-            "r1_low_bounds": self.r1_low_bounds,
-            "r1_up_bounds": self.r1_up_bounds,
+            "r1_bounds": self.r1_bounds,
             "r2_bounds": self.r2_bounds
         })
     }
@@ -129,10 +114,9 @@ mod tests {
         let (crypto_params, bounds) = PkTrBfvBounds::compute(&params, 0).unwrap();
 
         assert_eq!(crypto_params.moduli.len(), 1);
-        assert_eq!(bounds.eek_bound, 19);
-        assert_eq!(bounds.sk_bound, 19);
-        assert_eq!(bounds.r1_low_bounds.len(), 1);
-        assert_eq!(bounds.r1_up_bounds.len(), 1);
+        assert_eq!(bounds.eek_bound, BigUint::from(20_u128));
+        assert_eq!(bounds.sk_bound, BigUint::from(1_u128));
+        assert_eq!(bounds.r1_bounds.len(), 1);
         assert_eq!(bounds.r2_bounds.len(), 1);
     }
 

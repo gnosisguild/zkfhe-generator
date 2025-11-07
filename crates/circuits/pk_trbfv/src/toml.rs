@@ -5,18 +5,10 @@ use shared::errors::ZkFheResult;
 use shared::toml::TomlGenerator;
 use shared::utils::to_string_1d_vec;
 
-/// Circuit parameters for TOML output
-#[derive(Clone, Debug)]
-pub struct CircuitParams {
-    pub n: usize,
-    pub l: usize,
-}
-
 pub struct PkTrBfvTomlGenerator {
     crypto_params: PkTrBfvCryptographicParameters,
     bounds: PkTrBfvBounds,
     vectors: PkTrBfvVectors,
-    circuit_params: CircuitParams,
 }
 
 impl PkTrBfvTomlGenerator {
@@ -24,13 +16,11 @@ impl PkTrBfvTomlGenerator {
         crypto_params: PkTrBfvCryptographicParameters,
         bounds: PkTrBfvBounds,
         vectors: PkTrBfvVectors,
-        circuit_params: CircuitParams,
     ) -> Self {
         Self {
             crypto_params,
             bounds,
             vectors,
-            circuit_params,
         }
     }
 }
@@ -53,27 +43,19 @@ struct ProverTomlFormat {
 struct ParamsSection {
     bounds: BoundsSection,
     crypto: CryptoSection,
-    circuit: CircuitSection,
 }
 
 #[derive(Serialize)]
 struct BoundsSection {
     eek_bound: String,
     sk_bound: String,
-    r1_low_bounds: Vec<String>,
-    r1_up_bounds: Vec<String>,
+    r1_bounds: Vec<String>,
     r2_bounds: Vec<String>,
 }
 
 #[derive(Serialize)]
 struct CryptoSection {
     qis: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct CircuitSection {
-    n: String,
-    l: String,
 }
 
 impl TomlGenerator for PkTrBfvTomlGenerator {
@@ -153,15 +135,9 @@ impl TomlGenerator for PkTrBfvTomlGenerator {
                 bounds: BoundsSection {
                     eek_bound: self.bounds.eek_bound.to_string(),
                     sk_bound: self.bounds.sk_bound.to_string(),
-                    r1_low_bounds: self
+                    r1_bounds: self
                         .bounds
-                        .r1_low_bounds
-                        .iter()
-                        .map(|b| b.to_string())
-                        .collect(),
-                    r1_up_bounds: self
-                        .bounds
-                        .r1_up_bounds
+                        .r1_bounds
                         .iter()
                         .map(|b| b.to_string())
                         .collect(),
@@ -179,10 +155,6 @@ impl TomlGenerator for PkTrBfvTomlGenerator {
                         .iter()
                         .map(|q| q.to_string())
                         .collect(),
-                },
-                circuit: CircuitSection {
-                    n: self.circuit_params.n.to_string(),
-                    l: self.circuit_params.l.to_string(),
                 },
             },
         };
@@ -212,8 +184,7 @@ mod tests {
         let (crypto_params, bounds) = PkTrBfvBounds::compute(&params, 0).unwrap();
         let vectors = PkTrBfvVectors::new(1, 2048);
 
-        let circuit_params = CircuitParams { n: 2048, l: 1 };
-        let generator = PkTrBfvTomlGenerator::new(crypto_params, bounds, vectors, circuit_params);
+        let generator = PkTrBfvTomlGenerator::new(crypto_params, bounds, vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -225,7 +196,7 @@ mod tests {
 
         // Read and verify the TOML content
         let content = std::fs::read_to_string(&output_path).unwrap();
-        println!("Generated TOML:\n{}", content);
+
         // Check that the file contains the expected sections
         assert!(content.contains("params.crypto"));
         assert!(content.contains("params.bounds"));

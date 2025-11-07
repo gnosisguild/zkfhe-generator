@@ -1,6 +1,5 @@
 use crate::bounds::PkTrBfvBounds;
 use crate::sample::generate_sample_encryption;
-use crate::toml::CircuitParams;
 use crate::toml::PkTrBfvTomlGenerator;
 use crate::vectors::PkTrBfvVectors;
 use fhe::bfv::BfvParameters;
@@ -49,14 +48,8 @@ impl Circuit for PkTrBfvCircuit {
 
         let vectors_standard = vectors.standard_form();
 
-        let circuit_params = CircuitParams {
-            n: bfv_params.degree(),
-            l: bfv_params.moduli().len(),
-        };
-
         // Create TOML generator and generate file
-        let toml_generator =
-            PkTrBfvTomlGenerator::new(crypto_params, bounds, vectors_standard, circuit_params);
+        let toml_generator = PkTrBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())
