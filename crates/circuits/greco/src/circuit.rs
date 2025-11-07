@@ -51,7 +51,6 @@ impl Circuit for GrecoCircuit {
             &encryption_data.u_rns,
             &encryption_data.e0_rns,
             &encryption_data.e1_rns,
-            &encryption_data.e1,
             &encryption_data.ciphertext,
             &encryption_data.public_key,
             bfv_params,
