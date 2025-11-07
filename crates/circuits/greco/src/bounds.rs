@@ -87,7 +87,7 @@ impl GrecoBounds {
             -1 * ptxt_up_bound.clone() - BigInt::from(1)
         };
 
-        let k1_low_bound: BigInt = -1 * ptxt_low_bound.clone();
+        let k1_low_bound: BigInt = ptxt_low_bound.clone();
         let k1_up_bound = ptxt_up_bound.clone();
 
         // Calculate bounds for each CRT basis
