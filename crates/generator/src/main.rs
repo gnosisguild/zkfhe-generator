@@ -506,12 +506,11 @@ fn generate_main_template(
     match circuit_type {
         "greco" => {
             use greco::bounds::GrecoBounds;
+            use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
 
-            // Compute bounds from BFV parameters
             let (_, bounds) = GrecoBounds::compute(bfv_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
 
-            // Convert bounds to strings for bit width calculation
             let bounds_data = greco::template::GrecoBoundsData {
                 pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
                 ct_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(), // Same as pk_bounds
@@ -527,9 +526,6 @@ fn generate_main_template(
                 p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
             };
 
-            // Import the Greco template generator
-            use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
-
             let greco_template_params = GrecoTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
                 &bounds_data,
@@ -540,6 +536,7 @@ fn generate_main_template(
         }
         "pk-trbfv" => {
             use pk_trbfv::bounds::PkTrBfvBounds;
+            use pk_trbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
 
             let (_, bounds) = PkTrBfvBounds::compute(bfv_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute PkTrBfv bounds: {e:?}"))?;
@@ -551,8 +548,6 @@ fn generate_main_template(
                 r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
             };
 
-            use pk_trbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
-
             let pk_trbfv_template_params = PkTrBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
                 &bounds_data,
@@ -562,12 +557,23 @@ fn generate_main_template(
             template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
         }
         "dec-share-trbfv" => {
+            use dec_share_trbfv::bounds::DecShareTrBfvBounds;
             use dec_share_trbfv::template::{
                 DecShareTrBfvMainTemplate, DecShareTrBfvTemplateParams,
             };
 
-            let dec_share_trbfv_template_params = DecShareTrBfvTemplateParams::new(
+            let (_, bounds) = DecShareTrBfvBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
+
+            let bounds_data = dec_share_trbfv::template::DecShareTrBfvBoundsData {
+                decryption_share_bound: bounds.decryption_share_bound.to_string(),
+                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+            };
+
+            let dec_share_trbfv_template_params = DecShareTrBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                &bounds_data,
             )?;
 
             let template_generator = DecShareTrBfvMainTemplate;

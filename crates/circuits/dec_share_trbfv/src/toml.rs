@@ -57,11 +57,8 @@ impl TomlGenerator for DecShareTrBfvTomlGenerator {
 
         // Add bounds
         let bounds_json = serde_json::json!({
-            "s_bound": self.bounds.s_bound.to_string(),
-            "e_bound": self.bounds.e_bound.to_string(),
             "decryption_share_bound": self.bounds.decryption_share_bound.to_string(),
-            "r1_low_bounds": self.bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "r1_up_bounds": self.bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
+            "r1_bounds": self.bounds.r1_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
             "r2_bounds": self.bounds.r2_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
         });
         params_json.insert("bounds".to_string(), bounds_json);
@@ -165,7 +162,7 @@ mod tests {
             .build_arc()
             .unwrap();
 
-        let (crypto_params, bounds) = DecShareTrBfvBounds::compute(&params, 10, 0).unwrap();
+        let (crypto_params, bounds) = DecShareTrBfvBounds::compute(&params, 0).unwrap();
         let vectors = DecShareTrBfvVectors::new(1, 2048);
 
         let generator = DecShareTrBfvTomlGenerator::new(crypto_params, bounds, vectors);
@@ -180,7 +177,7 @@ mod tests {
 
         // Read and verify the TOML content
         let content = std::fs::read_to_string(&output_path).unwrap();
-        println!("Generated TOML:\n{}", content);
+
         // Check that the file contains the expected sections
         assert!(content.contains("params.crypto"));
         assert!(content.contains("params.bounds"));

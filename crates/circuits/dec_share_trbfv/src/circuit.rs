@@ -35,12 +35,11 @@ impl Circuit for DecShareTrBfvCircuit {
             }
         })?;
 
-        let (crypto_params, bounds) =
-            DecShareTrBfvBounds::compute(bfv_params, decryption_data.num_ciphertexts, 0).map_err(
-                |e| shared::errors::ZkFheError::Bfv {
-                    message: e.to_string(),
-                },
-            )?;
+        let (crypto_params, bounds) = DecShareTrBfvBounds::compute(bfv_params, 0).map_err(|e| {
+            shared::errors::ZkFheError::Bfv {
+                message: e.to_string(),
+            }
+        })?;
 
         let vectors = DecShareTrBfvVectors::compute(
             &decryption_data.ciphertext,

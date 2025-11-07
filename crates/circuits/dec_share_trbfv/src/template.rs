@@ -5,16 +5,13 @@
 //! based on the Decryption Share TRBFV circuit parameters.
 
 use shared::errors::ZkFheResult;
-use shared::template::{BaseTemplateParams, MainTemplateGenerator};
+use shared::template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_width};
 
 /// Decryption Share TRBFV bounds data for template parameter calculation
 #[derive(Debug, Clone)]
 pub struct DecShareTrBfvBoundsData {
-    pub s_bound: String,
-    pub e_bound: String,
     pub decryption_share_bound: String,
-    pub r1_low_bounds: Vec<String>,
-    pub r1_up_bounds: Vec<String>,
+    pub r1_bounds: Vec<String>,
     pub r2_bounds: Vec<String>,
 }
 
@@ -26,11 +23,49 @@ pub struct DecShareTrBfvBoundsData {
 pub struct DecShareTrBfvTemplateParams {
     /// Base parameters (N, L, circuit_type)
     pub base: BaseTemplateParams,
+    /// Bit width for ciphertext bounds
+    pub bit_ct: u32,
+    /// Bit width for shares bounds
+    pub bit_s: u32,
+    /// Bit width for noise bounds
+    pub bit_e: u32,
+    /// Bit width for r1 bounds
+    pub bit_r1: u32,
+    /// Bit width for r2 bounds
+    pub bit_r2: u32,
+    /// Bit width for decryption share bounds
+    pub bit_d: u32,
 }
 
 impl DecShareTrBfvTemplateParams {
-    pub fn new(base: BaseTemplateParams) -> ZkFheResult<Self> {
-        Ok(Self { base })
+    pub fn from_bounds(
+        base: BaseTemplateParams,
+        bounds: &DecShareTrBfvBoundsData,
+    ) -> ZkFheResult<Self> {
+        // Calculate bit widths for each bound type
+        let bit_d = calculate_bit_width(&bounds.decryption_share_bound)?;
+
+        // For r1, use the maximum of all low and up bounds
+        let mut bit_r1 = 0;
+        for bound in bounds.r1_bounds.iter() {
+            bit_r1 = bit_r1.max(calculate_bit_width(bound)?);
+        }
+
+        // For r2, use the maximum of all bounds
+        let mut bit_r2 = 0;
+        for bound in &bounds.r2_bounds {
+            bit_r2 = bit_r2.max(calculate_bit_width(bound)?);
+        }
+
+        Ok(Self {
+            base,
+            bit_ct: bit_r2,
+            bit_s: bit_r2,
+            bit_e: bit_r2,
+            bit_r1,
+            bit_r2,
+            bit_d,
+        })
     }
 }
 
@@ -61,7 +96,7 @@ fn main(
     // TODO: Your logic here...
 
     // Create Decryption Share Correctness circuit instance.
-    let dec_share: DecryptionShareCorrectness<{}, {}> = DecryptionShareCorrectness::new(
+    let dec_share: DecryptionShareCorrectness<{}, {}, {}, {}, {}, {}, {}, {}> = DecryptionShareCorrectness::new(
         params,
         c_0,
         c_1,
@@ -96,6 +131,12 @@ fn main(
             params.base.l,
             params.base.n,
             params.base.l,
+            params.bit_ct,
+            params.bit_s,
+            params.bit_e,
+            params.bit_r1,
+            params.bit_r2,
+            params.bit_d,
         );
 
         Ok(template)
