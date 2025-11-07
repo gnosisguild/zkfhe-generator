@@ -11,6 +11,8 @@ use fhe_math::{
 };
 use itertools::izip;
 use num_bigint::BigInt;
+use num_bigint::BigUint;
+use num_bigint::ToBigInt;
 use num_traits::{ToPrimitive, Zero};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
@@ -78,7 +80,6 @@ impl GrecoVectors {
     /// * `u_rns` - Private polynomial used in ciphertext sampled from secret key distribution.
     /// * `e0_rns` - Error polynomial used in ciphertext sampled from error distribution.
     /// * `e1_rns` - Error polynomial used in cihpertext sampled from error distribution.
-    /// * `e1` - Error polynomial used in cihpertext sampled from error distribution in mod Q.
     /// * `ct` - Ciphertext from fhe.rs.
     /// * `pk` - Public Key from fhe.rs.
     #[allow(clippy::too_many_arguments)]
@@ -87,11 +88,23 @@ impl GrecoVectors {
         u_rns: &Poly,
         e0_rns: &Poly,
         e1_rns: &Poly,
-        e1: &Poly,
         ct: &Ciphertext,
         pk: &PublicKey,
         params: &Arc<BfvParameters>,
     ) -> ZkFheResult<GrecoVectors> {
+        // Reconstruct e1_rns in mod Q.
+        let mut e1_power = e1_rns.clone();
+        e1_power.change_representation(Representation::PowerBasis);
+
+        // This conversion internally calls lift for each coefficient
+        // to make them in mod Q.
+        let e1_mod_q: Vec<BigUint> = Vec::<BigUint>::from(&e1_power);
+
+        // Then, make it a polynomial in mod Q.
+        let ctx = params.ctx()[0].clone();
+        let e1_bigints: Vec<BigInt> = e1_mod_q.iter().map(|c| c.to_bigint().unwrap()).collect();
+        let e1 = (*Poly::from_bigints(&e1_bigints, &ctx)?).clone();
+
         // Get context, plaintext modulus, and degree
         let ctx = params.ctx_at_level(pt.level())?;
         let t = Modulus::new(params.plaintext())?;
@@ -555,8 +568,7 @@ mod tests {
 
         // Compute vectors
         let vecs =
-            GrecoVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &e1_rns, &_ct, &pk, &params)
-                .unwrap();
+            GrecoVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params).unwrap();
 
         let json = vecs.to_json();
 
