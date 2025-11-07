@@ -81,10 +81,10 @@ impl GrecoBounds {
         };
 
         let ptxt_up_bound = (t.clone() - BigInt::from(1)) / BigInt::from(2);
-        let ptxt_low_bound = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
-            (-&(t.clone() - BigInt::from(1))) / BigInt::from(2)
+        let ptxt_low_bound: BigInt = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
+            -1 * ptxt_up_bound.clone()
         } else {
-            ((-&(t.clone() - BigInt::from(1))) / BigInt::from(2)) - BigInt::from(1)
+            -1 * ptxt_up_bound.clone() - BigInt::from(1)
         };
 
         let k1_low_bound = ptxt_low_bound.clone();
@@ -119,12 +119,10 @@ impl GrecoBounds {
             r2_bounds.push(qi_bound.clone());
 
             // R1 bounds (more complex calculation)
-            let r1_low: BigInt = (&ptxt_low_bound * k0qi.abs()
-                - &((&n * e0_bound + BigInt::from(2)) * &qi_bound + e1_bound))
-                / &qi_bigint;
             let r1_up: BigInt = (&ptxt_up_bound * k0qi.abs()
                 + ((&n * e0_bound + BigInt::from(2)) * &qi_bound + e1_bound))
                 / &qi_bigint;
+            let r1_low: BigInt = -1 * r1_up.clone();
 
             r1_low_bounds.push(r1_low.clone());
             r1_up_bounds.push(r1_up.clone());

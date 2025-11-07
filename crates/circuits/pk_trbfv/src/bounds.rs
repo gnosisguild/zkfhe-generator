@@ -54,8 +54,8 @@ impl PkTrBfvBounds {
             r2_bounds[i] = qi_bound.clone();
 
             // Compute asymmetric range for r1 bounds per modulus
-            r1_low_bounds[i] = (-((&n * eek_bound + 2u32) * &qi_bound + eek_bound)) / &qi_bigint;
             r1_up_bounds[i] = ((&n * eek_bound + 2u32) * &qi_bound + eek_bound) / &qi_bigint;
+            r1_low_bounds[i] = -1 * r1_up_bounds[i].clone();
         }
 
         // Convert bounds to primitive types for serialization into Noir or test fixtures
