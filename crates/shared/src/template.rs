@@ -4,8 +4,11 @@
 //! for different zkFHE circuit implementations. It follows the same pattern as
 //! the TOML generation with shared traits and circuit-specific implementations.
 
+use crate::errors::ZkFheError;
 use crate::errors::ZkFheResult;
+use num_bigint::BigInt;
 use std::path::Path;
+use std::str::FromStr;
 
 /// Base template parameters shared across all circuits
 ///
@@ -76,4 +79,23 @@ impl BaseTemplateParams {
             circuit_type: circuit_type.to_string(),
         }
     }
+}
+
+/// Calculate bit width from a bound string
+///
+/// The formula is: BIT = ceil(log₂(bound)) + 1
+pub fn calculate_bit_width(bound_str: &str) -> ZkFheResult<u32> {
+    let bound = BigInt::from_str(bound_str).map_err(|e| ZkFheError::Bfv {
+        message: format!("Failed to parse bound '{bound_str}': {e}"),
+    })?;
+
+    if bound <= BigInt::from(0) {
+        return Ok(1); // Minimum 1 bit
+    }
+
+    // Calculate log2 and add 1
+    let log2 = bound.bits() as f64;
+    let bit_width = (log2.ceil() as u32) + 1;
+
+    Ok(bit_width)
 }

@@ -4,10 +4,8 @@
 //! It generates a template with the correct parameter types and function signature
 //! based on the Greco circuit parameters.
 
-use num_bigint::BigInt;
 use shared::errors::ZkFheResult;
-use shared::template::{BaseTemplateParams, MainTemplateGenerator};
-use std::str::FromStr;
+use shared::template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_width};
 
 /// Greco bounds data for template parameter calculation
 #[derive(Debug, Clone)]
@@ -57,37 +55,18 @@ pub struct GrecoTemplateParams {
 }
 
 impl GrecoTemplateParams {
-    /// Calculate bit width from a bound string
-    ///
-    /// The formula is: BIT = ceil(log₂(bound)) + 1
-    fn calculate_bit_width(bound_str: &str) -> ZkFheResult<u32> {
-        let bound = BigInt::from_str(bound_str).map_err(|e| shared::errors::ZkFheError::Bfv {
-            message: format!("Failed to parse bound '{bound_str}': {e}"),
-        })?;
-
-        if bound <= BigInt::from(0) {
-            return Ok(1); // Minimum 1 bit
-        }
-
-        // Calculate log2 and add 1
-        let log2 = bound.bits() as f64;
-        let bit_width = (log2.ceil() as u32) + 1;
-
-        Ok(bit_width)
-    }
-
     /// Create Greco template parameters from bounds
     pub fn from_bounds(base: BaseTemplateParams, bounds: &GrecoBoundsData) -> ZkFheResult<Self> {
         // Calculate bit widths for each bound type
-        let bit_pk = Self::calculate_bit_width(&bounds.pk_bounds[0])?;
-        let bit_ct = Self::calculate_bit_width(&bounds.ct_bounds[0])?;
-        let bit_u = Self::calculate_bit_width(&bounds.u_bound)?;
-        let bit_e0 = Self::calculate_bit_width(&bounds.e0_bound)?;
-        let bit_e1 = Self::calculate_bit_width(&bounds.e1_bound)?;
+        let bit_pk = calculate_bit_width(&bounds.pk_bounds[0])?;
+        let bit_ct = calculate_bit_width(&bounds.ct_bounds[0])?;
+        let bit_u = calculate_bit_width(&bounds.u_bound)?;
+        let bit_e0 = calculate_bit_width(&bounds.e0_bound)?;
+        let bit_e1 = calculate_bit_width(&bounds.e1_bound)?;
 
         // For k1, use the maximum of low and up bounds
-        let k1_low = Self::calculate_bit_width(&bounds.k1_low_bound)?;
-        let k1_up = Self::calculate_bit_width(&bounds.k1_up_bound)?;
+        let k1_low = calculate_bit_width(&bounds.k1_low_bound)?;
+        let k1_up = calculate_bit_width(&bounds.k1_up_bound)?;
         let bit_k = k1_low.max(k1_up);
 
         // For r1, use the maximum of all low and up bounds
@@ -97,25 +76,25 @@ impl GrecoTemplateParams {
             .iter()
             .chain(bounds.r1_up_bounds.iter())
         {
-            bit_r1 = bit_r1.max(Self::calculate_bit_width(bound)?);
+            bit_r1 = bit_r1.max(calculate_bit_width(bound)?);
         }
 
         // For r2, use the maximum of all bounds
         let mut bit_r2 = 0;
         for bound in &bounds.r2_bounds {
-            bit_r2 = bit_r2.max(Self::calculate_bit_width(bound)?);
+            bit_r2 = bit_r2.max(calculate_bit_width(bound)?);
         }
 
         // For p1, use the maximum of all bounds
         let mut bit_p1 = 0;
         for bound in &bounds.p1_bounds {
-            bit_p1 = bit_p1.max(Self::calculate_bit_width(bound)?);
+            bit_p1 = bit_p1.max(calculate_bit_width(bound)?);
         }
 
         // For p2, use the maximum of all bounds
         let mut bit_p2 = 0;
         for bound in &bounds.p2_bounds {
-            bit_p2 = bit_p2.max(Self::calculate_bit_width(bound)?);
+            bit_p2 = bit_p2.max(calculate_bit_width(bound)?);
         }
 
         Ok(Self {
@@ -196,10 +175,10 @@ fn main(
             params.base.n,
             params.base.l,
             params.base.n,
-            params.base.n,
             params.base.l,
             params.base.n,
-            params.base.l,
+            params.base.n,
+            params.base.n,
             params.base.n,
             params.base.l,
             params.base.n,

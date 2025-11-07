@@ -26,17 +26,17 @@ pub struct GrecoCryptographicParameters {
 #[derive(Clone, Debug)]
 pub struct GrecoBounds {
     // Bounds for different polynomial types
-    pub u_bound: u64,
-    pub e0_bound: u64,
-    pub e1_bound: u128,
-    pub k1_low_bound: u64,
-    pub k1_up_bound: u64,
-    pub pk_bounds: Vec<u64>,
-    pub r1_low_bounds: Vec<u64>,
-    pub r1_up_bounds: Vec<u64>,
-    pub r2_bounds: Vec<u64>,
-    pub p1_bounds: Vec<u64>,
-    pub p2_bounds: Vec<u64>,
+    pub u_bound: BigUint,
+    pub e0_bound: BigUint,
+    pub e1_bound: BigUint,
+    pub k1_low_bound: BigUint,
+    pub k1_up_bound: BigUint,
+    pub pk_bounds: Vec<BigUint>,
+    pub r1_low_bounds: Vec<BigUint>,
+    pub r1_up_bounds: Vec<BigUint>,
+    pub r2_bounds: Vec<BigUint>,
+    pub p1_bounds: Vec<BigUint>,
+    pub p2_bounds: Vec<BigUint>,
 }
 
 impl GrecoBounds {
@@ -87,8 +87,8 @@ impl GrecoBounds {
             -1 * ptxt_up_bound.clone() - BigInt::from(1)
         };
 
-        let k1_low_bound: BigInt = -1 * ptxt_low_bound.clone();
-        let k1_up_bound = ptxt_up_bound.clone();
+        let k1_low_bound: BigInt = BigInt::from(-1) * ptxt_low_bound.clone();
+        let k1_up_bound: BigInt = ptxt_up_bound.clone();
 
         // Calculate bounds for each CRT basis
         let _num_moduli = ctx.moduli().len();
@@ -119,12 +119,14 @@ impl GrecoBounds {
             r2_bounds.push(qi_bound.clone());
 
             // R1 bounds (more complex calculation)
+            let r1_low: BigInt = (&ptxt_low_bound * k0qi.abs()
+                - &((&n * e0_bound + BigInt::from(2)) * &qi_bound + e1_bound))
+                / &qi_bigint;
             let r1_up: BigInt = (&ptxt_up_bound * k0qi.abs()
                 + ((&n * e0_bound + BigInt::from(2)) * &qi_bound + e1_bound))
                 / &qi_bigint;
-            let r1_low: BigInt = -1 * r1_up.clone();
 
-            r1_low_bounds.push(-1 * r1_low.clone());
+            r1_low_bounds.push(BigInt::from(-1) * r1_low.clone());
             r1_up_bounds.push(r1_up.clone());
 
             // P1 and P2 bounds
@@ -141,17 +143,35 @@ impl GrecoBounds {
         };
 
         let bounds = GrecoBounds {
-            u_bound: u_bound.to_u64().unwrap(),
-            e0_bound: e0_bound.to_u64().unwrap(),
-            e1_bound: e1_bound.to_u128().unwrap(),
-            k1_low_bound: k1_low_bound.to_u64().unwrap(),
-            k1_up_bound: k1_up_bound.to_u64().unwrap(),
-            pk_bounds: pk_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
-            r1_low_bounds: r1_low_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
-            r1_up_bounds: r1_up_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
-            r2_bounds: r2_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
-            p1_bounds: p1_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
-            p2_bounds: p2_bounds.iter().map(|b| b.to_u64().unwrap()).collect(),
+            u_bound: BigUint::from(u_bound as u64),
+            e0_bound: BigUint::from(e0_bound),
+            e1_bound: BigUint::from(e1_bound),
+            k1_low_bound: BigUint::from(k1_low_bound.to_u128().unwrap()),
+            k1_up_bound: BigUint::from(k1_up_bound.to_u128().unwrap()),
+            pk_bounds: pk_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
+            r1_low_bounds: r1_low_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
+            r1_up_bounds: r1_up_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
+            r2_bounds: r2_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
+            p1_bounds: p1_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
+            p2_bounds: p2_bounds
+                .iter()
+                .map(|b| BigUint::from(b.to_u128().unwrap()))
+                .collect(),
         };
 
         Ok((crypto_params, bounds))
