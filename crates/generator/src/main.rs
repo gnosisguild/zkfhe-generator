@@ -429,13 +429,23 @@ fn generate_circuit_params(
             }
         };
 
-        // Build parameters for circuit use based on selected parameter type
-        BfvParametersBuilder::new()
-            .set_degree(final_params.d as usize)
-            .set_plaintext_modulus(final_params.k_plain_eff as u64)
-            .set_moduli(final_params.qi_values().as_slice())
-            .build_arc()
-            .unwrap()
+        if parameter_type == ParameterType::Trbfv {
+            BfvParametersBuilder::new()
+                .set_degree(final_params.d as usize)
+                .set_plaintext_modulus(final_params.k_plain_eff as u64)
+                .set_moduli(final_params.qi_values().as_slice())
+                .set_variance(var_b.parse::<usize>().unwrap())
+                .set_error2_variance_str(var_benc.as_str())?
+                .build_arc()
+                .unwrap()
+        } else {
+            BfvParametersBuilder::new()
+                .set_degree(final_params.d as usize)
+                .set_plaintext_modulus(final_params.k_plain_eff as u64)
+                .set_moduli(final_params.qi_values().as_slice())
+                .build_arc()
+                .unwrap()
+        }
     };
 
     println!(
@@ -490,8 +500,6 @@ fn generate_main_template(
     // Generate circuit-specific template based on circuit type
     match circuit_type {
         "greco" => {
-            // For Greco circuits, we need to extract bounds from the circuit
-            // We need to compute the bounds to get the bit widths
             use greco::bounds::GrecoBounds;
 
             // Compute bounds from BFV parameters
@@ -503,7 +511,8 @@ fn generate_main_template(
                 pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
                 ct_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(), // Same as pk_bounds
                 u_bound: bounds.u_bound.to_string(),
-                e_bound: bounds.e_bound.to_string(),
+                e0_bound: bounds.e0_bound.to_string(),
+                e1_bound: bounds.e1_bound.to_string(),
                 k1_low_bound: bounds.k1_low_bound.to_string(),
                 k1_up_bound: bounds.k1_up_bound.to_string(),
                 r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
@@ -525,13 +534,24 @@ fn generate_main_template(
             template_generator.generate_main_file(&greco_template_params, output_dir)?;
         }
         "pk-trbfv" => {
+            use pk_trbfv::bounds::PkTrBfvBounds;
+
+            let (_, bounds) = PkTrBfvBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute PkTrBfv bounds: {e:?}"))?;
+
+            let bounds_data = pk_trbfv::template::PkTrBfvBoundsData {
+                eek_bound: bounds.eek_bound.to_string(),
+                sk_bound: bounds.sk_bound.to_string(),
+                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+            };
+
             use pk_trbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
 
-            let pk_trbfv_template_params = PkTrBfvTemplateParams::new(BaseTemplateParams::new(
-                bfv_params.degree(),
-                l,
-                circuit_type,
-            ))?;
+            let pk_trbfv_template_params = PkTrBfvTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                &bounds_data,
+            )?;
 
             let template_generator = PkTrBfvMainTemplate;
             template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;

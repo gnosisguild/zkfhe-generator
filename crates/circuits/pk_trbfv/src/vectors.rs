@@ -202,9 +202,7 @@ impl PkTrBfvVectors {
                     let pk0i_poly = Polynomial::new(neg_a.clone());
                     let sk_poly = Polynomial::new(ski.clone());
                     let pk0i_times_sk = pk0i_poly.mul(&sk_poly);
-                    if (pk0i_times_sk.coefficients().len() as u64) - 1 != 2 * (n - 1) {
-                        println!("⚠️  i={}: pk0i_times_sk length check failed", i);
-                    }
+                    assert_eq!((pk0i_times_sk.coefficients().len() as u64) - 1, 2 * (n - 1));
                     let e_poly = Polynomial::new(eeki.clone());
                     pk0i_times_sk.add(&e_poly).coefficients().to_vec()
                 };
