@@ -158,7 +158,7 @@ mod tests {
             .set_plaintext_modulus(16384)
             .set_moduli(&[0x1ffffffea0001, 0x1ffffffe88001, 0x1ffffffe48001])
             .set_variance(10)
-            .set_error2_variance(BigUint::from(10u32))
+            .set_error1_variance(BigUint::from(10u32))
             .build_arc()
             .unwrap();
 

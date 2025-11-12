@@ -65,20 +65,20 @@ impl GrecoBounds {
         // CBD bound
         let cbd_bound = (params.variance() * 2) as u64;
         // Uniform bound
-        let uniform_bound = (params.get_error2_variance() * BigUint::from(3u32))
+        let uniform_bound = (params.get_error1_variance() * BigUint::from(3u32))
             .sqrt()
             .to_bigint()
             .ok_or_else(|| "Failed to convert uniform bound to BigInt".to_string())?;
 
-        let e0_bound = cbd_bound; // e0 = e1 in the fhe.rs
         let u_bound = SecretKey::sk_bound(); // u_bound is the same as sk_bound
 
-        // e1 = e2 in the fhe.rs
-        let e1_bound: u128 = if params.get_error2_variance() <= &BigUint::from(16u32) {
+        // e0 = e1 in the fhe.rs
+        let e0_bound: u128 = if params.get_error1_variance() <= &BigUint::from(16u32) {
             cbd_bound as u128
         } else {
             uniform_bound.to_u128().unwrap()
         };
+        let e1_bound = cbd_bound; // e1 = e2 in the fhe.rs
 
         let ptxt_up_bound = (t.clone() - BigInt::from(1)) / BigInt::from(2);
         let ptxt_low_bound: BigInt = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
