@@ -402,7 +402,7 @@ fn generate_circuit_params(
             println!("Δ (decimal)      = {}", trbfv.delta.to_str_radix(10));
             println!("r_k(q)           = {}", trbfv.rkq);
             println!(
-                "BEnc (bound on e2)  = {}   [Dist: {}, Var = {}]",
+                "BEnc (bound on e0)  = {}   [Dist: {}, Var = {}]",
                 trbfv.benc_min.to_str_radix(10),
                 dist_benc,
                 var_benc
@@ -440,7 +440,7 @@ fn generate_circuit_params(
                 .set_plaintext_modulus(final_params.k_plain_eff as u64)
                 .set_moduli(final_params.qi_values().as_slice())
                 .set_variance(var_b.parse::<usize>().unwrap())
-                .set_error2_variance_str(var_benc.as_str())?
+                .set_error1_variance_str(var_benc.as_str())?
                 .build_arc()
                 .unwrap()
         } else {

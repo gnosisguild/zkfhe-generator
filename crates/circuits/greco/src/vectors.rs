@@ -34,7 +34,7 @@ pub struct GrecoVectors {
     pub p1is: Vec<Vec<BigInt>>,
     pub p2is: Vec<Vec<BigInt>>,
     pub k0is: Vec<BigInt>,
-    pub e1is: Vec<Vec<BigInt>>,
+    pub e0is: Vec<Vec<BigInt>>,
     pub e0: Vec<BigInt>,
     pub e1: Vec<BigInt>,
     pub u: Vec<BigInt>,
@@ -64,7 +64,7 @@ impl GrecoVectors {
             p2is: vec![vec![BigInt::zero(); degree - 1]; num_moduli],
             e0: vec![BigInt::zero(); degree],
             e1: vec![BigInt::zero(); degree],
-            e1is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            e0is: vec![vec![BigInt::zero(); degree]; num_moduli],
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
             k1: vec![BigInt::zero(); degree],
@@ -93,17 +93,17 @@ impl GrecoVectors {
         params: &Arc<BfvParameters>,
     ) -> ZkFheResult<GrecoVectors> {
         // Reconstruct e1_rns in mod Q.
-        let mut e1_power = e1_rns.clone();
-        e1_power.change_representation(Representation::PowerBasis);
+        let mut e0_power = e0_rns.clone();
+        e0_power.change_representation(Representation::PowerBasis);
 
         // This conversion internally calls lift for each coefficient
         // to make them in mod Q.
-        let e1_mod_q: Vec<BigUint> = Vec::<BigUint>::from(&e1_power);
+        let e0_mod_q: Vec<BigUint> = Vec::<BigUint>::from(&e0_power);
 
         // Then, make it a polynomial in mod Q.
         let ctx = params.ctx()[0].clone();
-        let e1_bigints: Vec<BigInt> = e1_mod_q.iter().map(|c| c.to_bigint().unwrap()).collect();
-        let e1 = (*Poly::from_bigints(&e1_bigints, &ctx)?).clone();
+        let e0_bigints: Vec<BigInt> = e0_mod_q.iter().map(|c| c.to_bigint().unwrap()).collect();
+        let e0 = (*Poly::from_bigints(&e0_bigints, &ctx)?).clone();
 
         // Get context, plaintext modulus, and degree
         let ctx = params.ctx_at_level(pt.level())?;
@@ -121,13 +121,13 @@ impl GrecoVectors {
         // Extract single vectors of u, e1, and e2 as Vec<BigInt>, center and reverse
         let mut u_rns_copy = u_rns.clone();
         let mut e0_rns_copy = e0_rns.clone();
+        let mut e0_poly_copy = e0.clone();
         let mut e1_rns_copy = e1_rns.clone();
-        let mut e1_poly_copy = e1.clone();
 
         u_rns_copy.change_representation(Representation::PowerBasis);
         e0_rns_copy.change_representation(Representation::PowerBasis);
+        e0_poly_copy.change_representation(Representation::PowerBasis);
         e1_rns_copy.change_representation(Representation::PowerBasis);
-        e1_poly_copy.change_representation(Representation::PowerBasis);
 
         // Extract coefficients using the current API
         let u: Vec<BigInt> = unsafe {
@@ -145,10 +145,10 @@ impl GrecoVectors {
                 .collect()
         };
 
-        let e0: Vec<BigInt> = unsafe {
+        let e0_vec: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
                 .center_vec_vt(
-                    e0_rns_copy
+                    e0_poly_copy
                         .coefficients()
                         .row(0)
                         .as_slice()
@@ -160,10 +160,10 @@ impl GrecoVectors {
                 .collect()
         };
 
-        let e1_vec: Vec<BigInt> = unsafe {
+        let e1: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
                 .center_vec_vt(
-                    e1_poly_copy
+                    e1_rns_copy
                         .coefficients()
                         .row(0)
                         .as_slice()
@@ -200,15 +200,15 @@ impl GrecoVectors {
         let ct1_coeffs = ct1.coefficients();
         let pk0_coeffs = pk0.coefficients();
         let pk1_coeffs = pk1.coefficients();
-        let e1_coeffs = e1_rns_copy.coefficients();
-        let e1_poly_coeffs = e1_poly_copy.coefficients();
+        let e0_coeffs = e0_rns_copy.coefficients();
+        let e0_poly_coeffs = e0_poly_copy.coefficients();
 
         let ct0_coeffs_rows = ct0_coeffs.rows();
         let ct1_coeffs_rows = ct1_coeffs.rows();
         let pk0_coeffs_rows = pk0_coeffs.rows();
         let pk1_coeffs_rows = pk1_coeffs.rows();
-        let e1_coeffs_rows = e1_coeffs.rows();
-        let e1_poly_coeffs_rows = e1_poly_coeffs.rows();
+        let e0_coeffs_rows = e0_coeffs.rows();
+        let e0_poly_coeffs_rows = e0_poly_coeffs.rows();
 
         // Perform the main computation logic
         let results: Vec<_> = izip!(
@@ -217,15 +217,15 @@ impl GrecoVectors {
             ct1_coeffs_rows,
             pk0_coeffs_rows,
             pk1_coeffs_rows,
-            e1_coeffs_rows,
-            e1_poly_coeffs_rows,
+            e0_coeffs_rows,
+            e0_poly_coeffs_rows,
         )
         .enumerate()
         .par_bridge()
         .map(
             |(
                 i,
-                (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs, e1_coeffs, e1_poly_coeffs),
+                (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs, e0_coeffs, e0_poly_coeffs),
             )| {
                 // --------------------------------------------------- ct0i ---------------------------------------------------
 
@@ -246,9 +246,9 @@ impl GrecoVectors {
                 reduce_and_center_coefficients_mut(&mut pk0i, &qi_bigint);
                 reduce_and_center_coefficients_mut(&mut pk1i, &qi_bigint);
 
-                let e1i: Vec<BigInt> = unsafe {
+                let e0i: Vec<BigInt> = unsafe {
                     qi.center_vec_vt(
-                        e1_coeffs
+                        e0_coeffs
                             .as_slice()
                             .ok_or_else(|| "Cannot center coefficients.".to_string())
                             .unwrap(),
@@ -260,9 +260,9 @@ impl GrecoVectors {
                 };
 
                 // Explicitly check e1is[i] == e1 mod qi (after centering and reversal)
-                let e1i_from_poly: Vec<BigInt> = unsafe {
+                let e0i_from_poly: Vec<BigInt> = unsafe {
                     qi.center_vec_vt(
-                        e1_poly_coeffs
+                        e0_poly_coeffs
                             .as_slice()
                             .ok_or_else(|| "Cannot center coefficients.".to_string())
                             .unwrap(),
@@ -273,8 +273,8 @@ impl GrecoVectors {
                     .collect()
                 };
 
-                // Check that e1i equals e1 reduced modulo q_i (from e1_poly)
-                assert_eq!(e1i, e1i_from_poly);
+                // Check that e0i equals e0 reduced modulo q_i (from e0_poly)
+                assert_eq!(e0i, e0i_from_poly);
 
                 // k0qi = -t^{-1} mod qi
                 let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
@@ -291,9 +291,9 @@ impl GrecoVectors {
                     let pk0i_times_u = pk0i_poly.mul(&u_poly);
                     assert_eq!((pk0i_times_u.coefficients().len() as u64) - 1, 2 * (n - 1));
 
-                    let e0_poly = Polynomial::new(e0.clone());
+                    let e0i_poly = Polynomial::new(e0i.clone());
                     let ki_poly = Polynomial::new(ki.clone());
-                    let e0_plus_ki = e0_poly.add(&ki_poly);
+                    let e0_plus_ki = e0i_poly.add(&ki_poly);
                     assert_eq!((e0_plus_ki.coefficients().len() as u64) - 1, n - 1);
 
                     pk0i_times_u.add(&e0_plus_ki).coefficients().to_vec()
@@ -373,15 +373,15 @@ impl GrecoVectors {
 
                 // --------------------------------------------------- ct1i ---------------------------------------------------
 
-                // Calculate ct1i_hat = pk1i * ui + e1i
+                // Calculate ct1i_hat = pk1i * ui + e1
                 let ct1i_hat = {
                     let pk1i_poly = Polynomial::new(pk1i.clone());
                     let u_poly = Polynomial::new(u.clone());
                     let pk1i_times_u = pk1i_poly.mul(&u_poly);
                     assert_eq!((pk1i_times_u.coefficients().len() as u64) - 1, 2 * (n - 1));
 
-                    let e1i_poly = Polynomial::new(e1i.clone());
-                    pk1i_times_u.add(&e1i_poly).coefficients().to_vec()
+                    let e1_poly = Polynomial::new(e1.clone());
+                    pk1i_times_u.add(&e1_poly).coefficients().to_vec()
                 };
                 assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (n - 1));
 
@@ -457,13 +457,13 @@ impl GrecoVectors {
                 }
 
                 assert_eq!(&ct1i, &ct1i_calculated);
-                (i, r2i, r1i, k0qi, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e1i)
+                (i, r2i, r1i, k0qi, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i)
             },
         )
         .collect();
 
         // Merge results into the `res` structure after parallel execution
-        for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e1i) in results.into_iter() {
+        for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i) in results.into_iter() {
             res.r2is[i] = r2i;
             res.r1is[i] = r1i;
             res.k0is[i] = k0i;
@@ -473,14 +473,14 @@ impl GrecoVectors {
             res.pk1is[i] = pk1i;
             res.p1is[i] = p1i;
             res.p2is[i] = p2i;
-            res.e1is[i] = e1i;
+            res.e0is[i] = e0i;
         }
 
         // Set final result vectors
         res.u = u;
         res.k1 = k1;
-        res.e0 = e0;
-        res.e1 = e1_vec;
+        res.e0 = e0_vec;
+        res.e1 = e1;
         Ok(res)
     }
 }
@@ -497,7 +497,7 @@ impl GrecoVectors {
             r2is: reduce_coefficients_2d(&self.r2is, zkp_modulus),
             p1is: reduce_coefficients_2d(&self.p1is, zkp_modulus),
             p2is: reduce_coefficients_2d(&self.p2is, zkp_modulus),
-            e1is: reduce_coefficients_2d(&self.e1is, zkp_modulus),
+            e0is: reduce_coefficients_2d(&self.e0is, zkp_modulus),
             e0: reduce_coefficients(&self.e0, zkp_modulus),
             e1: reduce_coefficients(&self.e1, zkp_modulus),
             k0is: self.k0is.clone(),
@@ -510,7 +510,7 @@ impl GrecoVectors {
         json!({
             "pk0is": to_string_2d_vec(&self.pk0is),
             "pk1is": to_string_2d_vec(&self.pk1is),
-            "e1is": to_string_2d_vec(&self.e1is),
+            "e0is": to_string_2d_vec(&self.e0is),
             "u": to_string_1d_vec(&self.u),
             "e0": to_string_1d_vec(&self.e0),
             "e1": to_string_1d_vec(&self.e1),
@@ -574,7 +574,7 @@ mod tests {
 
         // Check all required fields are present
         let required_fields = [
-            "pk0is", "pk1is", "u", "e0", "e1", "e1is", "k1", "r2is", "r1is", "p2is", "p1is",
+            "pk0is", "pk1is", "u", "e0", "e1", "e0is", "k1", "r2is", "r1is", "p2is", "p1is",
             "k0is", "ct0is", "ct1is",
         ];
 

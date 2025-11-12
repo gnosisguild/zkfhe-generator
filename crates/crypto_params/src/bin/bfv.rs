@@ -149,7 +149,7 @@ fn main() {
         config.lambda
     );
     println!(
-        "B (bound on e1)     = {}   [Dist: {}, Var = {}]",
+        "B (bound on e2)     = {}   [Dist: {}, Var = {}]",
         config.b, dist_b, var_b
     );
     println!(
@@ -162,7 +162,7 @@ fn main() {
     println!("Δ (decimal)      = {}", bfv.delta.to_str_radix(10));
     println!("r_k(q)           = {}", bfv.rkq);
     println!(
-        "BEnc (bound on e2)  = {}   [Dist: {}, Var = {}]",
+        "BEnc (bound on e1)  = {}   [Dist: {}, Var = {}]",
         bfv.benc_min.to_str_radix(10),
         dist_benc,
         var_benc
