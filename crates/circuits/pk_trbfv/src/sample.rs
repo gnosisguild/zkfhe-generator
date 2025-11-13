@@ -36,16 +36,20 @@ pub struct EncryptionData {
 /// Useful for generating input vectors for zero-knowledge circuits
 /// or verifying encryption behavior.
 pub fn generate_sample_encryption(
-    params: &Arc<BfvParameters>,
+    trbfv_params: &Arc<BfvParameters>,
+    bfv_params: &Arc<BfvParameters>,
     parameter_type: ParameterType,
 ) -> Result<EncryptionData, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(0);
 
-    // Generate a random secret key
-    let secret_key = SecretKey::random(params, &mut rng);
+    // Generate a trbfv secret key
+    let secret_key = SecretKey::random(trbfv_params, &mut rng);
+
+    // Generate a bfv secret key
+    let secret_key_bfv = SecretKey::random(bfv_params, &mut rng);
 
     let (public_key, a, sk_rns, e_rns) = if parameter_type == ParameterType::Trbfv {
-        let crp = CommonRandomPoly::new(params, &mut rng).unwrap();
+        let crp = CommonRandomPoly::new(trbfv_params, &mut rng).unwrap();
 
         let (public_key_share, a, sk_rns, e_rns) =
             PublicKeyShare::new_extended(&secret_key, crp.clone(), &mut rng).unwrap();
@@ -53,7 +57,7 @@ pub fn generate_sample_encryption(
         (PublicKeyOrPoly::Share(public_key_share), a, sk_rns, e_rns)
     } else {
         let (public_key, a, sk_rns, e_rns) =
-            PublicKey::new_extended(&secret_key, &mut rng).unwrap();
+            PublicKey::new_extended(&secret_key_bfv, &mut rng).unwrap();
 
         (PublicKeyOrPoly::Full(public_key), a, sk_rns, e_rns)
     };

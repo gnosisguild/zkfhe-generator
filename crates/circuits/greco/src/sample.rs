@@ -7,6 +7,7 @@ use shared::circuit::{ParameterType, SampleType};
 use std::sync::Arc;
 
 /// Data from a sample BFV encryption
+#[derive(Debug, Clone)]
 pub struct EncryptionData {
     pub plaintext: Plaintext,
     pub ciphertext: Ciphertext,
@@ -41,27 +42,32 @@ pub struct EncryptionData {
 /// * Circuit 5 (decryption proof) uses a custom circuit
 /// * The `sample_type` parameter only affects BFV parameter type sample generation
 pub fn generate_sample_encryption(
-    params: &Arc<BfvParameters>,
+    trbfv_params: &Arc<BfvParameters>,
+    bfv_params: &Arc<BfvParameters>,
     parameter_type: ParameterType,
     sample_type: SampleType,
 ) -> Result<EncryptionData, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(0);
 
-    // Generate keys
-    let sk = SecretKey::random(params, &mut rng);
+    // Generate keys trbfv.
+    let sk = SecretKey::random(trbfv_params, &mut rng);
     let pk = PublicKey::new(&sk, &mut rng);
+
+    // Generate keys bfv.
+    let sk_bfv = SecretKey::random(bfv_params, &mut rng);
+    let pk_bfv = PublicKey::new(&sk_bfv, &mut rng);
 
     let pt = if parameter_type == ParameterType::Trbfv {
         // trBFV: Encrypt a message/vote (Circuit 6)
         // Create a sample plaintext with some random values, in here we are assigning 3 to all the
         // coefficients
-        let mut message_data = vec![3u64; params.degree()];
+        let mut message_data = vec![3u64; trbfv_params.degree()];
 
         // For Crisp, the user casts the vote in the right coefficient (message_data[0]). A vote is
         // a value in {0,1}. Any other value will result in a proof that will be rejected by the Verifier.
         message_data[0] = 1;
 
-        Plaintext::try_encode(&message_data, Encoding::poly(), params)?
+        Plaintext::try_encode(&message_data, Encoding::poly(), trbfv_params)?
     } else {
         // BFV: Encrypt threshold shares (Circuit 4 - send phase)
 
@@ -69,14 +75,13 @@ pub fn generate_sample_encryption(
         // threshold must be strictly less than num_parties/2
         let num_parties = 3;
         let threshold = 1;
-        let num_ciphertexts = 3;
+        let num_ciphertexts = 10;
 
-        let trbfv = TRBFV::new(num_parties, threshold, params.clone())?;
-        let mut share_manager = ShareManager::new(num_parties, threshold, params.clone());
+        let trbfv = TRBFV::new(num_parties, threshold, trbfv_params.clone())?;
+        let mut share_manager = ShareManager::new(num_parties, threshold, trbfv_params.clone());
 
         // Generate a secret key for secret sharing
-        let sample_sk = SecretKey::random(params, &mut rng);
-        let sk_poly = share_manager.coeffs_to_poly_level0(sample_sk.coeffs.as_ref())?;
+        let sk_poly = share_manager.coeffs_to_poly_level0(sk.coeffs.as_ref())?;
         let temp_trbfv = trbfv.clone();
 
         let share_row = match sample_type {
@@ -102,19 +107,31 @@ pub fn generate_sample_encryption(
             }
         };
 
-        Plaintext::try_encode(&share_row, Encoding::poly(), params)?
+        Plaintext::try_encode(&share_row, Encoding::poly(), bfv_params)?
     };
 
-    // Use extended encryption to get the polynomial data
-    let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng)?;
+    if parameter_type == ParameterType::Trbfv {
+        let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng)?;
 
-    Ok(EncryptionData {
-        plaintext: pt,
-        ciphertext: _ct,
-        public_key: pk,
-        secret_key: sk,
-        u_rns,
-        e0_rns,
-        e1_rns,
-    })
+        Ok(EncryptionData {
+            plaintext: pt,
+            ciphertext: _ct,
+            public_key: pk,
+            secret_key: sk,
+            u_rns,
+            e0_rns,
+            e1_rns,
+        })
+    } else {
+        let (_ct, u_rns, e0_rns, e1_rns) = pk_bfv.try_encrypt_extended(&pt, &mut rng)?;
+        Ok(EncryptionData {
+            plaintext: pt,
+            ciphertext: _ct,
+            public_key: pk_bfv,
+            secret_key: sk_bfv,
+            u_rns,
+            e0_rns,
+            e1_rns,
+        })
+    }
 }
