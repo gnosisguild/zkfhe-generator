@@ -35,7 +35,8 @@ pub struct DecryptionShareData {
 /// Useful for generating input vectors for zero-knowledge circuits
 /// or verifying decryption share computation behavior.
 pub fn generate_sample_decryption_share(
-    params: &Arc<BfvParameters>,
+    trbfv_params: &Arc<BfvParameters>,
+    _: &Arc<BfvParameters>,
 ) -> Result<DecryptionShareData, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
     let mut thread_rng = thread_rng();
@@ -45,11 +46,11 @@ pub fn generate_sample_decryption_share(
     let num_ciphertexts = 10;
 
     // Create TRBFV instance for share generation
-    let trbfv = TRBFV::new(num_parties, threshold, params.clone())
+    let trbfv = TRBFV::new(num_parties, threshold, trbfv_params.clone())
         .map_err(|e| format!("Failed to create TRBFV: {:?}", e))?;
 
     // Generate a random secret key and create public key shares
-    let crp = CommonRandomPoly::new(params, &mut thread_rng)
+    let crp = CommonRandomPoly::new(trbfv_params, &mut thread_rng)
         .map_err(|e| format!("Failed to create CRP: {:?}", e))?;
 
     // Generate secret keys for each party (each party has their own secret key)
@@ -58,7 +59,7 @@ pub fn generate_sample_decryption_share(
     let mut pk_shares = Vec::new();
 
     for _ in 0..num_parties {
-        let sk = fhe::bfv::SecretKey::random(params, &mut rng);
+        let sk = fhe::bfv::SecretKey::random(trbfv_params, &mut rng);
         let pk_share = PublicKeyShare::new(&sk, crp.clone(), &mut thread_rng)
             .map_err(|e| format!("Failed to create public key share: {:?}", e))?;
         party_secret_keys.push(sk);
@@ -74,7 +75,7 @@ pub fn generate_sample_decryption_share(
 
     // Encrypt a sample message (e.g., 1) to create a ciphertext
     let message = 1u64;
-    let pt = Plaintext::try_encode(&[message], Encoding::poly(), params)?;
+    let pt = Plaintext::try_encode(&[message], Encoding::poly(), trbfv_params)?;
     let ciphertext = public_key.try_encrypt(&pt, &mut thread_rng)?;
 
     // Simulate party 0's perspective:
@@ -83,7 +84,7 @@ pub fn generate_sample_decryption_share(
     // - Party 0 collects shares from other parties (including themselves)
     // - When party 0 computes a decryption share, they aggregate all collected shares
 
-    let mut share_manager = ShareManager::new(num_parties, threshold, params.clone());
+    let mut share_manager = ShareManager::new(num_parties, threshold, trbfv_params.clone());
 
     // Generate shares for each party's secret key
     // In reality, each party would do this independently
@@ -119,9 +120,9 @@ pub fn generate_sample_decryption_share(
     let mut sk_sss_collected = Vec::new();
     let mut es_sss_collected = Vec::new();
 
-    for modulus_idx in 0..params.moduli().len() {
-        let mut sk_collected = ndarray::Array2::<u64>::zeros((0, params.degree()));
-        let mut es_collected = ndarray::Array2::<u64>::zeros((0, params.degree()));
+    for modulus_idx in 0..trbfv_params.moduli().len() {
+        let mut sk_collected = ndarray::Array2::<u64>::zeros((0, trbfv_params.degree()));
+        let mut es_collected = ndarray::Array2::<u64>::zeros((0, trbfv_params.degree()));
 
         // Party 0 collects shares from honest parties
         // For each party i, party 0 collects the share that party i sent to party 0
@@ -168,17 +169,17 @@ pub fn generate_sample_decryption_share(
     // Aggregate collected shares to get s and e polynomials
     // First, sum across parties for each modulus, then restructure to match
     // the format expected by aggregate_collected_shares: one Array2 of shape [num_moduli, degree]
-    let ctx = params.ctx_at_level(0)?;
+    let ctx = trbfv_params.ctx_at_level(0)?;
     let num_moduli = sk_sss_collected.len();
 
     // Sum across parties for each modulus to create [num_moduli, degree] matrices
-    let mut sk_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, params.degree()));
-    let mut es_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, params.degree()));
+    let mut sk_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, trbfv_params.degree()));
+    let mut es_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, trbfv_params.degree()));
 
     for modulus_idx in 0..num_moduli {
         // Sum across parties (rows) for this modulus
         for party_idx in 0..sk_sss_collected[modulus_idx].nrows() {
-            for coeff_idx in 0..params.degree() {
+            for coeff_idx in 0..trbfv_params.degree() {
                 sk_sum_matrix[[modulus_idx, coeff_idx]] = (sk_sum_matrix[[modulus_idx, coeff_idx]]
                     + sk_sss_collected[modulus_idx][[party_idx, coeff_idx]])
                     % ctx.moduli()[modulus_idx];
@@ -236,7 +237,7 @@ mod tests {
             .build_arc()
             .unwrap();
 
-        let result = generate_sample_decryption_share(&params);
+        let result = generate_sample_decryption_share(&params, &params);
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",

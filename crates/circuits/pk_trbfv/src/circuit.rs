@@ -26,24 +26,31 @@ impl Circuit for PkTrBfvCircuit {
 
     fn generate_toml(
         &self,
+        trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
     ) -> Result<(), shared::errors::ZkFheError> {
+        let selected_params = if self.parameter_type == ParameterType::Trbfv {
+            trbfv_params
+        } else {
+            bfv_params
+        };
+
         // Generate bounds and vectors directly
-        let (crypto_params, bounds) = PkTrBfvBounds::compute(bfv_params, 0)?;
+        let (crypto_params, bounds) = PkTrBfvBounds::compute(selected_params, 0)?;
         let encryption_data =
-            generate_sample_encryption(bfv_params, self.parameter_type).map_err(|e| {
-                shared::errors::ZkFheError::Bfv {
+            generate_sample_encryption(trbfv_params, bfv_params, self.parameter_type).map_err(
+                |e| shared::errors::ZkFheError::Bfv {
                     message: e.to_string(),
-                }
-            })?;
+                },
+            )?;
 
         let vectors: PkTrBfvVectors = PkTrBfvVectors::compute(
             &encryption_data.a,
             &encryption_data.e_rns,
             &encryption_data.sk_rns,
             &encryption_data.public_key,
-            bfv_params,
+            selected_params,
         )?;
 
         let vectors_standard = vectors.standard_form();

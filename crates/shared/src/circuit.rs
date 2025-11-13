@@ -26,6 +26,47 @@ pub enum ParameterType {
     Bfv, // we might have more in the future like CKKS.
 }
 
+/// Sample type for circuit sample generation
+///
+/// This enum determines what type of sample input data is generated when creating
+/// sample encryption data. It is used by circuits that need to generate
+/// different types of threshold shares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SampleType {
+    /// Generate a secret key share (sk_sss) share_row
+    ///
+    /// This is the default sample type that generates shares of a secret key
+    /// using secret sharing.
+    SecretKey,
+    /// Generate a smudging noise share (es_sss) share_row
+    ///
+    /// This sample type generates shares of smudging noise instead of
+    /// secret key shares.
+    SmudgingNoise,
+}
+
+impl SampleType {
+    /// Get the string representation of the sample type
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SampleType::SecretKey => "secret-key",
+            SampleType::SmudgingNoise => "smudging-noise",
+        }
+    }
+
+    /// Parse sample type from string
+    pub fn from_str_to_sample_type(s: &str) -> anyhow::Result<Self> {
+        match s.to_lowercase().as_str() {
+            "secret-key" => Ok(SampleType::SecretKey),
+            "smudging-noise" => Ok(SampleType::SmudgingNoise),
+            _ => anyhow::bail!(
+                "Unknown sample type: {}. Supported types: secret-key, smudging-noise",
+                s
+            ),
+        }
+    }
+}
+
 impl ParameterType {
     /// Get the string representation of the parameter type
     pub fn as_str(&self) -> &'static str {
@@ -36,7 +77,7 @@ impl ParameterType {
     }
 
     /// Parse parameter type from string
-    pub fn to_str(s: &str) -> anyhow::Result<Self> {
+    pub fn from_str_to_parameter_type(s: &str) -> anyhow::Result<Self> {
         match s.to_lowercase().as_str() {
             "trbfv" => Ok(ParameterType::Trbfv),
             "bfv" => Ok(ParameterType::Bfv),
@@ -112,5 +153,10 @@ pub trait Circuit {
     ///
     /// This method should create a TOML file containing all the parameters
     /// needed for the Noir circuit to function correctly.
-    fn generate_toml(&self, bfv_params: &Arc<BfvParameters>, output_dir: &Path) -> ZkFheResult<()>;
+    fn generate_toml(
+        &self,
+        trbfv_params: &Arc<BfvParameters>,
+        bfv_params: &Arc<BfvParameters>,
+        output_dir: &Path,
+    ) -> ZkFheResult<()>;
 }

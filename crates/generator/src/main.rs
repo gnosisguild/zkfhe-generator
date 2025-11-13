@@ -18,7 +18,7 @@ use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
 use crypto_params::utils::approx_bits_from_log2;
 use crypto_params::utils::fmt_big_summary;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
-use shared::circuit::ParameterType;
+use shared::circuit::{ParameterType, SampleType};
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
 use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
 use std::sync::Arc;
@@ -99,6 +99,17 @@ enum Commands {
         /// parameters (N, L, K, N_PARTIES, etc.).
         #[arg(long)]
         main: bool,
+
+        /// Sample type for share_row generation (Greco circuit only)
+        ///
+        /// This option is only applicable to the greco circuit with BFV parameter type.
+        /// Determines what type of share_row to generate:
+        /// - `secret-key`: Generate sk_sss share_row (default)
+        /// - `smudging-noise`: Generate es_sss share_row
+        ///
+        /// This affects the type of threshold share that gets encrypted in Circuit 4.
+        #[arg(long, default_value = "secret-key")]
+        sample_type: String,
     },
 
     /// List available circuits and presets
@@ -169,6 +180,7 @@ pub struct BfvParams {
 ///
 /// * `circuit_name` - The name of the circuit to load
 /// * `parameter_type` - The parameter type (BFV or trBFV)
+/// * `sample_type` - The sample type (only used for greco circuit)
 ///
 /// # Returns
 ///
@@ -176,10 +188,11 @@ pub struct BfvParams {
 fn get_circuit(
     circuit_name: &str,
     parameter_type: ParameterType,
+    sample_type: SampleType,
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => {
-            let circuit = greco::circuit::GrecoCircuit::new(parameter_type);
+            let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type);
             Ok(Box::new(circuit))
         }
         "pk-trbfv" => {
@@ -294,6 +307,7 @@ fn generate_circuit_params(
     verbose: bool,
     output_dir: &Path,
     generate_main: bool,
+    sample_type: SampleType,
 ) -> anyhow::Result<()> {
     if let Some(preset_name) = preset {
         println!("📋 Using preset: {preset_name}");
@@ -302,183 +316,196 @@ fn generate_circuit_params(
     println!("📋 Using parameter type: {}", parameter_type.as_str());
 
     // Get circuit implementation
-    let circuit = get_circuit(circuit_name, parameter_type)?;
+    let circuit = get_circuit(circuit_name, parameter_type, sample_type)?;
     println!("✅ Loaded circuit: {}", circuit.name());
 
     if !is_compatible(circuit_name, &parameter_type) {
         anyhow::bail!("Parameter type is not compatible with circuit");
     }
 
-    let bfv_params: Arc<BfvParameters> = if preset == Some("dev") {
-        // Hardcode dev parameters based on current development parameters for Enclave.
-        BfvParametersBuilder::new()
-            .set_degree(2048)
-            .set_plaintext_modulus(1032193)
-            .set_moduli(&[0x3FFFFFFF000001])
-            .build_arc()
-            .unwrap()
-    } else {
-        // Create parameter configuration
-        let param_config = create_bfv_config(preset, None, verbose)?;
+    let (trbfv_params, bfv_params): (Arc<BfvParameters>, Arc<BfvParameters>) =
+        if preset == Some("dev") {
+            // Hardcode dev parameters based on current development parameters for Enclave.
+            let params = BfvParametersBuilder::new()
+                .set_degree(2048)
+                .set_plaintext_modulus(1032193)
+                .set_moduli(&[0x3FFFFFFF000001])
+                .build_arc()
+                .unwrap();
 
-        // Generate BFV parameters (always needed)
-        println!(
-            "🔐 BFV Configuration: n={}, z={}, k={}, λ={}, B={}, B_chi={}",
-            param_config.n,
-            param_config.z,
-            param_config.k,
-            param_config.lambda,
-            param_config.b,
-            param_config.b_chi
-        );
-        println!("⚙️  Searching for optimal BFV parameters...");
-
-        let trbfv = bfv_search(&param_config)?;
-
-        // Decide distributions for B and B_chi per your rule:
-        // CBD for B when Var_CBD = B/2 ≤ 16  <=>  B ≤ 32, otherwise Uniform over [-B..B]
-        let (dist_b, var_b) = if param_config.b <= 32 {
-            // CBD for small bounds
-            let var = if param_config.b % 2 == 0 {
-                (param_config.b / 2).to_string()
-            } else {
-                format!("{}/2", param_config.b)
-            };
-            ("CBD".to_string(), var)
+            (params.clone(), params.clone())
         } else {
-            // Uniform otherwise
-            (
-                "Uniform".to_string(),
-                variance_uniform_sym_str_u128(param_config.b),
-            )
-        };
+            // Create parameter configuration
+            let param_config = create_bfv_config(preset, None, verbose)?;
 
-        // B_chi stays CBD with variance B_chi/2
-        let (dist_b_chi, var_chi) = (
-            "CBD".to_string(),
-            if param_config.b_chi % 2 == 0 {
-                (param_config.b_chi / 2).to_string()
+            // Generate BFV parameters (always needed)
+            println!(
+                "🔐 BFV Configuration: n={}, z={}, k={}, λ={}, B={}, B_chi={}",
+                param_config.n,
+                param_config.z,
+                param_config.k,
+                param_config.lambda,
+                param_config.b,
+                param_config.b_chi
+            );
+            println!("⚙️  Searching for optimal BFV parameters...");
+
+            let trbfv = bfv_search(&param_config)?;
+
+            // Decide distributions for B and B_chi per your rule:
+            // CBD for B when Var_CBD = B/2 ≤ 16  <=>  B ≤ 32, otherwise Uniform over [-B..B]
+            let (dist_b, var_b) = if param_config.b <= 32 {
+                // CBD for small bounds
+                let var = if param_config.b % 2 == 0 {
+                    (param_config.b / 2).to_string()
+                } else {
+                    format!("{}/2", param_config.b)
+                };
+                ("CBD".to_string(), var)
             } else {
-                format!("{}/2", param_config.b_chi)
-            },
-        );
+                // Uniform otherwise
+                (
+                    "Uniform".to_string(),
+                    variance_uniform_sym_str_u128(param_config.b),
+                )
+            };
 
-        // BEnc is treated as uniform over [-BEnc..BEnc] for variance reporting
-        let (dist_benc, var_benc) = (
-            "Uniform".to_string(),
-            variance_uniform_sym_str_big(&trbfv.benc_min),
-        );
+            // B_chi stays CBD with variance B_chi/2
+            let (dist_b_chi, var_chi) = (
+                "CBD".to_string(),
+                if param_config.b_chi % 2 == 0 {
+                    (param_config.b_chi / 2).to_string()
+                } else {
+                    format!("{}/2", param_config.b_chi)
+                },
+            );
 
-        if verbose {
-            println!("\n=== FIRST BFV PARAMETER SET ===");
-            println!(
-                "n (number of ciphernodes)                = {}",
-                param_config.n
+            // BEnc is treated as uniform over [-BEnc..BEnc] for variance reporting
+            let (dist_benc, var_benc) = (
+                "Uniform".to_string(),
+                variance_uniform_sym_str_big(&trbfv.benc_min),
             );
-            println!(
-                "z (number of votes)                      = {}",
-                param_config.z
-            );
-            println!(
-                "k (plaintext space)                      = {} ({} bits)",
-                trbfv.k_plain_eff,
-                approx_bits_from_log2((trbfv.k_plain_eff as f64).log2())
-            );
-            println!(
-                "λ (Statistical security parameter)       = {}",
-                param_config.lambda
-            );
-            println!(
-                "B (bound on e1)     = {}   [Dist: {}, Var = {}]",
-                param_config.b, dist_b, var_b
-            );
-            println!(
-                "B_chi (bound on sk) = {}   [Dist: {}, Var = {}]",
-                param_config.b_chi, dist_b_chi, var_chi
-            );
-            println!("d (LWE dimension)               = {}", trbfv.d);
-            println!("q_BFV (decimal)  = {}", trbfv.q_bfv.to_str_radix(10));
-            println!("|q_BFV|          = {}", fmt_big_summary(&trbfv.q_bfv));
-            println!("Δ (decimal)      = {}", trbfv.delta.to_str_radix(10));
-            println!("r_k(q)           = {}", trbfv.rkq);
-            println!(
-                "BEnc (bound on e0)  = {}   [Dist: {}, Var = {}]",
-                trbfv.benc_min.to_str_radix(10),
-                dist_benc,
-                var_benc
-            );
-            println!("B_fresh          = {}", trbfv.b_fresh.to_str_radix(10));
-            println!("B_C              = {}", trbfv.b_c.to_str_radix(10));
-            println!("B_sm         = {}", trbfv.b_sm_min.to_str_radix(10));
-            println!("log2(LHS)        = {:.6}", trbfv.lhs_log2);
-            println!("log2(Δ)          = {:.6}", trbfv.rhs_log2);
-            println!(
-                "q_i used ({}): {}",
-                trbfv.selected_primes.len(),
-                trbfv
-                    .selected_primes
-                    .iter()
-                    .map(|p| format!("{} ({} bits)", p.hex, p.bitlen))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
 
-        // Choose which parameter set to use based on parameter type
-        let final_params = match parameter_type {
-            ParameterType::Trbfv => trbfv,
-            ParameterType::Bfv => {
-                // Generate BFV parameters (second parameter set)
-                bfv_search_second_param(&param_config, &trbfv)
-                    .ok_or_else(|| anyhow::anyhow!("No second BFV parameter set found"))?
+            if verbose {
+                println!("\n=== FIRST BFV PARAMETER SET ===");
+                println!(
+                    "n (number of ciphernodes)                = {}",
+                    param_config.n
+                );
+                println!(
+                    "z (number of votes)                      = {}",
+                    param_config.z
+                );
+                println!(
+                    "k (plaintext space)                      = {} ({} bits)",
+                    trbfv.k_plain_eff,
+                    approx_bits_from_log2((trbfv.k_plain_eff as f64).log2())
+                );
+                println!(
+                    "λ (Statistical security parameter)       = {}",
+                    param_config.lambda
+                );
+                println!(
+                    "B (bound on e1)     = {}   [Dist: {}, Var = {}]",
+                    param_config.b, dist_b, var_b
+                );
+                println!(
+                    "B_chi (bound on sk) = {}   [Dist: {}, Var = {}]",
+                    param_config.b_chi, dist_b_chi, var_chi
+                );
+                println!("d (LWE dimension)               = {}", trbfv.d);
+                println!("q_BFV (decimal)  = {}", trbfv.q_bfv.to_str_radix(10));
+                println!("|q_BFV|          = {}", fmt_big_summary(&trbfv.q_bfv));
+                println!("Δ (decimal)      = {}", trbfv.delta.to_str_radix(10));
+                println!("r_k(q)           = {}", trbfv.rkq);
+                println!(
+                    "BEnc (bound on e0)  = {}   [Dist: {}, Var = {}]",
+                    trbfv.benc_min.to_str_radix(10),
+                    dist_benc,
+                    var_benc
+                );
+                println!("B_fresh          = {}", trbfv.b_fresh.to_str_radix(10));
+                println!("B_C              = {}", trbfv.b_c.to_str_radix(10));
+                println!("B_sm         = {}", trbfv.b_sm_min.to_str_radix(10));
+                println!("log2(LHS)        = {:.6}", trbfv.lhs_log2);
+                println!("log2(Δ)          = {:.6}", trbfv.rhs_log2);
+                println!(
+                    "q_i used ({}): {}",
+                    trbfv.selected_primes.len(),
+                    trbfv
+                        .selected_primes
+                        .iter()
+                        .map(|p| format!("{} ({} bits)", p.hex, p.bitlen))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
             }
-        };
 
-        if parameter_type == ParameterType::Trbfv {
-            BfvParametersBuilder::new()
-                .set_degree(final_params.d as usize)
-                .set_plaintext_modulus(final_params.k_plain_eff as u64)
-                .set_moduli(final_params.qi_values().as_slice())
+            // Choose which parameter set to use based on parameter type
+            let final_trbfv_params = trbfv.clone();
+            let final_bfv_params = bfv_search_second_param(&param_config, &trbfv)
+                .ok_or_else(|| anyhow::anyhow!("No second BFV parameter set found"))?;
+
+            let trbfv_params = BfvParametersBuilder::new()
+                .set_degree(final_trbfv_params.d as usize)
+                .set_plaintext_modulus(final_trbfv_params.k_plain_eff as u64)
+                .set_moduli(final_trbfv_params.qi_values().as_slice())
                 .set_variance(var_b.parse::<usize>().unwrap())
                 .set_error1_variance_str(var_benc.as_str())?
                 .build_arc()
-                .unwrap()
-        } else {
-            BfvParametersBuilder::new()
-                .set_degree(final_params.d as usize)
-                .set_plaintext_modulus(final_params.k_plain_eff as u64)
-                .set_moduli(final_params.qi_values().as_slice())
+                .unwrap();
+            let bfv_params = BfvParametersBuilder::new()
+                .set_degree(final_bfv_params.d as usize)
+                .set_plaintext_modulus(final_bfv_params.k_plain_eff as u64)
+                .set_moduli(final_bfv_params.qi_values().as_slice())
                 .build_arc()
-                .unwrap()
-        }
-    };
+                .unwrap();
+            (trbfv_params, bfv_params)
+        };
 
-    println!(
-        "🔐 {} Parameters: degree={}, plaintext_modulus={}, moduli=[{}]",
-        parameter_type.as_str(),
-        bfv_params.degree(),
-        bfv_params.plaintext(),
-        bfv_params
-            .moduli()
-            .iter()
-            .map(|m| m.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-
-    println!("✅ Parameters generated successfully");
+    if parameter_type == ParameterType::Trbfv {
+        println!(
+            "🔐 {} Parameters: degree={}, plaintext_modulus={}, moduli=[{}]",
+            parameter_type.as_str(),
+            trbfv_params.degree(),
+            trbfv_params.plaintext(),
+            trbfv_params
+                .moduli()
+                .iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    } else {
+        println!(
+            "🔐 {} Parameters: degree={}, plaintext_modulus={}, moduli=[{}]",
+            parameter_type.as_str(),
+            bfv_params.degree(),
+            bfv_params.plaintext(),
+            bfv_params
+                .moduli()
+                .iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
 
     // Generate TOML file
     println!("📄 Generating TOML file...");
     circuit
-        .generate_toml(&bfv_params, output_dir)
+        .generate_toml(&trbfv_params, &bfv_params, output_dir)
         .map_err(|e| anyhow::anyhow!("Failed to generate TOML: {e}"))?;
     println!("✅ TOML file generated successfully");
 
     // Generate main.nr template if requested
     if generate_main {
         println!("📄 Generating main.nr template...");
-        generate_main_template(circuit.as_ref(), &bfv_params, output_dir)?;
+        if circuit.parameter_type() == ParameterType::Trbfv {
+            generate_main_template(circuit.as_ref(), &trbfv_params, output_dir)?;
+        } else {
+            generate_main_template(circuit.as_ref(), &bfv_params, output_dir)?;
+        }
         println!("✅ main.nr template generated successfully");
     }
 
@@ -607,12 +634,40 @@ fn main() -> anyhow::Result<()> {
             verbose,
             output,
             main,
+            sample_type,
         } => {
             // Ensure output directory exists
             std::fs::create_dir_all(&output)?;
 
             // Parse parameter type
-            let param_type = ParameterType::to_str(&parameter_type)?;
+            let param_type = ParameterType::from_str_to_parameter_type(&parameter_type)?;
+
+            // Parse sample type (only used for greco circuit with BFV)
+            let effective_sample_type = if circuit.to_lowercase() == "greco"
+                && param_type == ParameterType::Bfv
+            {
+                let parsed_type = SampleType::from_str_to_sample_type(&sample_type)?;
+                // Print the sample type being used
+                if sample_type == "secret-key" {
+                    println!("📋 Using sample type: secret-key (default)");
+                } else {
+                    println!("📋 Using sample type: {}", parsed_type.as_str());
+                }
+                parsed_type
+            } else {
+                // Default to SecretKey for other circuits or parameter types
+                // Warn if user specified a sample type for non-greco or non-BFV
+                if circuit.to_lowercase() != "greco" {
+                    eprintln!(
+                        "⚠️  Warning: --sample-type is only applicable to the greco circuit. This flag will be ignored."
+                    );
+                } else if param_type != ParameterType::Bfv {
+                    eprintln!(
+                        "⚠️  Warning: --sample-type is only applicable to BFV parameter type. This flag will be ignored."
+                    );
+                }
+                SampleType::SecretKey
+            };
 
             generate_circuit_params(
                 &circuit,
@@ -621,6 +676,7 @@ fn main() -> anyhow::Result<()> {
                 verbose,
                 &output,
                 main,
+                effective_sample_type,
             )?;
         }
         Commands::List { circuits, presets } => {
@@ -646,6 +702,8 @@ fn main() -> anyhow::Result<()> {
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n🔐 Greco circuit:");
                 println!("  • BFV parameter type: Encrypts threshold shares (Circuit 4)");
+                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
+                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
                 println!("  • trBFV parameter type: Encrypts messages/votes (Circuit 6)");
             }
             if !circuits && !presets {
@@ -667,6 +725,8 @@ fn main() -> anyhow::Result<()> {
                 println!("   Example: --parameter-type trbfv");
                 println!("\n🔐 Greco circuit usage:");
                 println!("  • --parameter-type bfv: Encrypt threshold shares (Circuit 4)");
+                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
+                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
                 println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 6)");
             }
         }
