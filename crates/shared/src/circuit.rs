@@ -55,7 +55,7 @@ impl SampleType {
     }
 
     /// Parse sample type from string
-    pub fn from_str(s: &str) -> anyhow::Result<Self> {
+    pub fn to_str(s: &str) -> anyhow::Result<Self> {
         match s.to_lowercase().as_str() {
             "secret-key" => Ok(SampleType::SecretKey),
             "smudging-noise" => Ok(SampleType::SmudgingNoise),
@@ -153,5 +153,10 @@ pub trait Circuit {
     ///
     /// This method should create a TOML file containing all the parameters
     /// needed for the Noir circuit to function correctly.
-    fn generate_toml(&self, bfv_params: &Arc<BfvParameters>, output_dir: &Path) -> ZkFheResult<()>;
+    fn generate_toml(
+        &self,
+        trbfv_params: &Arc<BfvParameters>,
+        bfv_params: &Arc<BfvParameters>,
+        output_dir: &Path,
+    ) -> ZkFheResult<()>;
 }

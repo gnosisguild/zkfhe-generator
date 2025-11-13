@@ -25,28 +25,31 @@ impl Circuit for DecShareTrBfvCircuit {
 
     fn generate_toml(
         &self,
+        trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
     ) -> Result<(), shared::errors::ZkFheError> {
         // Generate sample decryption share data
-        let decryption_data = generate_sample_decryption_share(bfv_params).map_err(|e| {
-            shared::errors::ZkFheError::Bfv {
-                message: e.to_string(),
-            }
-        })?;
+        let decryption_data =
+            generate_sample_decryption_share(trbfv_params, bfv_params).map_err(|e| {
+                shared::errors::ZkFheError::Bfv {
+                    message: e.to_string(),
+                }
+            })?;
 
-        let (crypto_params, bounds) = DecShareTrBfvBounds::compute(bfv_params, 0).map_err(|e| {
-            shared::errors::ZkFheError::Bfv {
-                message: e.to_string(),
-            }
-        })?;
+        let (crypto_params, bounds) =
+            DecShareTrBfvBounds::compute(trbfv_params, 0).map_err(|e| {
+                shared::errors::ZkFheError::Bfv {
+                    message: e.to_string(),
+                }
+            })?;
 
         let vectors = DecShareTrBfvVectors::compute(
             &decryption_data.ciphertext,
             &decryption_data.s_rns,
             &decryption_data.e_rns,
             &decryption_data.d_share_rns,
-            bfv_params,
+            trbfv_params,
         )?;
 
         let vectors_standard = vectors.standard_form();

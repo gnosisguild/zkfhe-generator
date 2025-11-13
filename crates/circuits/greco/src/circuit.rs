@@ -61,18 +61,28 @@ impl Circuit for GrecoCircuit {
 
     fn generate_toml(
         &self,
+        trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
     ) -> Result<(), shared::errors::ZkFheError> {
-        // Generate bounds and vectors directly
-        let (crypto_params, bounds) = GrecoBounds::compute(bfv_params, 0)?;
+        let selected_params = if self.parameter_type == ParameterType::Trbfv {
+            trbfv_params
+        } else {
+            bfv_params
+        };
 
-        let encryption_data =
-            generate_sample_encryption(bfv_params, self.parameter_type, self.sample_type).map_err(
-                |e| shared::errors::ZkFheError::Bfv {
-                    message: e.to_string(),
-                },
-            )?;
+        // Generate bounds and vectors directly
+        let (crypto_params, bounds) = GrecoBounds::compute(selected_params, 0)?;
+
+        let encryption_data = generate_sample_encryption(
+            trbfv_params,
+            bfv_params,
+            self.parameter_type,
+            self.sample_type,
+        )
+        .map_err(|e| shared::errors::ZkFheError::Bfv {
+            message: e.to_string(),
+        })?;
 
         let vectors = GrecoVectors::compute(
             &encryption_data.plaintext,
@@ -81,7 +91,7 @@ impl Circuit for GrecoCircuit {
             &encryption_data.e1_rns,
             &encryption_data.ciphertext,
             &encryption_data.public_key,
-            bfv_params,
+            selected_params,
         )?;
 
         let vectors_standard = vectors.standard_form();
