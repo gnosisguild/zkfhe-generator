@@ -18,7 +18,7 @@ use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
 use crypto_params::utils::approx_bits_from_log2;
 use crypto_params::utils::fmt_big_summary;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
-use shared::circuit::ParameterType;
+use shared::circuit::{ParameterType, SampleType};
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
 use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
 use std::sync::Arc;
@@ -99,6 +99,17 @@ enum Commands {
         /// parameters (N, L, K, N_PARTIES, etc.).
         #[arg(long)]
         main: bool,
+
+        /// Sample type for share_row generation (Greco circuit only)
+        ///
+        /// This option is only applicable to the greco circuit with BFV parameter type.
+        /// Determines what type of share_row to generate:
+        /// - `secret-key`: Generate sk_sss share_row (default)
+        /// - `smudging-noise`: Generate es_sss share_row
+        ///
+        /// This affects the type of threshold share that gets encrypted in Circuit 4.
+        #[arg(long, default_value = "secret-key")]
+        sample_type: String,
     },
 
     /// List available circuits and presets
@@ -169,6 +180,7 @@ pub struct BfvParams {
 ///
 /// * `circuit_name` - The name of the circuit to load
 /// * `parameter_type` - The parameter type (BFV or trBFV)
+/// * `sample_type` - The sample type (only used for greco circuit)
 ///
 /// # Returns
 ///
@@ -176,10 +188,11 @@ pub struct BfvParams {
 fn get_circuit(
     circuit_name: &str,
     parameter_type: ParameterType,
+    sample_type: SampleType,
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => {
-            let circuit = greco::circuit::GrecoCircuit::new(parameter_type);
+            let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type);
             Ok(Box::new(circuit))
         }
         "pk-trbfv" => {
@@ -294,6 +307,7 @@ fn generate_circuit_params(
     verbose: bool,
     output_dir: &Path,
     generate_main: bool,
+    sample_type: SampleType,
 ) -> anyhow::Result<()> {
     if let Some(preset_name) = preset {
         println!("📋 Using preset: {preset_name}");
@@ -302,7 +316,7 @@ fn generate_circuit_params(
     println!("📋 Using parameter type: {}", parameter_type.as_str());
 
     // Get circuit implementation
-    let circuit = get_circuit(circuit_name, parameter_type)?;
+    let circuit = get_circuit(circuit_name, parameter_type, sample_type)?;
     println!("✅ Loaded circuit: {}", circuit.name());
 
     if !is_compatible(circuit_name, &parameter_type) {
@@ -607,12 +621,40 @@ fn main() -> anyhow::Result<()> {
             verbose,
             output,
             main,
+            sample_type,
         } => {
             // Ensure output directory exists
             std::fs::create_dir_all(&output)?;
 
             // Parse parameter type
             let param_type = ParameterType::to_str(&parameter_type)?;
+
+            // Parse sample type (only used for greco circuit with BFV)
+            let effective_sample_type = if circuit.to_lowercase() == "greco"
+                && param_type == ParameterType::Bfv
+            {
+                let parsed_type = SampleType::from_str(&sample_type)?;
+                // Print the sample type being used
+                if sample_type == "secret-key" {
+                    println!("📋 Using sample type: secret-key (default)");
+                } else {
+                    println!("📋 Using sample type: {}", parsed_type.as_str());
+                }
+                parsed_type
+            } else {
+                // Default to SecretKey for other circuits or parameter types
+                // Warn if user specified a sample type for non-greco or non-BFV
+                if circuit.to_lowercase() != "greco" {
+                    eprintln!(
+                        "⚠️  Warning: --sample-type is only applicable to the greco circuit. This flag will be ignored."
+                    );
+                } else if param_type != ParameterType::Bfv {
+                    eprintln!(
+                        "⚠️  Warning: --sample-type is only applicable to BFV parameter type. This flag will be ignored."
+                    );
+                }
+                SampleType::SecretKey
+            };
 
             generate_circuit_params(
                 &circuit,
@@ -621,6 +663,7 @@ fn main() -> anyhow::Result<()> {
                 verbose,
                 &output,
                 main,
+                effective_sample_type,
             )?;
         }
         Commands::List { circuits, presets } => {
@@ -646,6 +689,8 @@ fn main() -> anyhow::Result<()> {
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n🔐 Greco circuit:");
                 println!("  • BFV parameter type: Encrypts threshold shares (Circuit 4)");
+                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
+                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
                 println!("  • trBFV parameter type: Encrypts messages/votes (Circuit 6)");
             }
             if !circuits && !presets {
@@ -667,6 +712,8 @@ fn main() -> anyhow::Result<()> {
                 println!("   Example: --parameter-type trbfv");
                 println!("\n🔐 Greco circuit usage:");
                 println!("  • --parameter-type bfv: Encrypt threshold shares (Circuit 4)");
+                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
+                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
                 println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 6)");
             }
         }
