@@ -145,20 +145,11 @@ impl GrecoVectors {
                 .collect()
         };
 
-        let e0_vec: Vec<BigInt> = unsafe {
-            ctx.moduli_operators()[0]
-                .center_vec_vt(
-                    e0_poly_copy
-                        .coefficients()
-                        .row(0)
-                        .as_slice()
-                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
-                )
-                .iter()
-                .rev()
-                .map(|&x| BigInt::from(x))
-                .collect()
-        };
+        let mut e0_vec: Vec<BigInt> = e0_bigints.iter().rev().cloned().collect();
+
+        // Center the coefficients mod Q
+        let q_bigint = BigInt::from(ctx.modulus().clone());
+        reduce_and_center_coefficients_mut(&mut e0_vec, &q_bigint);
 
         let e1: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
