@@ -640,13 +640,13 @@ fn main() -> anyhow::Result<()> {
             std::fs::create_dir_all(&output)?;
 
             // Parse parameter type
-            let param_type = ParameterType::to_str(&parameter_type)?;
+            let param_type = ParameterType::from_str_to_parameter_type(&parameter_type)?;
 
             // Parse sample type (only used for greco circuit with BFV)
             let effective_sample_type = if circuit.to_lowercase() == "greco"
                 && param_type == ParameterType::Bfv
             {
-                let parsed_type = SampleType::to_str(&sample_type)?;
+                let parsed_type = SampleType::from_str_to_sample_type(&sample_type)?;
                 // Print the sample type being used
                 if sample_type == "secret-key" {
                     println!("📋 Using sample type: secret-key (default)");
