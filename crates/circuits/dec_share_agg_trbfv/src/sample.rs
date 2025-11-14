@@ -1,11 +1,12 @@
 use fhe::bfv::{BfvParameters, Ciphertext, Encoding, Plaintext, PublicKey};
 use fhe::mbfv::{AggregateIter, CommonRandomPoly, PublicKeyShare};
 use fhe::trbfv::{ShareManager, TRBFV};
-use fhe_math::rq::Poly;
+use fhe_math::rq::{Poly, Representation};
 use fhe_traits::FheDecoder;
 use fhe_traits::{FheEncoder, FheEncrypter};
 use ndarray::ArrayView;
-use rand::{rngs::OsRng, thread_rng};
+use rand::rngs::OsRng;
+use rand::thread_rng;
 use std::sync::Arc;
 
 /// Output structure representing all components involved in decryption share aggregation.
@@ -40,7 +41,6 @@ pub struct DecryptionShareAggregationData {
 pub fn generate_sample_decryption_share_aggregation(
     trbfv_params: &Arc<BfvParameters>,
 ) -> Result<DecryptionShareAggregationData, Box<dyn std::error::Error>> {
-    let mut rng = OsRng;
     let mut thread_rng = thread_rng();
 
     let num_parties = 5;
@@ -55,156 +55,133 @@ pub fn generate_sample_decryption_share_aggregation(
     let crp = CommonRandomPoly::new(trbfv_params, &mut thread_rng)
         .map_err(|e| format!("Failed to create CRP: {:?}", e))?;
 
-    // Generate secret keys for each party (each party has their own secret key)
-    // Each party splits their secret key into shares and sends them to others
-    let mut party_secret_keys = Vec::new();
-    let mut pk_shares = Vec::new();
+    // Set up parties: each party generates a secret key and shares
+    // Following the pattern from trbfv_add_bfv_share.rs
+    struct Party {
+        pk_share: PublicKeyShare,
+        sk_sss: Vec<ndarray::Array2<u64>>,
+        esi_sss: Vec<ndarray::Array2<u64>>,
+        sk_sss_collected: Vec<ndarray::Array2<u64>>,
+        es_sss_collected: Vec<ndarray::Array2<u64>>,
+        sk_poly_sum: Poly,
+        es_poly_sum: Poly,
+    }
 
-    for _ in 0..num_parties {
-        let sk = fhe::bfv::SecretKey::random(trbfv_params, &mut rng);
-        let pk_share = PublicKeyShare::new(&sk, crp.clone(), &mut thread_rng)
-            .map_err(|e| format!("Failed to create public key share: {:?}", e))?;
-        party_secret_keys.push(sk);
-        pk_shares.push(pk_share);
+    let mut parties: Vec<Party> = (0..num_parties)
+        .map(|_| {
+            let mut rng = OsRng;
+            let mut rng_thread = rand::thread_rng();
+
+            let sk_share = fhe::bfv::SecretKey::random(trbfv_params, &mut rng);
+            let pk_share = PublicKeyShare::new(&sk_share, crp.clone(), &mut rng_thread)
+                .map_err(|e| format!("Failed to create public key share: {:?}", e))
+                .unwrap();
+
+            let mut share_manager = ShareManager::new(num_parties, threshold, trbfv_params.clone());
+            let sk_poly = share_manager
+                .coeffs_to_poly_level0(sk_share.coeffs.clone().as_ref())
+                .map_err(|e| format!("Failed to convert SK coeffs to poly: {:?}", e))
+                .unwrap();
+
+            let temp_trbfv = trbfv.clone();
+            let sk_sss = temp_trbfv
+                .generate_secret_shares_from_poly(sk_poly, rng)
+                .map_err(|e| format!("Failed to generate SK shares: {:?}", e))
+                .unwrap();
+
+            let sk_sss_collected: Vec<ndarray::Array2<u64>> = Vec::with_capacity(num_parties);
+            let es_sss_collected: Vec<ndarray::Array2<u64>> = Vec::with_capacity(num_parties);
+            let sk_poly_sum = Poly::zero(
+                trbfv_params.ctx_at_level(0).unwrap(),
+                Representation::PowerBasis,
+            );
+            let es_poly_sum = Poly::zero(
+                trbfv_params.ctx_at_level(0).unwrap(),
+                Representation::PowerBasis,
+            );
+
+            let esi_coeffs = temp_trbfv
+                .generate_smudging_error(num_ciphertexts, &mut rng)
+                .map_err(|e| format!("Failed to generate smudging error: {:?}", e))
+                .unwrap();
+            let esi_poly = share_manager
+                .bigints_to_poly(&esi_coeffs)
+                .map_err(|e| format!("Failed to convert error to poly: {:?}", e))
+                .unwrap();
+            let esi_sss = share_manager
+                .generate_secret_shares_from_poly(esi_poly, rng)
+                .map_err(|e| format!("Failed to generate error shares: {:?}", e))
+                .unwrap();
+
+            Party {
+                pk_share,
+                sk_sss,
+                esi_sss,
+                sk_sss_collected,
+                es_sss_collected,
+                sk_poly_sum,
+                es_poly_sum,
+            }
+        })
+        .collect();
+
+    // Collect shares: each party collects shares from all other parties
+    for i in 0..num_parties {
+        for j in 0..num_parties {
+            let mut node_share_m = ndarray::Array::zeros((0, trbfv_params.degree()));
+            let mut es_node_share_m = ndarray::Array::zeros((0, trbfv_params.degree()));
+            for m in 0..trbfv_params.moduli().len() {
+                node_share_m
+                    .push_row(ArrayView::from(&parties[j].sk_sss[m].row(i).clone()))
+                    .map_err(|e| format!("Failed to push SK share row: {:?}", e))?;
+                es_node_share_m
+                    .push_row(ArrayView::from(&parties[j].esi_sss[m].row(i).clone()))
+                    .map_err(|e| format!("Failed to push ES share row: {:?}", e))?;
+            }
+            parties[i].sk_sss_collected.push(node_share_m);
+            parties[i].es_sss_collected.push(es_node_share_m);
+        }
+    }
+
+    // Aggregate collected shares to get sk_poly_sum and es_poly_sum for each party
+    for party in parties.iter_mut() {
+        let temp_trbfv = trbfv.clone();
+        party.sk_poly_sum = temp_trbfv
+            .aggregate_collected_shares(&party.sk_sss_collected)
+            .map_err(|e| format!("Failed to aggregate SK shares: {:?}", e))?;
+        party.es_poly_sum = temp_trbfv
+            .aggregate_collected_shares(&party.es_sss_collected)
+            .map_err(|e| format!("Failed to aggregate ES shares: {:?}", e))?;
     }
 
     // Aggregate public key shares to get the full public key
-    let public_key: PublicKey = pk_shares
+    let public_key: PublicKey = parties
+        .iter()
+        .map(|p| p.pk_share.clone())
+        .collect::<Vec<_>>()
         .iter()
         .cloned()
         .aggregate()
         .map_err(|e| format!("Failed to aggregate public key: {:?}", e))?;
 
     // Encrypt a sample message (e.g., 1) to create a ciphertext
-    let message = 1u64;
+    let message: u64 = 1u64;
     let pt = Plaintext::try_encode(&[message], Encoding::poly(), trbfv_params)?;
     let ciphertext = public_key.try_encrypt(&pt, &mut thread_rng)?;
-
-    let mut share_manager = ShareManager::new(num_parties, threshold, trbfv_params.clone());
-
-    // Generate shares for each party's secret key
-    // In reality, each party would do this independently
-    let mut all_party_sk_shares = Vec::new(); // [party][modulus][receiver][coefficient]
-    let mut all_party_esi_shares = Vec::new(); // [party][modulus][receiver][coefficient]
-
-    for party_sk in party_secret_keys.iter().take(num_parties) {
-        let sk = &party_sk;
-        let sk_poly = share_manager
-            .coeffs_to_poly_level0(sk.coeffs.clone().as_ref())
-            .map_err(|e| format!("Failed to convert SK coeffs to poly: {:?}", e))?;
-
-        let sk_sss = trbfv
-            .generate_secret_shares_from_poly(sk_poly, rng)
-            .map_err(|e| format!("Failed to generate SK shares: {:?}", e))?;
-
-        all_party_sk_shares.push(sk_sss);
-
-        let esi_coeffs = trbfv
-            .generate_smudging_error(num_ciphertexts, &mut rng)
-            .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
-        let esi_poly = share_manager
-            .bigints_to_poly(&esi_coeffs)
-            .map_err(|e| format!("Failed to convert error to poly: {:?}", e))?;
-        let esi_sss = share_manager
-            .generate_secret_shares_from_poly(esi_poly, rng)
-            .map_err(|e| format!("Failed to generate error shares: {:?}", e))?;
-        all_party_esi_shares.push(esi_sss);
-    }
 
     // Generate decryption shares for T+1 parties
     let honest_parties = threshold + 1;
     let mut d_share_polys: Vec<Poly> = Vec::new();
 
-    // For each party, collect shares and compute their decryption share
+    // For each party, compute their decryption share using already aggregated sk_poly_sum and es_poly_sum
     for party_idx in 0..honest_parties {
-        let mut sk_sss_collected = Vec::new();
-        let mut es_sss_collected = Vec::new();
-
-        for modulus_idx in 0..trbfv_params.moduli().len() {
-            let mut sk_collected = ndarray::Array2::<u64>::zeros((0, trbfv_params.degree()));
-            let mut es_collected = ndarray::Array2::<u64>::zeros((0, trbfv_params.degree()));
-
-            // Party party_idx collects shares from honest parties
-            // For each sender party i, party party_idx collects the share that party i sent to party party_idx
-            for sender_idx in 0..honest_parties {
-                // Check bounds before accessing
-                if modulus_idx >= all_party_sk_shares[sender_idx].len() {
-                    return Err(format!(
-                        "Modulus index {} out of bounds for party {} (has {} moduli)",
-                        modulus_idx,
-                        sender_idx,
-                        all_party_sk_shares[sender_idx].len()
-                    )
-                    .into());
-                }
-                if modulus_idx >= all_party_esi_shares[sender_idx].len() {
-                    return Err(format!(
-                        "Modulus index {} out of bounds for party {} error shares (has {} moduli)",
-                        modulus_idx,
-                        sender_idx,
-                        all_party_esi_shares[sender_idx].len()
-                    )
-                    .into());
-                }
-
-                // Collect the share that sender_idx sent to party_idx
-                let sk_share_row = all_party_sk_shares[sender_idx][modulus_idx].row(party_idx);
-                let sk_share_vec = sk_share_row.to_vec();
-                sk_collected
-                    .push_row(ArrayView::from(&sk_share_vec))
-                    .map_err(|e| format!("Failed to push SK share row: {:?}", e))?;
-
-                let es_share_row = all_party_esi_shares[sender_idx][modulus_idx].row(party_idx);
-                let es_share_vec = es_share_row.to_vec();
-                es_collected
-                    .push_row(ArrayView::from(&es_share_vec))
-                    .map_err(|e| format!("Failed to push ES share row: {:?}", e))?;
-            }
-
-            sk_sss_collected.push(sk_collected);
-            es_sss_collected.push(es_collected);
-        }
-
-        // Aggregate collected shares to get s and e polynomials
-        let ctx = trbfv_params.ctx_at_level(0)?;
-        let num_moduli = sk_sss_collected.len();
-
-        // Sum across parties for each modulus to create [num_moduli, degree] matrices
-        let mut sk_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, trbfv_params.degree()));
-        let mut es_sum_matrix = ndarray::Array2::<u64>::zeros((num_moduli, trbfv_params.degree()));
-
-        for modulus_idx in 0..num_moduli {
-            // Sum across parties (rows) for this modulus
-            for sender_idx in 0..sk_sss_collected[modulus_idx].nrows() {
-                for coeff_idx in 0..trbfv_params.degree() {
-                    sk_sum_matrix[[modulus_idx, coeff_idx]] = (sk_sum_matrix
-                        [[modulus_idx, coeff_idx]]
-                        + sk_sss_collected[modulus_idx][[sender_idx, coeff_idx]])
-                        % ctx.moduli()[modulus_idx];
-                    es_sum_matrix[[modulus_idx, coeff_idx]] = (es_sum_matrix
-                        [[modulus_idx, coeff_idx]]
-                        + es_sss_collected[modulus_idx][[sender_idx, coeff_idx]])
-                        % ctx.moduli()[modulus_idx];
-                }
-            }
-        }
-
-        // Use aggregate_collected_shares with the correctly formatted data
-        let sk_poly_sum = trbfv
-            .aggregate_collected_shares(&[sk_sum_matrix])
-            .map_err(|e| format!("Failed to aggregate SK shares: {:?}", e))?;
-
-        let es_poly_sum = trbfv
-            .aggregate_collected_shares(&[es_sum_matrix])
-            .map_err(|e| format!("Failed to aggregate ES shares: {:?}", e))?;
-
-        // Compute the decryption share for this party
+        let party = &parties[party_idx];
         let d_share_rns = trbfv
             .clone()
             .decryption_share(
                 Arc::new(ciphertext.clone()),
-                sk_poly_sum.clone(),
-                es_poly_sum.clone(),
+                party.sk_poly_sum.clone(),
+                party.es_poly_sum.clone(),
             )
             .map_err(|e| format!("Failed to compute decryption share: {:?}", e))?;
 

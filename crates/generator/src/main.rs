@@ -271,6 +271,15 @@ fn create_bfv_config(
             b_chi: 1,
             verbose,
         },
+        "100" => BfvSearchConfig {
+            n: 100,
+            k: 100,
+            z: 100,
+            lambda: 80,
+            b: 20,
+            b_chi: 1,
+            verbose,
+        },
         _ => anyhow::bail!("Unknown preset: {}", preset.unwrap()),
     };
 
