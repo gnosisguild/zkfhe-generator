@@ -203,6 +203,11 @@ fn get_circuit(
             let circuit = dec_share_trbfv::circuit::DecShareTrBfvCircuit::new(parameter_type);
             Ok(Box::new(circuit))
         }
+        "dec-share-agg-trbfv" => {
+            let circuit =
+                dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type);
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -213,6 +218,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "pk-trbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
+        "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -606,6 +612,30 @@ fn generate_main_template(
             let template_generator = DecShareTrBfvMainTemplate;
             template_generator.generate_main_file(&dec_share_trbfv_template_params, output_dir)?;
         }
+        "dec-share-agg-trbfv" => {
+            use dec_share_agg_trbfv::bounds::DecShareAggTrBfvBounds;
+            use dec_share_agg_trbfv::template::{
+                DecShareAggTrBfvMainTemplate, DecShareAggTrBfvTemplateParams,
+            };
+
+            let (_, bounds) = DecShareAggTrBfvBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute bounds: {e:?}"))?;
+
+            let bounds_data = dec_share_agg_trbfv::template::DecShareAggTrBfvBoundsData {
+                delta: bounds.delta.to_string(),
+                delta_half: bounds.delta_half.to_string(),
+            };
+
+            let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                2, // threshold - this should be configurable, but using default for now
+                &bounds_data,
+            )?;
+
+            let template_generator = DecShareAggTrBfvMainTemplate;
+            template_generator
+                .generate_main_file(&dec_share_agg_trbfv_template_params, output_dir)?;
+        }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }
@@ -688,6 +718,9 @@ fn main() -> anyhow::Result<()> {
                 );
                 println!(
                     "  • dec-share-trbfv   - Decryption Share TRBFV circuit implementation (supports trbfv)"
+                );
+                println!(
+                    "  • dec-share-agg-trbfv   - Decryption Share Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
             }
             if presets {

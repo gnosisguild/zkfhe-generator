@@ -1410,6 +1410,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "zkfhe-dec-share-agg-trbfv"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bigint-poly",
+ "blake3",
+ "fhe",
+ "fhe-math",
+ "fhe-traits",
+ "itertools 0.14.0",
+ "ndarray",
+ "num-bigint",
+ "num-traits",
+ "rand",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "zkfhe-shared",
+]
+
+[[package]]
 name = "zkfhe-dec-share-trbfv"
 version = "0.1.0"
 dependencies = [
@@ -1442,6 +1465,7 @@ dependencies = [
  "fhe",
  "num-bigint",
  "zkfhe-crypto-params",
+ "zkfhe-dec-share-agg-trbfv",
  "zkfhe-dec-share-trbfv",
  "zkfhe-greco",
  "zkfhe-pk-trbfv",
