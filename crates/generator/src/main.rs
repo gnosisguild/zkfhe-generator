@@ -12,6 +12,7 @@
 //! - **Validation**: Comprehensive parameter validation and error handling
 //! - **Beautiful Output**: Emoji-rich progress indicators and user feedback
 use clap::{Args, Parser, Subcommand};
+use num_bigint::BigUint;
 use std::path::{Path, PathBuf};
 
 use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
@@ -245,6 +246,34 @@ fn create_bfv_config(
             b_chi: 1,
             verbose,
         },
+        // second dev param set.
+        // degree: 512
+        // plaintext_modulus: 10
+        // moduli: [0xffffee001, 0xffffc4001]
+        "dev-2" => BfvSearchConfig {
+            // irrelevant since will be overridden by hardcoded values later in the code.
+            n: 1,
+            k: 1000,
+            z: 1000,
+            lambda: 80,
+            b: 20,
+            b_chi: 1,
+            verbose,
+        },
+        // third dev param set.
+        // degree: 512
+        // plaintext_modulus: 0xffffee001
+        // moduli: [0x7fffffffe0001]
+        "dev-3" => BfvSearchConfig {
+            // irrelevant since will be overridden by hardcoded values later in the code.
+            n: 1,
+            k: 1000,
+            z: 1000,
+            lambda: 80,
+            b: 20,
+            b_chi: 1,
+            verbose,
+        },
         // 128b security with one party (for testing purposes).
         "test" => BfvSearchConfig {
             n: 1,
@@ -330,6 +359,27 @@ fn generate_circuit_params(
                 .set_degree(2048)
                 .set_plaintext_modulus(1032193)
                 .set_moduli(&[0x3FFFFFFF000001])
+                .build_arc()
+                .unwrap();
+
+            (params.clone(), params.clone())
+        } else if preset == Some("dev-2") {
+            // Hardcode dev-2 parameters based on current development parameters for Enclave.
+            let params = BfvParametersBuilder::new()
+                .set_degree(512)
+                .set_plaintext_modulus(10)
+                .set_moduli(&[0xffffee001, 0xffffc4001])
+                .set_error1_variance(BigUint::from(3u32))
+                .build_arc()
+                .unwrap();
+
+            (params.clone(), params.clone())
+        } else if preset == Some("dev-3") {
+            // Hardcode dev-3 parameters based on current development parameters for Enclave.
+            let params = BfvParametersBuilder::new()
+                .set_degree(512)
+                .set_plaintext_modulus(0xffffee001)
+                .set_moduli(&[0x7fffffffe0001])
                 .build_arc()
                 .unwrap();
 
@@ -693,6 +743,8 @@ fn main() -> anyhow::Result<()> {
             if presets {
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-2 - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-3 - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
                 println!("  • prod  - Production (n=100, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
@@ -714,6 +766,8 @@ fn main() -> anyhow::Result<()> {
                 );
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-2 - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-3 - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
                 println!("  • prod  - Production (n=100, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
