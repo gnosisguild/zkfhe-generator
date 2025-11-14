@@ -5,8 +5,7 @@ use fhe_math::rq::{Poly, Representation};
 use fhe_traits::FheDecoder;
 use fhe_traits::{FheEncoder, FheEncrypter};
 use ndarray::ArrayView;
-use rand::rngs::OsRng;
-use rand::thread_rng;
+use rand::{distributions::Uniform, prelude::Distribution, rngs::OsRng, thread_rng};
 use std::sync::Arc;
 
 /// Output structure representing all components involved in decryption share aggregation.
@@ -45,7 +44,7 @@ pub fn generate_sample_decryption_share_aggregation(
 
     let num_parties = 5;
     let threshold = 2;
-    let num_ciphertexts = 10;
+    let num_ciphertexts = 100;
 
     // Create TRBFV instance for share generation
     let trbfv = TRBFV::new(num_parties, threshold, trbfv_params.clone())
@@ -165,9 +164,27 @@ pub fn generate_sample_decryption_share_aggregation(
         .map_err(|e| format!("Failed to aggregate public key: {:?}", e))?;
 
     // Encrypt a sample message (e.g., 1) to create a ciphertext
-    let message: u64 = 1u64;
-    let pt = Plaintext::try_encode(&[message], Encoding::poly(), trbfv_params)?;
-    let ciphertext = public_key.try_encrypt(&pt, &mut thread_rng)?;
+    let dist = Uniform::new_inclusive(0, 1);
+    let numbers: Vec<u64> = dist
+        .sample_iter(&mut thread_rng.clone())
+        .take(num_ciphertexts)
+        .collect();
+
+    let numbers_encrypted: Vec<Ciphertext> = numbers
+        .iter()
+        .map(|&number| {
+            let mut rng = thread_rng.clone();
+            let pt = Plaintext::try_encode(&[number], Encoding::poly(), &trbfv_params).unwrap();
+            public_key.try_encrypt(&pt, &mut rng).unwrap()
+        })
+        .collect();
+
+    // calculation
+    let mut ciphertext = Ciphertext::zero(&trbfv_params);
+    for ct in &numbers_encrypted {
+        ciphertext += ct;
+    }
+    Arc::new(ciphertext.clone());
 
     // Generate decryption shares for T+1 parties
     let honest_parties = threshold + 1;
@@ -205,7 +222,7 @@ pub fn generate_sample_decryption_share_aggregation(
         .map_err(|e| format!("Failed to decode: {:?}", e))?;
 
     Ok(DecryptionShareAggregationData {
-        ciphertext,
+        ciphertext: ciphertext.clone(),
         d_share_polys,
         party_ids,
         message: message_vec,
