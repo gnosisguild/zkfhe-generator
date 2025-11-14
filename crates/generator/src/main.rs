@@ -246,6 +246,34 @@ fn create_bfv_config(
             b_chi: 1,
             verbose,
         },
+        // second dev param set.
+        // degree: 512
+        // plaintext_modulus: 10
+        // moduli: [0xffffee001, 0xffffc4001]
+        "dev-2" => BfvSearchConfig {
+            // irrelevant since will be overridden by hardcoded values later in the code.
+            n: 1,
+            k: 1000,
+            z: 1000,
+            lambda: 80,
+            b: 20,
+            b_chi: 1,
+            verbose,
+        },
+        // third dev param set.
+        // degree: 512
+        // plaintext_modulus: 0xffffee001
+        // moduli: [0x7fffffffe0001]
+        "dev-3" => BfvSearchConfig {
+            // irrelevant since will be overridden by hardcoded values later in the code.
+            n: 1,
+            k: 1000,
+            z: 1000,
+            lambda: 80,
+            b: 20,
+            b_chi: 1,
+            verbose,
+        },
         // 128b security with one party (for testing purposes).
         "test" => BfvSearchConfig {
             n: 1,
@@ -259,20 +287,6 @@ fn create_bfv_config(
         // 128b security with multiple parties 100 (for production purposes).
         "prod" => BfvSearchConfig {
             n: 1000,
-            k: 1000,
-            z: 1000,
-            lambda: 80,
-            b: 20,
-            b_chi: 1,
-            verbose,
-        },
-        // dummy would be hardcoded later in the code based on current development parameters for Enclave.
-        // degree: 512
-        // plaintext_modulus: 10
-        // moduli: [0xffffee001, 0xffffc4001]
-        "dummy" => BfvSearchConfig {
-            // irrelevant since will be overridden by hardcoded values later in the code.
-            n: 1,
             k: 1000,
             z: 1000,
             lambda: 80,
@@ -349,13 +363,23 @@ fn generate_circuit_params(
                 .unwrap();
 
             (params.clone(), params.clone())
-        } else if preset == Some("dummy") {
-            // Hardcode dummy parameters based on current development parameters for Enclave.
+        } else if preset == Some("dev-2") {
+            // Hardcode dev-2 parameters based on current development parameters for Enclave.
             let params = BfvParametersBuilder::new()
                 .set_degree(512)
                 .set_plaintext_modulus(10)
                 .set_moduli(&[0xffffee001, 0xffffc4001])
-                .set_error1_variance(BigUint::from(10u32))
+                .set_error1_variance(BigUint::from(3u32))
+                .build_arc()
+                .unwrap();
+
+            (params.clone(), params.clone())
+        } else if preset == Some("dev-3") {
+            // Hardcode dev-3 parameters based on current development parameters for Enclave.
+            let params = BfvParametersBuilder::new()
+                .set_degree(512)
+                .set_plaintext_modulus(0xffffee001)
+                .set_moduli(&[0x7fffffffe0001])
                 .build_arc()
                 .unwrap();
 
@@ -719,9 +743,10 @@ fn main() -> anyhow::Result<()> {
             if presets {
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-2 - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-3 - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
                 println!("  • prod  - Production (n=100, z=1000, λ=80, B=20)");
-                println!("  • dummy - Dummy (hardcoded parameters: degree=512, pt_mod=10)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
                 println!("   Example: --bfv-n 2000 --bfv-lambda 80");
                 println!("\n🔧 Available parameter types:");
@@ -741,9 +766,10 @@ fn main() -> anyhow::Result<()> {
                 );
                 println!("\n⚙️  Available presets:");
                 println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-2 - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • dev-3 - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
                 println!("  • prod  - Production (n=100, z=1000, λ=80, B=20)");
-                println!("  • dummy - Dummy (hardcoded parameters: degree=512, pt_mod=10)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
                 println!("   Example: --bfv-n 2000 --bfv-lambda 80");
                 println!("\n🔧 Available parameter types:");
