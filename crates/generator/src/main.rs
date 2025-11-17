@@ -460,7 +460,6 @@ fn generate_circuit_params(
             let final_trbfv_params = trbfv.clone();
             let final_bfv_params = bfv_search_second_param(&param_config, &trbfv)
                 .ok_or_else(|| anyhow::anyhow!("No second BFV parameter set found"))?;
-
             let trbfv_params = BfvParametersBuilder::new()
                 .set_degree(final_trbfv_params.d as usize)
                 .set_plaintext_modulus(final_trbfv_params.k_plain_eff as u64)

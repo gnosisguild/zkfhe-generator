@@ -174,13 +174,13 @@ pub fn generate_sample_decryption_share_aggregation(
         .iter()
         .map(|&number| {
             let mut rng = thread_rng.clone();
-            let pt = Plaintext::try_encode(&[number], Encoding::poly(), &trbfv_params).unwrap();
+            let pt = Plaintext::try_encode(&[number], Encoding::poly(), trbfv_params).unwrap();
             public_key.try_encrypt(&pt, &mut rng).unwrap()
         })
         .collect();
 
     // calculation
-    let mut ciphertext = Ciphertext::zero(&trbfv_params);
+    let mut ciphertext = Ciphertext::zero(trbfv_params);
     for ct in &numbers_encrypted {
         ciphertext += ct;
     }
@@ -191,8 +191,7 @@ pub fn generate_sample_decryption_share_aggregation(
     let mut d_share_polys: Vec<Poly> = Vec::new();
 
     // For each party, compute their decryption share using already aggregated sk_poly_sum and es_poly_sum
-    for party_idx in 0..honest_parties {
-        let party = &parties[party_idx];
+    for party in parties.iter().take(honest_parties) {
         let d_share_rns = trbfv
             .clone()
             .decryption_share(
