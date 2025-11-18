@@ -194,18 +194,13 @@ mod tests {
     use super::*;
     use crate::bounds::GrecoBounds;
     use crate::vectors::GrecoVectors;
-    use fhe::bfv::BfvParametersBuilder;
+    use shared::utils::test_parameters;
 
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = BfvParametersBuilder::new()
-            .set_degree(2048)
-            .set_plaintext_modulus(1032193)
-            .set_moduli(&[0x3FFFFFFF000001])
-            .build_arc()
-            .unwrap();
+        let params = test_parameters();
 
         let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
         let vectors = GrecoVectors::new(1, 2048);

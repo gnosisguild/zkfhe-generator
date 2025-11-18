@@ -223,20 +223,11 @@ pub fn generate_sample_decryption_share(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fhe::bfv::BfvParametersBuilder;
-    use num_bigint::BigUint;
+    use shared::utils::test_parameters;
 
     #[test]
     fn generates_sample_decryption_share() {
-        let params = BfvParametersBuilder::new()
-            .set_degree(8192)
-            .set_plaintext_modulus(16384)
-            .set_moduli(&[0x1ffffffea0001, 0x1ffffffe88001, 0x1ffffffe48001])
-            .set_variance(10)
-            .set_error1_variance(BigUint::from(10u32))
-            .build_arc()
-            .unwrap();
-
+        let params = test_parameters();
         let result = generate_sample_decryption_share(&params, &params);
         assert!(
             result.is_ok(),
