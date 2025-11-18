@@ -231,12 +231,12 @@ fn create_bfv_config(
     verbose: bool,
 ) -> anyhow::Result<BfvSearchConfig> {
     // Start with preset defaults
-    let mut config = match preset.unwrap_or("dev") {
+    let mut config = match preset.unwrap_or("SET_8192_1000_4") {
         // dev would be hardcoded later in the code based on current development parameters for Enclave.
         // degree: 2048
         // plaintext_modulus: 1032193
         // moduli: [0x3FFFFFFF000001]
-        "dev" => BfvSearchConfig {
+        "INSECURE_SET_2048_1032193_1" => BfvSearchConfig {
             // irrelevant since will be overridden by hardcoded values later in the code.
             n: 1,
             k: 1000,
@@ -246,11 +246,11 @@ fn create_bfv_config(
             b_chi: 1,
             verbose,
         },
-        // second dev param set.
         // degree: 512
         // plaintext_modulus: 10
         // moduli: [0xffffee001, 0xffffc4001]
-        "dev-2" => BfvSearchConfig {
+        // paired with InsecureSet512_0xffffee001_1
+        "INSECURE_SET_512_10_1" => BfvSearchConfig {
             // irrelevant since will be overridden by hardcoded values later in the code.
             n: 1,
             k: 1000,
@@ -260,23 +260,11 @@ fn create_bfv_config(
             b_chi: 1,
             verbose,
         },
-        // third dev param set.
-        // degree: 512
-        // plaintext_modulus: 0xffffee001
-        // moduli: [0x7fffffffe0001]
-        "dev-3" => BfvSearchConfig {
+        // 128b security with multiple parties 1000 (for production purposes).
+        // paired with Set8192_144115188075855872_2
+        "SET_8192_1000_4" => BfvSearchConfig {
             // irrelevant since will be overridden by hardcoded values later in the code.
-            n: 1,
-            k: 1000,
-            z: 1000,
-            lambda: 80,
-            b: 20,
-            b_chi: 1,
-            verbose,
-        },
-        // 128b security with one party (for testing purposes).
-        "test" => BfvSearchConfig {
-            n: 1,
+            n: 1000,
             k: 1000,
             z: 1000,
             lambda: 80,
@@ -285,10 +273,12 @@ fn create_bfv_config(
             verbose,
         },
         // 128b security with multiple parties 100 (for production purposes).
-        "prod" => BfvSearchConfig {
-            n: 1000,
-            k: 1000,
-            z: 1000,
+        // paired with Set8192_144115188075855872_2
+        "SET_8192_100_4" => BfvSearchConfig {
+            // irrelevant since will be overridden by hardcoded values later in the code.
+            n: 100,
+            k: 100,
+            z: 100,
             lambda: 80,
             b: 20,
             b_chi: 1,
@@ -353,8 +343,8 @@ fn generate_circuit_params(
     }
 
     let (trbfv_params, bfv_params): (Arc<BfvParameters>, Arc<BfvParameters>) =
-        if preset == Some("dev") {
-            // Hardcode dev parameters based on current development parameters for Enclave.
+        if preset == Some("INSECURE_SET_2048_1032193_1") {
+            // Hardcode INSECURE_SET_2048_1032193_1 parameters based on current development parameters for Enclave.
             let params = BfvParametersBuilder::new()
                 .set_degree(2048)
                 .set_plaintext_modulus(1032193)
@@ -363,9 +353,9 @@ fn generate_circuit_params(
                 .unwrap();
 
             (params.clone(), params.clone())
-        } else if preset == Some("dev-2") {
-            // Hardcode dev-2 parameters based on current development parameters for Enclave.
-            let params = BfvParametersBuilder::new()
+        } else if preset == Some("INSECURE_SET_512_10_1") {
+            // Hardcode INSECURE_SET_512_10_1 parameters based on current development parameters for Enclave.
+            let params_trbfv = BfvParametersBuilder::new()
                 .set_degree(512)
                 .set_plaintext_modulus(10)
                 .set_moduli(&[0xffffee001, 0xffffc4001])
@@ -373,17 +363,66 @@ fn generate_circuit_params(
                 .build_arc()
                 .unwrap();
 
-            (params.clone(), params.clone())
-        } else if preset == Some("dev-3") {
-            // Hardcode dev-3 parameters based on current development parameters for Enclave.
-            let params = BfvParametersBuilder::new()
+            let params_bfv = BfvParametersBuilder::new()
                 .set_degree(512)
                 .set_plaintext_modulus(0xffffee001)
                 .set_moduli(&[0x7fffffffe0001])
                 .build_arc()
                 .unwrap();
 
-            (params.clone(), params.clone())
+            (params_trbfv.clone(), params_bfv.clone())
+        } else if preset == Some("SET_8192_1000_4") {
+            // Hardcode SET_8192_1000_4 parameters based on current development parameters for Enclave.
+            let params_trbfv = BfvParametersBuilder::new()
+                .set_degree(8192)
+                .set_plaintext_modulus(1000)
+                .set_moduli(&[
+                    0x00800000022a0001,
+                    0x00800000021a0001,
+                    0x0080000002120001,
+                    0x0080000001f60001,
+                ])
+                .set_error1_variance_str(
+                    "52309181128222339698631578526730685514457152477762943514050560000",
+                )
+                .unwrap()
+                .build_arc()
+                .unwrap();
+
+            let params_bfv = BfvParametersBuilder::new()
+                .set_degree(8192)
+                .set_plaintext_modulus(144115188075855872)
+                .set_moduli(&[0x0400000001460001, 0x0400000000ea0001])
+                .build_arc()
+                .unwrap();
+
+            (params_trbfv.clone(), params_bfv.clone())
+        } else if preset == Some("SET_8192_100_4") {
+            // Hardcode SET_8192_100_4 parameters based on current development parameters for Enclave.
+            let params_trbfv = BfvParametersBuilder::new()
+                .set_degree(8192)
+                .set_plaintext_modulus(100)
+                .set_moduli(&[
+                    0x0008000000820001,
+                    0x0010000000060001,
+                    0x00100000003e0001,
+                    0x00100000006e0001,
+                ])
+                .set_error1_variance_str(
+                    "1004336277661868922213726307713258317841382576849282939643494400",
+                )
+                .unwrap()
+                .build_arc()
+                .unwrap();
+
+            let params_bfv = BfvParametersBuilder::new()
+                .set_degree(8192)
+                .set_plaintext_modulus(18014398509481984)
+                .set_moduli(&[0x0100000002a20001, 0x0100000001760001])
+                .build_arc()
+                .unwrap();
+
+            (params_trbfv.clone(), params_bfv.clone())
         } else {
             // Create parameter configuration
             let param_config = create_bfv_config(preset, None, verbose)?;
@@ -742,11 +781,11 @@ fn main() -> anyhow::Result<()> {
             }
             if presets {
                 println!("\n⚙️  Available presets:");
-                println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
-                println!("  • dev-2 - Development (n=1, z=1000, λ=80, B=20)");
-                println!("  • dev-3 - Development (n=1, z=1000, λ=80, B=20)");
-                println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
-                println!("  • prod  - Production (n=100, z=1000, λ=80, B=20)");
+                println!(
+                    "  • INSECURE_SET_2048_1032193_1   - Development (n=1, z=1000, λ=80, B=20)"
+                );
+                println!("  • INSECURE_SET_512_10_1   - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • SET_8192_1000_4   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
                 println!("   Example: --bfv-n 2000 --bfv-lambda 80");
                 println!("\n🔧 Available parameter types:");
@@ -765,11 +804,11 @@ fn main() -> anyhow::Result<()> {
                     "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
                 );
                 println!("\n⚙️  Available presets:");
-                println!("  • dev   - Development (n=1, z=1000, λ=80, B=20)");
-                println!("  • dev-2 - Development (n=1, z=1000, λ=80, B=20)");
-                println!("  • dev-3 - Development (n=1, z=1000, λ=80, B=20)");
-                println!("  • test  - Testing (n=1, z=1000, λ=80, B=20)");
-                println!("  • prod  - Production (n=100, z=1000, λ=80, B=20)");
+                println!(
+                    "  • INSECURE_SET_2048_1032193_1   - Development (n=1, z=1000, λ=80, B=20)"
+                );
+                println!("  • INSECURE_SET_512_10_1   - Development (n=1, z=1000, λ=80, B=20)");
+                println!("  • SET_8192_1000_4   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
                 println!("   Example: --bfv-n 2000 --bfv-lambda 80");
                 println!("\n🔧 Available parameter types:");

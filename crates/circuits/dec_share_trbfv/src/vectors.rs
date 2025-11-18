@@ -314,17 +314,9 @@ mod tests {
 
     #[test]
     fn test_vector_computation_to_json() {
-        use fhe::bfv::BfvParametersBuilder;
-        use num_bigint::BigUint;
+        use shared::utils::test_parameters;
 
-        let params = BfvParametersBuilder::new()
-            .set_degree(8192)
-            .set_plaintext_modulus(16384)
-            .set_moduli(&[0x1ffffffea0001, 0x1ffffffe88001, 0x1ffffffe48001])
-            .set_variance(10)
-            .set_error1_variance(BigUint::from(10u32))
-            .build_arc()
-            .unwrap();
+        let params = test_parameters();
 
         let decryption_data = generate_sample_decryption_share(&params, &params).unwrap();
 

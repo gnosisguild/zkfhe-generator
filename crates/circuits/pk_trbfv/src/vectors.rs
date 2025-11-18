@@ -333,8 +333,9 @@ impl PkTrBfvVectors {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fhe::bfv::{BfvParametersBuilder, SecretKey};
+    use fhe::bfv::SecretKey;
     use rand::{SeedableRng, rngs::StdRng};
+    use shared::utils::test_parameters;
 
     #[test]
     fn test_standard_form() {
@@ -350,12 +351,7 @@ mod tests {
 
     #[test]
     fn test_vector_computation_to_json() {
-        let params = BfvParametersBuilder::new()
-            .set_degree(2048)
-            .set_plaintext_modulus(1032193)
-            .set_moduli(&[0x3FFFFFFF000001])
-            .build_arc()
-            .unwrap();
+        let params = test_parameters();
 
         // Use key generation to get the polynomial data
         let mut rng = StdRng::seed_from_u64(0);

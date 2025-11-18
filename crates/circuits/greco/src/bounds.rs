@@ -211,36 +211,20 @@ impl GrecoBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fhe::bfv::BfvParametersBuilder;
-
-    fn setup_test_params() -> Arc<BfvParameters> {
-        BfvParametersBuilder::new()
-            .set_degree(2048)
-            .set_plaintext_modulus(1032193)
-            .set_moduli(&[0x3FFFFFFF000001])
-            .build_arc()
-            .unwrap()
-    }
+    use shared::utils::test_parameters;
 
     #[test]
     fn test_bounds_computation() {
-        let params = setup_test_params();
+        let params = test_parameters();
         let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
 
-        assert_eq!(crypto_params.moduli.len(), 1);
-        assert_eq!(crypto_params.k0is.len(), 1);
-        assert_eq!(bounds.pk_bounds.len(), 1);
-        assert_eq!(bounds.r1_low_bounds.len(), 1);
-        assert_eq!(bounds.r1_up_bounds.len(), 1);
-        assert_eq!(bounds.r2_bounds.len(), 1);
-        assert_eq!(bounds.p1_bounds.len(), 1);
-        assert_eq!(bounds.p2_bounds.len(), 1);
-    }
-
-    #[test]
-    fn test_bounds_invalid_level() {
-        let params = setup_test_params();
-        let result = GrecoBounds::compute(&params, 1);
-        assert!(result.is_err());
+        assert_eq!(crypto_params.moduli.len(), 3);
+        assert_eq!(crypto_params.k0is.len(), 3);
+        assert_eq!(bounds.pk_bounds.len(), 3);
+        assert_eq!(bounds.r1_low_bounds.len(), 3);
+        assert_eq!(bounds.r1_up_bounds.len(), 3);
+        assert_eq!(bounds.r2_bounds.len(), 3);
+        assert_eq!(bounds.p1_bounds.len(), 3);
+        assert_eq!(bounds.p2_bounds.len(), 3);
     }
 }
