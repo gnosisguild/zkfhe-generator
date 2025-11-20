@@ -387,6 +387,7 @@ fn generate_circuit_params(
                 .set_degree(512)
                 .set_plaintext_modulus(0xffffee001)
                 .set_moduli(&[0x7fffffffe0001])
+                .set_variance(3)
                 .build_arc()
                 .unwrap();
 
