@@ -209,6 +209,10 @@ fn get_circuit(
                 dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type);
             Ok(Box::new(circuit))
         }
+        "dec-bfv" => {
+            let circuit = dec_bfv::circuit::DecBfvCircuit::new();
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -220,6 +224,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "pk-trbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
+        "dec-bfv" => vec![ParameterType::Bfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -733,6 +738,32 @@ fn generate_main_template(
             template_generator
                 .generate_main_file(&dec_share_agg_trbfv_template_params, output_dir)?;
         }
+        "dec-bfv" => {
+            use dec_bfv::bounds::DecBfvBounds;
+            use dec_bfv::template::{DecBfvBoundsData, DecBfvMainTemplate, DecBfvTemplateParams};
+
+            let (_, bounds) = DecBfvBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute dec_bfv bounds: {e:?}"))?;
+
+            let bounds_data = DecBfvBoundsData {
+                s_bound: bounds.s_bound.to_string(),
+                u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
+                u_global_bound: bounds.u_global_bound.to_string(),
+                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                delta: bounds.delta.to_string(),
+                delta_half: bounds.delta_half.to_string(),
+            };
+
+            let dec_bfv_template_params = DecBfvTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                3, // num_honest_parties - this should be configurable, but using default for now
+                &bounds_data,
+            )?;
+
+            let template_generator = DecBfvMainTemplate;
+            template_generator.generate_main_file(&dec_bfv_template_params, output_dir)?;
+        }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }
@@ -818,6 +849,9 @@ fn main() -> anyhow::Result<()> {
                 );
                 println!(
                     "  • dec-share-agg-trbfv   - Decryption Share Aggregation TRBFV circuit implementation (supports trbfv)"
+                );
+                println!(
+                    "  • dec-bfv   - BFV Decryption circuit implementation (supports bfv)"
                 );
             }
             if presets {

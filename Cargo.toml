@@ -6,6 +6,7 @@ members = [
     "crates/circuits/greco",
     "crates/circuits/pk_trbfv",
     "crates/circuits/dec_share_trbfv",
+    "crates/circuits/dec_bfv",
     "crates/crypto_params"
 ]
 
@@ -25,6 +26,7 @@ rust-version = "1.86.0"
 greco = { package = "zkfhe-greco", path = "./crates/circuits/greco" }
 pk_trbfv = { package = "zkfhe-pk-trbfv", path = "./crates/circuits/pk_trbfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "./crates/circuits/dec_share_trbfv" }
+dec_bfv = { package = "zkfhe-dec-bfv", path = "./crates/circuits/dec_bfv" }
 generator = { package = "zkfhe-generator", path = "./crates/generator" }
 shared = { package = "zkfhe-shared", path = "./crates/shared" }
 crypto_params = { package = "zkfhe-crypto-params", path = "./crates/crypto_params" }
