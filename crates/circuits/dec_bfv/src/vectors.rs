@@ -427,24 +427,12 @@ impl DecBfvVectors {
         let delta_half = &delta / BigInt::from(2);
         let q_half = &q_modulus / BigInt::from(2);
 
-        println!("🔍 Decoding verification:");
-        println!("   Q = {} (≈ 2^{} bits)", q_modulus, q_modulus.bits());
-        println!("   delta = {} (≈ 2^{} bits)", delta, delta.bits());
-        println!(
-            "   delta_half = {} (≈ 2^{} bits)",
-            delta_half,
-            delta_half.bits()
-        );
-
         // Check u_global values
         let max_u_global = self.u_global.iter().max().unwrap();
-        println!(
-            "   max(u_global) = {} (≈ 2^{} bits)",
-            max_u_global,
-            max_u_global.bits()
-        );
         if max_u_global >= &q_modulus {
-            println!("   ⚠️  WARNING: u_global exceeds Q!");
+            return Err(ZkFheError::Bfv {
+                message: format!("u_global exceeds Q: {}", max_u_global),
+            });
         }
 
         // For each coefficient, verify: |u_global - delta * message| < delta_half
@@ -473,14 +461,6 @@ impl DecBfvVectors {
 
             // Check if noise_centered <= delta_half
             if noise_centered > delta_half {
-                println!(
-                    "❌ Coefficient {}: noise = {} > delta_half = {}",
-                    coeff_idx, noise_centered, delta_half
-                );
-                println!("   u_global = {}", u_global_coeff);
-                println!("   message = {}", message_coeff);
-                println!("   delta * message = {}", delta_m);
-
                 return Err(ZkFheError::Bfv {
                     message: format!(
                         "Decoding verification failed: noise at coefficient {} is {} which exceeds delta_half = {}. \
@@ -491,7 +471,6 @@ impl DecBfvVectors {
             }
         }
 
-        println!("✅ Decoding verification passed: all noise values within delta_half bound");
         Ok(())
     }
 }
@@ -867,12 +846,14 @@ impl DecBfvVectors {
 mod tests {
     use super::*;
     use crate::sample::generate_sample_decryption;
+    use shared::circuit::SampleType;
     use shared::utils::test_parameters;
 
     #[test]
     fn test_vector_computation() {
         let params = test_parameters();
-        let data = generate_sample_decryption(&params, &params, None).unwrap();
+        let data =
+            generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,
@@ -905,7 +886,8 @@ mod tests {
     #[test]
     fn test_validation_with_real_data() {
         let params = test_parameters();
-        let data = generate_sample_decryption(&params, &params, None).unwrap();
+        let data =
+            generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,

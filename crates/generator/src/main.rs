@@ -101,14 +101,17 @@ enum Commands {
         #[arg(long)]
         main: bool,
 
-        /// Sample type for share_row generation (Greco circuit only)
+        /// Sample type for share_row generation (Greco and dec-bfv circuits only)
         ///
-        /// This option is only applicable to the greco circuit with BFV parameter type.
+        /// This option is applicable to:
+        /// - greco circuit with BFV parameter type
+        /// - dec-bfv circuit
+        ///
         /// Determines what type of share_row to generate:
         /// - `secret-key`: Generate sk_sss share_row (default)
         /// - `smudging-noise`: Generate es_sss share_row
         ///
-        /// This affects the type of threshold share that gets encrypted in Circuit 4.
+        /// This affects the type of threshold share that gets encrypted/decrypted.
         #[arg(long, default_value = "secret-key")]
         sample_type: String,
 
@@ -231,7 +234,7 @@ fn get_circuit(
             Ok(Box::new(circuit))
         }
         "dec-bfv" => {
-            let circuit = dec_bfv::circuit::DecBfvCircuit::new();
+            let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type);
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
@@ -879,14 +882,15 @@ fn main() -> anyhow::Result<()> {
                 parsed_type
             } else {
                 // Default to SecretKey for other circuits or parameter types
-                // Warn if user specified a sample type for non-greco or non-BFV
-                if circuit.to_lowercase() != "greco" {
+                // Warn if user specified a sample type for circuits that don't support it
+                let circuit_name = circuit.to_lowercase();
+                if circuit_name == "greco" && param_type != ParameterType::Bfv {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to the greco circuit. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to greco with BFV parameter type. This flag will be ignored."
                     );
-                } else if param_type != ParameterType::Bfv {
+                } else if circuit_name != "greco" && circuit_name != "dec-bfv" {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to BFV parameter type. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to the greco and dec-bfv circuits. This flag will be ignored."
                     );
                 }
                 SampleType::SecretKey

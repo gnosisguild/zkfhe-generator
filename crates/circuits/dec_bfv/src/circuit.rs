@@ -9,7 +9,7 @@ use crate::toml::DecBfvTomlGenerator;
 use crate::vectors::DecBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::{CiphernodesConfig, ParameterType};
+use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -21,18 +21,28 @@ use std::sync::Arc;
 /// 1. The decryption formula: u_i = c_0i + c_1i * s + r_2i * (X^N + 1) + r_1i * qi
 /// 2. CRT reconstruction of u_i into u_global
 /// 3. Correct decoding to recover the plaintext message
-pub struct DecBfvCircuit;
+pub struct DecBfvCircuit {
+    /// The sample type to use for share generation
+    ///
+    /// This determines whether to generate secret key shares (SecretKey) or
+    /// smudging error shares (SmudgingNoise) when creating sample decryption data.
+    pub sample_type: SampleType,
+}
 
 impl DecBfvCircuit {
-    /// Create a new DecBfvCircuit instance
-    pub fn new() -> Self {
-        DecBfvCircuit
+    /// Create a new DecBfvCircuit instance with the specified sample type
+    ///
+    /// # Arguments
+    ///
+    /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
+    pub fn new(sample_type: SampleType) -> Self {
+        DecBfvCircuit { sample_type }
     }
 }
 
 impl Default for DecBfvCircuit {
     fn default() -> Self {
-        Self::new()
+        Self::new(SampleType::SecretKey)
     }
 }
 
@@ -67,12 +77,15 @@ impl Circuit for DecBfvCircuit {
         let (crypto_params, bounds) = DecBfvBounds::compute(selected_params, 0)?;
 
         // Generate sample decryption data
-        let decryption_data =
-            generate_sample_decryption(bfv_params, trbfv_params, ciphernodes_config).map_err(
-                |e| shared::errors::ZkFheError::Bfv {
-                    message: e.to_string(),
-                },
-            )?;
+        let decryption_data = generate_sample_decryption(
+            bfv_params,
+            trbfv_params,
+            self.sample_type,
+            ciphernodes_config,
+        )
+        .map_err(|e| shared::errors::ZkFheError::Bfv {
+            message: e.to_string(),
+        })?;
 
         // Compute witness vectors from the decryption data
         let vectors = DecBfvVectors::compute(
@@ -102,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = DecBfvCircuit::new();
+        let circuit = DecBfvCircuit::new(SampleType::SecretKey);
         assert_eq!(circuit.name(), "dec-bfv");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Bfv);
@@ -110,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = DecBfvCircuit::new();
+        let circuit = DecBfvCircuit::new(SampleType::SecretKey);
         let params = test_parameters();
         let temp_dir = TempDir::new().unwrap();
 
@@ -131,5 +144,23 @@ mod tests {
         assert!(content.contains("honest_c0"));
         assert!(content.contains("sum_c0"));
         assert!(content.contains("message"));
+    }
+
+    #[test]
+    fn test_toml_generation_smudging_noise() {
+        let circuit = DecBfvCircuit::new(SampleType::SmudgingNoise);
+        let params = test_parameters();
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = circuit.generate_toml(&params, &params, temp_dir.path(), None);
+        assert!(
+            result.is_ok(),
+            "TOML generation with smudging noise should succeed: {:?}",
+            result.err()
+        );
+
+        // Verify the file was created
+        let toml_path = temp_dir.path().join("Prover.toml");
+        assert!(toml_path.exists(), "Prover.toml should be created");
     }
 }
