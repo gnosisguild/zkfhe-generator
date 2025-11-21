@@ -233,20 +233,9 @@ impl DecBfvVectors {
                 // Compare centered ui with calculated (both are in centered form)
                 assert_eq!(&ui, &ui_calculated);
 
-                // Normalize u_i to [0, q_i) range (NOT centered)
-                // This ensures u_i values remain small when reduced modulo ZKP modulus
-                // (similar to decryption_shares in dec_share_agg_trbfv)
-                let mut ui_normalized = ui.clone();
-                for coeff in ui_normalized.iter_mut() {
-                    *coeff = coeff.modpow(&BigInt::from(1), &qi_bigint);
-                    if *coeff < BigInt::zero() {
-                        *coeff += &qi_bigint;
-                    }
-                }
-
                 // Keep values in centered form (like dec_share_trbfv does)
                 // reduce_coefficients_2d in standard_form() will handle conversion to zkp field
-                (i, sum_ct0i, sum_ct1i, si, ui_normalized, r1i, r2i)
+                (i, sum_ct0i, sum_ct1i, si, ui, r1i, r2i)
             },
         )
         .collect();
@@ -570,18 +559,21 @@ impl DecBfvVectors {
     ///    Note: These large values will cause u128 casting to wrap in __compute_mod_reduction,
     ///    but the remainder computation will still be correct for small moduli (< 2^56).
     ///    The assertion in reduce_mod will catch any issues.
-    ///    Validates that all values meet the requirements for the circuit:
+    ///
+    /// Validates that all values meet the requirements for the circuit:
     /// 1. All values are in [0, zkp_modulus) range
-    /// 2. Most values must be < 2^128 for u128 casting:
+    /// 2. Values that must be < 2^128 for u128 casting in reduce_mod:
     ///    - honest_c0, honest_c1: used in Field sum then reduce_mod
     ///    - sum_c0, sum_c1: compared after reduce_mod
-    ///    - s: evaluated in Field arithmetic
-    ///    - u_i: evaluated in Field arithmetic and used in CRT
-    ///    - r_1, r_2: evaluated in Field arithmetic
     ///    - message: decoded message, must be small
-    /// 3. Large values (u_global, crt_quotients) can be > 2^128:
-    ///    - These are only used in Field arithmetic (add, mul, equality check)
-    ///    - The u128 cast will wrap, but Field arithmetic remains correct
+    ///
+    /// 3. Values that can be > 2^128 (only used in Field arithmetic):
+    ///    - s: range_check_2bounds, eval
+    ///    - u_i: range_check_2bounds, eval, add (CRT)
+    ///    - r_1: eval (quotient polynomial)
+    ///    - r_2: range_check_2bounds, eval (quotient polynomial)
+    ///    - u_global: add, mul, equality (CRT reconstruction)
+    ///    - crt_quotients: mul, add, equality (CRT verification)
     fn validate_for_circuit(&self, zkp_modulus: &BigInt) {
         let u128_max = BigInt::from(u128::MAX);
 
@@ -734,7 +726,9 @@ impl DecBfvVectors {
             }
         }
 
-        // Check u_i - must be small (< 2^128) since it's per-modulus (< q_i < 2^56)
+        // Check u_i - can be large (> 2^128) after reduce_coefficients_2d
+        // These values are only used in Field arithmetic (range_check_2bounds, eval, add),
+        // not in reduce_mod with small moduli, so u128::MAX check is not needed
         for (mod_idx, modulus_row) in self.u_i.iter().enumerate() {
             for (coeff_idx, coeff) in modulus_row.iter().enumerate() {
                 assert!(
@@ -751,14 +745,6 @@ impl DecBfvVectors {
                     coeff_idx,
                     coeff,
                     zkp_modulus
-                );
-                assert!(
-                    coeff <= &u128_max,
-                    "u_i[{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                    mod_idx,
-                    coeff_idx,
-                    coeff,
-                    u128_max
                 );
             }
         }
