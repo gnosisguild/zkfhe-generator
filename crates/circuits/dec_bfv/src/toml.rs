@@ -252,4 +252,3 @@ mod tests {
         assert!(toml_string.contains("[params.bounds]"));
     }
 }
-

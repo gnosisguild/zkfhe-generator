@@ -6,6 +6,7 @@ use fhe_traits::FheDecoder;
 use fhe_traits::{FheEncoder, FheEncrypter};
 use ndarray::ArrayView;
 use rand::{distributions::Uniform, prelude::Distribution, rngs::OsRng, thread_rng};
+use shared::circuit::CiphernodesConfig;
 use std::sync::Arc;
 
 /// Output structure representing all components involved in decryption share aggregation.
@@ -37,13 +38,24 @@ pub struct DecryptionShareAggregationData {
 ///
 /// Useful for generating input vectors for zero-knowledge circuits
 /// or verifying decryption share aggregation behavior.
+///
+/// # Arguments
+///
+/// * `trbfv_params` - Threshold BFV parameters
+/// * `ciphernodes_config` - Optional configuration for number of parties, honest parties, and threshold.
+///   If None, uses default values (5 parties, 3 honest parties, threshold 2).
 pub fn generate_sample_decryption_share_aggregation(
     trbfv_params: &Arc<BfvParameters>,
+    ciphernodes_config: Option<&CiphernodesConfig>,
 ) -> Result<DecryptionShareAggregationData, Box<dyn std::error::Error>> {
     let mut thread_rng = thread_rng();
 
-    let num_parties = 5;
-    let threshold = 2;
+    // Use provided config or defaults
+    let config = ciphernodes_config
+        .cloned()
+        .unwrap_or_else(CiphernodesConfig::defaults);
+    let num_parties = config.num_parties;
+    let threshold = config.threshold;
     let num_ciphertexts = 100;
 
     // Create TRBFV instance for share generation
@@ -248,7 +260,7 @@ mod tests {
             .build_arc()
             .unwrap();
 
-        let result = generate_sample_decryption_share_aggregation(&params);
+        let result = generate_sample_decryption_share_aggregation(&params, None);
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",
@@ -258,6 +270,6 @@ mod tests {
         let data = result.unwrap();
         assert_eq!(data.d_share_polys.len(), data.threshold + 1);
         assert_eq!(data.party_ids.len(), data.threshold + 1);
-        assert_eq!(data.party_ids, vec![1, 2, 3]);
+        assert_eq!(data.party_ids, vec![1, 2]);
     }
 }

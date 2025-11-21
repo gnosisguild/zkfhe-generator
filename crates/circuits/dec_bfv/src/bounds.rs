@@ -6,7 +6,6 @@
 use fhe::bfv::{BfvParameters, SecretKey};
 use num_bigint::{BigInt, BigUint};
 use num_traits::{Signed, ToPrimitive};
-use shared::constants::get_zkp_modulus;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
@@ -86,7 +85,7 @@ impl DecBfvBounds {
 
         let crypto_params = DecBfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
-            plaintext_modulus: params.plaintext()
+            plaintext_modulus: params.plaintext(),
         };
 
         let bounds = DecBfvBounds {
@@ -157,4 +156,3 @@ mod tests {
         assert!(bounds.u_global_bound > BigUint::from(0u32));
     }
 }
-

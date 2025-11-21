@@ -9,7 +9,7 @@ use crate::toml::DecBfvTomlGenerator;
 use crate::vectors::DecBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::ParameterType;
+use shared::circuit::{CiphernodesConfig, ParameterType};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -49,7 +49,7 @@ impl Circuit for DecBfvCircuit {
 
     /// Returns the parameter type this circuit uses
     fn parameter_type(&self) -> ParameterType {
-        ParameterType::Bfv  // Uses BFV parameters (not trBFV)
+        ParameterType::Bfv // Uses BFV parameters (not trBFV)
     }
 
     /// Generate TOML file with sample data and parameters
@@ -58,6 +58,7 @@ impl Circuit for DecBfvCircuit {
         trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
+        ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
         // dec_bfv uses BFV parameters (for share encryption/decryption)
         let selected_params = bfv_params;
@@ -66,10 +67,12 @@ impl Circuit for DecBfvCircuit {
         let (crypto_params, bounds) = DecBfvBounds::compute(selected_params, 0)?;
 
         // Generate sample decryption data
-        let decryption_data = generate_sample_decryption(bfv_params, trbfv_params)
-            .map_err(|e| shared::errors::ZkFheError::Bfv {
-                message: e.to_string(),
-            })?;
+        let decryption_data =
+            generate_sample_decryption(bfv_params, trbfv_params, ciphernodes_config).map_err(
+                |e| shared::errors::ZkFheError::Bfv {
+                    message: e.to_string(),
+                },
+            )?;
 
         // Compute witness vectors from the decryption data
         let vectors = DecBfvVectors::compute(
@@ -100,7 +103,7 @@ mod tests {
     #[test]
     fn test_circuit_name_and_description() {
         let circuit = DecBfvCircuit::new();
-        assert_eq!(circuit.name(), "dec_bfv");
+        assert_eq!(circuit.name(), "dec-bfv");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Bfv);
     }
@@ -111,8 +114,12 @@ mod tests {
         let params = test_parameters();
         let temp_dir = TempDir::new().unwrap();
 
-        let result = circuit.generate_toml(&params, &params, temp_dir.path());
-        assert!(result.is_ok(), "TOML generation should succeed: {:?}", result.err());
+        let result = circuit.generate_toml(&params, &params, temp_dir.path(), None);
+        assert!(
+            result.is_ok(),
+            "TOML generation should succeed: {:?}",
+            result.err()
+        );
 
         // Verify the file was created
         let toml_path = temp_dir.path().join("Prover.toml");
@@ -126,4 +133,3 @@ mod tests {
         assert!(content.contains("message"));
     }
 }
-

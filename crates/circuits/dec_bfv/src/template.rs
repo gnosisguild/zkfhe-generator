@@ -145,40 +145,40 @@ fn main(
     // TODO: Your logic here...
 }}"#,
             import_example,
-            params.base.n,                  // N
-            params.num_honest_parties,      // H
-            params.base.l,                  // L
-            params.base.n,                  // honest_c0 N
-            params.base.l,                  // honest_c0 L
-            params.num_honest_parties,      // honest_c0 H
-            params.base.n,                  // honest_c1 N
-            params.base.l,                  // honest_c1 L
-            params.num_honest_parties,      // honest_c1 H
-            params.base.n,                  // sum_c0 N
-            params.base.l,                  // sum_c0 L
-            params.base.n,                  // sum_c1 N
-            params.base.l,                  // sum_c1 L
-            params.base.n,                  // s N
-            params.base.l,                  // s L
-            params.base.n,                  // u_i N
-            params.base.l,                  // u_i L
-            2 * params.base.n - 1,          // r_1 polynomial degree (2N-1)
-            params.base.l,                  // r_1 L
-            params.base.n - 1,              // r_2 polynomial degree (N-1)
-            params.base.l,                  // r_2 L
-            params.base.n,                  // u_global N
-            params.base.n,                  // crt_quotients N
-            params.base.l,                  // crt_quotients L
-            params.base.n,                  // message N
-            params.base.n,                  // Circuit N
-            params.num_honest_parties,      // Circuit H
-            params.base.l,                  // Circuit L
-            params.bit_ct,                  // Circuit BIT_CT
-            params.bit_s,                   // Circuit BIT_S
-            params.bit_u,                   // Circuit BIT_U
-            params.bit_r1,                  // Circuit BIT_R1
-            params.bit_r2,                  // Circuit BIT_R2
-            params.bit_noise,               // Circuit BIT_NOISE
+            params.base.n,             // N
+            params.num_honest_parties, // H
+            params.base.l,             // L
+            params.base.n,             // honest_c0 N
+            params.base.l,             // honest_c0 L
+            params.num_honest_parties, // honest_c0 H
+            params.base.n,             // honest_c1 N
+            params.base.l,             // honest_c1 L
+            params.num_honest_parties, // honest_c1 H
+            params.base.n,             // sum_c0 N
+            params.base.l,             // sum_c0 L
+            params.base.n,             // sum_c1 N
+            params.base.l,             // sum_c1 L
+            params.base.n,             // s N
+            params.base.l,             // s L
+            params.base.n,             // u_i N
+            params.base.l,             // u_i L
+            2 * params.base.n - 1,     // r_1 polynomial degree (2N-1)
+            params.base.l,             // r_1 L
+            params.base.n - 1,         // r_2 polynomial degree (N-1)
+            params.base.l,             // r_2 L
+            params.base.n,             // u_global N
+            params.base.n,             // crt_quotients N
+            params.base.l,             // crt_quotients L
+            params.base.n,             // message N
+            params.base.n,             // Circuit N
+            params.num_honest_parties, // Circuit H
+            params.base.l,             // Circuit L
+            params.bit_ct,             // Circuit BIT_CT
+            params.bit_s,              // Circuit BIT_S
+            params.bit_u,              // Circuit BIT_U
+            params.bit_r1,             // Circuit BIT_R1
+            params.bit_r2,             // Circuit BIT_R2
+            params.bit_noise,          // Circuit BIT_NOISE
         );
 
         Ok(template)

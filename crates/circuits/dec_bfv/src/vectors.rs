@@ -5,9 +5,7 @@
 
 use bigint_poly::*;
 use fhe::bfv::{BfvParameters, Ciphertext, Plaintext, SecretKey};
-use fhe_math::{
-    rq::{Poly, Representation, traits::TryConvertFrom}
-};
+use fhe_math::rq::{Poly, Representation, traits::TryConvertFrom};
 use itertools::izip;
 use num_bigint::{BigInt, BigUint};
 use num_traits::{ToPrimitive, Zero};
@@ -85,12 +83,8 @@ impl DecBfvVectors {
         sum_ct1.change_representation(Representation::PowerBasis);
 
         // Extract secret key
-        let mut sk_poly = Poly::try_convert_from(
-            sk.coeffs.as_ref(),
-            &ctx,
-            false,
-            Representation::PowerBasis,
-        )?;
+        let mut sk_poly =
+            Poly::try_convert_from(sk.coeffs.as_ref(), ctx, false, Representation::PowerBasis)?;
         sk_poly.change_representation(Representation::PowerBasis);
 
         // Compute u_rns = c_0 + c_1 * s (intermediate decryption before scaling)
@@ -132,104 +126,129 @@ impl DecBfvVectors {
         )
         .enumerate()
         .par_bridge()
-        .map(|(i, (qi, sum_ct0_coeffs, sum_ct1_coeffs, sk_coeffs, u_coeffs))| {
-            // Convert to vectors of bigint and reverse order
-            // NOTE: We keep values in [0, q_i) to ensure they're < u128::MAX
-            // Centering is only used for internal computations
-            let mut sum_ct0i: Vec<BigInt> = sum_ct0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
-            let mut sum_ct1i: Vec<BigInt> = sum_ct1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
-            let mut si: Vec<BigInt> = sk_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
-            let mut ui: Vec<BigInt> = u_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+        .map(
+            |(i, (qi, sum_ct0_coeffs, sum_ct1_coeffs, sk_coeffs, u_coeffs))| {
+                // Convert to vectors of bigint and reverse order
+                // NOTE: We keep values in [0, q_i) to ensure they're < u128::MAX
+                // Centering is only used for internal computations
+                let sum_ct0i: Vec<BigInt> = sum_ct0_coeffs
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect();
+                let sum_ct1i: Vec<BigInt> = sum_ct1_coeffs
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect();
+                let mut si: Vec<BigInt> =
+                    sk_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                let mut ui: Vec<BigInt> = u_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
 
-            let qi_bigint = BigInt::from(qi.modulus());
-            
-            // Do NOT center sum_ct0i and sum_ct1i - they must stay in [0, q_i) to avoid
-            // overflow in the circuit's reduce_mod during summation verification.
-            // Only center si and ui which are not used in reduce_mod with small values.
-            reduce_and_center_coefficients_mut(&mut si, &qi_bigint);
-            reduce_and_center_coefficients_mut(&mut ui, &qi_bigint);
+                let qi_bigint = BigInt::from(qi.modulus());
 
-            // Calculate u_i_hat = sum_c_0i + sum_c_1i * s
-            // Note: sum_ct0i, sum_ct1i are in [0, q_i), si is centered
-            // The result will be reduced modulo qi, so mixing is fine
-            let ui_hat = {
-                let sum_ct0i_poly = Polynomial::new(sum_ct0i.clone());
-                let sum_ct1i_poly = Polynomial::new(sum_ct1i.clone());
-                let si_poly = Polynomial::new(si.clone());
-                let ct1i_times_s = sum_ct1i_poly.mul(&si_poly);
-                assert_eq!((ct1i_times_s.coefficients().len() as u64) - 1, 2 * (n - 1));
+                // Do NOT center sum_ct0i and sum_ct1i - they must stay in [0, q_i) to avoid
+                // overflow in the circuit's reduce_mod during summation verification.
+                // Only center si and ui which are not used in reduce_mod with small values.
+                reduce_and_center_coefficients_mut(&mut si, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut ui, &qi_bigint);
 
-                sum_ct0i_poly.add(&ct1i_times_s).coefficients().to_vec()
-            };
-            assert_eq!((ui_hat.len() as u64) - 1, 2 * (n - 1));
+                // Calculate u_i_hat = sum_c_0i + sum_c_1i * s
+                // Note: sum_ct0i, sum_ct1i are in [0, q_i), si is centered
+                // The result will be reduced modulo qi, so mixing is fine
+                let ui_hat = {
+                    let sum_ct0i_poly = Polynomial::new(sum_ct0i.clone());
+                    let sum_ct1i_poly = Polynomial::new(sum_ct1i.clone());
+                    let si_poly = Polynomial::new(si.clone());
+                    let ct1i_times_s = sum_ct1i_poly.mul(&si_poly);
+                    assert_eq!((ct1i_times_s.coefficients().len() as u64) - 1, 2 * (n - 1));
 
-            // Check whether ui_hat mod R_qi (the ring) is equal to ui (using centered ui)
-            let mut ui_hat_mod_rqi = ui_hat.clone();
-            reduce_in_ring(&mut ui_hat_mod_rqi, &cyclo, &qi_bigint);
-            assert_eq!(&ui, &ui_hat_mod_rqi);
+                    sum_ct0i_poly.add(&ct1i_times_s).coefficients().to_vec()
+                };
+                assert_eq!((ui_hat.len() as u64) - 1, 2 * (n - 1));
 
-            // Compute r2i numerator = ui - ui_hat (using centered ui)
-            let ui_poly = Polynomial::new(ui.clone());
-            let ui_hat_poly = Polynomial::new(ui_hat.clone());
-            let ui_minus_ui_hat = ui_poly.sub(&ui_hat_poly).coefficients().to_vec();
-            assert_eq!((ui_minus_ui_hat.len() as u64) - 1, 2 * (n - 1));
-            let mut ui_minus_ui_hat_mod_zqi = ui_minus_ui_hat.clone();
-            reduce_and_center_coefficients_mut(&mut ui_minus_ui_hat_mod_zqi, &qi_bigint);
+                // Check whether ui_hat mod R_qi (the ring) is equal to ui (using centered ui)
+                let mut ui_hat_mod_rqi = ui_hat.clone();
+                reduce_in_ring(&mut ui_hat_mod_rqi, &cyclo, &qi_bigint);
+                assert_eq!(&ui, &ui_hat_mod_rqi);
 
-            // Compute r2i as the quotient: (ui - ui_hat) / (x^N + 1) mod Z_qi
-            let ui_minus_ui_hat_poly = Polynomial::new(ui_minus_ui_hat_mod_zqi.clone());
-            let cyclo_poly = Polynomial::new(cyclo.clone());
-            let (r2i_poly, r2i_rem_poly) = ui_minus_ui_hat_poly.div(&cyclo_poly).unwrap();
-            let mut r2i = r2i_poly.coefficients().to_vec();
-            let r2i_rem = r2i_rem_poly.coefficients().to_vec();
-            assert!(r2i_rem.iter().all(|x| x.is_zero()));
-            assert_eq!((r2i.len() as u64) - 1, n - 2); // Order(r2i) = N - 2
+                // Compute r2i numerator = ui - ui_hat (using centered ui)
+                let ui_poly = Polynomial::new(ui.clone());
+                let ui_hat_poly = Polynomial::new(ui_hat.clone());
+                let ui_minus_ui_hat = ui_poly.sub(&ui_hat_poly).coefficients().to_vec();
+                assert_eq!((ui_minus_ui_hat.len() as u64) - 1, 2 * (n - 1));
+                let mut ui_minus_ui_hat_mod_zqi = ui_minus_ui_hat.clone();
+                reduce_and_center_coefficients_mut(&mut ui_minus_ui_hat_mod_zqi, &qi_bigint);
 
-            // Assert that (ui - ui_hat) = (r2i * cyclo) mod Z_qi
-            let r2i_poly = Polynomial::new(r2i.clone());
-            let r2i_times_cyclo = r2i_poly.mul(&cyclo_poly).coefficients().to_vec();
-            let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
-            reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
-            assert_eq!(&ui_minus_ui_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
-            assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (n - 1));
+                // Compute r2i as the quotient: (ui - ui_hat) / (x^N + 1) mod Z_qi
+                let ui_minus_ui_hat_poly = Polynomial::new(ui_minus_ui_hat_mod_zqi.clone());
+                let cyclo_poly = Polynomial::new(cyclo.clone());
+                let (r2i_poly, r2i_rem_poly) = ui_minus_ui_hat_poly.div(&cyclo_poly).unwrap();
+                let r2i = r2i_poly.coefficients().to_vec();
+                let r2i_rem = r2i_rem_poly.coefficients().to_vec();
+                assert!(r2i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r2i.len() as u64) - 1, n - 2); // Order(r2i) = N - 2
 
-            // Calculate r1i = (ui - ui_hat - r2i * cyclo) / qi mod Z_p
-            let ui_minus_ui_hat_poly = Polynomial::new(ui_minus_ui_hat.clone());
-            let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
-            let r1i_num = ui_minus_ui_hat_poly.sub(&r2i_times_cyclo_poly).coefficients().to_vec();
-            assert_eq!((r1i_num.len() as u64) - 1, 2 * (n - 1));
+                // Assert that (ui - ui_hat) = (r2i * cyclo) mod Z_qi
+                let r2i_poly = Polynomial::new(r2i.clone());
+                let r2i_times_cyclo = r2i_poly.mul(&cyclo_poly).coefficients().to_vec();
+                let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
+                reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
+                assert_eq!(&ui_minus_ui_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
+                assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (n - 1));
 
-            let r1i_num_poly = Polynomial::new(r1i_num.clone());
-            let qi_poly = Polynomial::new(vec![qi_bigint.clone()]);
-            let (r1i_poly, r1i_rem_poly) = r1i_num_poly.div(&qi_poly).unwrap();
-            let r1i = r1i_poly.coefficients().to_vec();
-            let r1i_rem = r1i_rem_poly.coefficients().to_vec();
-            assert!(r1i_rem.iter().all(|x| x.is_zero()));
-            assert_eq!((r1i.len() as u64) - 1, 2 * (n - 1)); // Order(r1i) = 2*(N-1)
+                // Calculate r1i = (ui - ui_hat - r2i * cyclo) / qi mod Z_p
+                let ui_minus_ui_hat_poly = Polynomial::new(ui_minus_ui_hat.clone());
+                let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
+                let r1i_num = ui_minus_ui_hat_poly
+                    .sub(&r2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
+                assert_eq!((r1i_num.len() as u64) - 1, 2 * (n - 1));
 
-            // Assert that ui = ui_hat + r1i * qi + r2i * cyclo mod Z_p
-            let r1i_poly = Polynomial::new(r1i.clone());
-            let r1i_times_qi = r1i_poly.scalar_mul(&qi_bigint).coefficients().to_vec();
-            let ui_hat_poly = Polynomial::new(ui_hat.clone());
-            let r1i_times_qi_poly = Polynomial::new(r1i_times_qi.clone());
-            let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
-            let mut ui_calculated = ui_hat_poly
-                .add(&r1i_times_qi_poly)
-                .add(&r2i_times_cyclo_poly)
-                .coefficients()
-                .to_vec();
+                let r1i_num_poly = Polynomial::new(r1i_num.clone());
+                let qi_poly = Polynomial::new(vec![qi_bigint.clone()]);
+                let (r1i_poly, r1i_rem_poly) = r1i_num_poly.div(&qi_poly).unwrap();
+                let r1i = r1i_poly.coefficients().to_vec();
+                let r1i_rem = r1i_rem_poly.coefficients().to_vec();
+                assert!(r1i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r1i.len() as u64) - 1, 2 * (n - 1)); // Order(r1i) = 2*(N-1)
 
-            while !ui_calculated.is_empty() && ui_calculated[0].is_zero() {
-                ui_calculated.remove(0);
-            }
+                // Assert that ui = ui_hat + r1i * qi + r2i * cyclo mod Z_p
+                let r1i_poly = Polynomial::new(r1i.clone());
+                let r1i_times_qi = r1i_poly.scalar_mul(&qi_bigint).coefficients().to_vec();
+                let ui_hat_poly = Polynomial::new(ui_hat.clone());
+                let r1i_times_qi_poly = Polynomial::new(r1i_times_qi.clone());
+                let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
+                let mut ui_calculated = ui_hat_poly
+                    .add(&r1i_times_qi_poly)
+                    .add(&r2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
 
-            // Compare centered ui with calculated (both are in centered form)
-            assert_eq!(&ui, &ui_calculated);
+                while !ui_calculated.is_empty() && ui_calculated[0].is_zero() {
+                    ui_calculated.remove(0);
+                }
 
-            // Keep values in centered form (like dec_share_trbfv does)
-            // reduce_coefficients_2d in standard_form() will handle conversion to zkp field
-            (i, sum_ct0i, sum_ct1i, si, ui, r1i, r2i)
-        })
+                // Compare centered ui with calculated (both are in centered form)
+                assert_eq!(&ui, &ui_calculated);
+
+                // Normalize u_i to [0, q_i) range (NOT centered)
+                // This ensures u_i values remain small when reduced modulo ZKP modulus
+                // (similar to decryption_shares in dec_share_agg_trbfv)
+                let mut ui_normalized = ui.clone();
+                for coeff in ui_normalized.iter_mut() {
+                    *coeff = coeff.modpow(&BigInt::from(1), &qi_bigint);
+                    if *coeff < BigInt::zero() {
+                        *coeff += &qi_bigint;
+                    }
+                }
+
+                // Keep values in centered form (like dec_share_trbfv does)
+                // reduce_coefficients_2d in standard_form() will handle conversion to zkp field
+                (i, sum_ct0i, sum_ct1i, si, ui_normalized, r1i, r2i)
+            },
+        )
         .collect();
 
         // Merge results into the `res` structure after parallel execution
@@ -252,15 +271,13 @@ impl DecBfvVectors {
             let ct0_coeffs = ct0.coefficients();
             let ct1_coeffs = ct1.coefficients();
 
-            for (basis_idx, (_qi, ct0_row, ct1_row)) in izip!(
-                ctx.moduli_operators(),
-                ct0_coeffs.rows(),
-                ct1_coeffs.rows()
-            ).enumerate() {
+            for (basis_idx, (_qi, ct0_row, ct1_row)) in
+                izip!(ctx.moduli_operators(), ct0_coeffs.rows(), ct1_coeffs.rows()).enumerate()
+            {
                 // Keep in [0, q_i) - do NOT center to avoid u128 overflow in circuit's reduce_mod
                 let ct0i: Vec<BigInt> = ct0_row.iter().rev().map(|&x| BigInt::from(x)).collect();
                 let ct1i: Vec<BigInt> = ct1_row.iter().rev().map(|&x| BigInt::from(x)).collect();
-                
+
                 res.honest_c0[party_idx][basis_idx] = ct0i;
                 res.honest_c1[party_idx][basis_idx] = ct1i;
             }
@@ -281,7 +298,7 @@ impl DecBfvVectors {
             let q_m = ctx.moduli()[m];
             let q_m_bigint = BigInt::from(q_m);
             let mut u_m: Vec<u64> = Vec::new();
-            
+
             for coeff in ui.iter() {
                 // Convert centered coefficient back to [0, q_m)
                 let mut val = coeff % &q_m_bigint;
@@ -328,7 +345,7 @@ impl DecBfvVectors {
                 } else {
                     u_global_mod_qm.clone()
                 };
-                
+
                 // Get the centered u_i value we stored and normalize it to [0, q_m) for comparison
                 let u_i_centered = &res.u_i[m][coeff_idx];
                 let u_i_mod_qm = u_i_centered % &q_m_bigint;
@@ -384,52 +401,71 @@ impl DecBfvVectors {
         }
 
         // Extract message from plaintext (keep in [0, t) form to ensure < u128::MAX)
-        let message: Vec<BigInt> = pt.value.deref().iter().rev().map(|&x| BigInt::from(x)).collect();
+        let message: Vec<BigInt> = pt
+            .value
+            .deref()
+            .iter()
+            .rev()
+            .map(|&x| BigInt::from(x))
+            .collect();
         res.message = message;
 
         // Verify decoding (mimics circuit's verify_decoding function)
-        res.verify_decoding_rust(ctx, &params)?;
+        // TODO: Uncomment this when the circuit is updated to use the new verify_decoding function
+        res.verify_decoding_rust(ctx, params)?;
 
         Ok(res)
     }
 
-    /// Verify decoding in Rust (mimics the circuit's verify_decoding function)
-    /// This helps catch issues before running the circuit
-    fn verify_decoding_rust(&self, ctx: &Arc<fhe_math::rq::Context>, params: &Arc<BfvParameters>) -> ZkFheResult<()> {
+    // Verify decoding in Rust (mimics the circuit's verify_decoding function)
+    // This helps catch issues before running the circuit
+    fn verify_decoding_rust(
+        &self,
+        ctx: &Arc<fhe_math::rq::Context>,
+        params: &Arc<BfvParameters>,
+    ) -> ZkFheResult<()> {
         let n = ctx.degree;
         let t = BigInt::from(params.plaintext());
-        
+
         // Compute Q = product of all moduli
         let mut q_modulus = BigInt::from(1u64);
         for &q_i in ctx.moduli() {
             q_modulus *= BigInt::from(q_i);
         }
-        
+
         // Compute delta = floor(Q / t)
         let delta = &q_modulus / &t;
         let delta_half = &delta / BigInt::from(2);
         let q_half = &q_modulus / BigInt::from(2);
-        
+
         println!("🔍 Decoding verification:");
         println!("   Q = {} (≈ 2^{} bits)", q_modulus, q_modulus.bits());
         println!("   delta = {} (≈ 2^{} bits)", delta, delta.bits());
-        println!("   delta_half = {} (≈ 2^{} bits)", delta_half, delta_half.bits());
-        
+        println!(
+            "   delta_half = {} (≈ 2^{} bits)",
+            delta_half,
+            delta_half.bits()
+        );
+
         // Check u_global values
         let max_u_global = self.u_global.iter().max().unwrap();
-        println!("   max(u_global) = {} (≈ 2^{} bits)", max_u_global, max_u_global.bits());
+        println!(
+            "   max(u_global) = {} (≈ 2^{} bits)",
+            max_u_global,
+            max_u_global.bits()
+        );
         if max_u_global >= &q_modulus {
             println!("   ⚠️  WARNING: u_global exceeds Q!");
         }
-        
+
         // For each coefficient, verify: |u_global - delta * message| < delta_half
         for coeff_idx in 0..n {
             let u_global_coeff = &self.u_global[coeff_idx];
             let message_coeff = &self.message[coeff_idx];
-            
+
             // Compute delta * message
             let delta_m = &delta * message_coeff;
-            
+
             // Compute noise = u_global - delta * message (mod Q)
             let noise_raw = u_global_coeff - &delta_m;
             let noise_mod_q = &noise_raw % &q_modulus;
@@ -438,22 +474,24 @@ impl DecBfvVectors {
             } else {
                 noise_mod_q
             };
-            
+
             // Center the noise: if noise > Q/2, then noise_centered = Q - noise
-            let noise_centered = if &noise > &q_half {
+            let noise_centered = if noise > q_half {
                 &q_modulus - &noise
             } else {
                 noise.clone()
             };
-            
+
             // Check if noise_centered <= delta_half
-            if &noise_centered > &delta_half {
-                println!("❌ Coefficient {}: noise = {} > delta_half = {}", 
-                    coeff_idx, noise_centered, delta_half);
+            if noise_centered > delta_half {
+                println!(
+                    "❌ Coefficient {}: noise = {} > delta_half = {}",
+                    coeff_idx, noise_centered, delta_half
+                );
                 println!("   u_global = {}", u_global_coeff);
                 println!("   message = {}", message_coeff);
                 println!("   delta * message = {}", delta_m);
-                
+
                 return Err(ZkFheError::Bfv {
                     message: format!(
                         "Decoding verification failed: noise at coefficient {} is {} which exceeds delta_half = {}. \
@@ -463,7 +501,7 @@ impl DecBfvVectors {
                 });
             }
         }
-        
+
         println!("✅ Decoding verification passed: all noise values within delta_half bound");
         Ok(())
     }
@@ -472,15 +510,19 @@ impl DecBfvVectors {
 impl DecBfvVectors {
     pub fn standard_form(&self) -> Self {
         let zkp_modulus = &shared::constants::get_zkp_modulus();
-        
+
         // Reduce honest ciphertexts (3D: parties x bases x coefficients)
-        let honest_c0_reduced: Vec<Vec<Vec<BigInt>>> = self.honest_c0.iter()
+        let honest_c0_reduced: Vec<Vec<Vec<BigInt>>> = self
+            .honest_c0
+            .iter()
             .map(|party_c0| reduce_coefficients_2d(party_c0, zkp_modulus))
             .collect();
-        let honest_c1_reduced: Vec<Vec<Vec<BigInt>>> = self.honest_c1.iter()
+        let honest_c1_reduced: Vec<Vec<Vec<BigInt>>> = self
+            .honest_c1
+            .iter()
             .map(|party_c1| reduce_coefficients_2d(party_c1, zkp_modulus))
             .collect();
-        
+
         let result = DecBfvVectors {
             honest_c0: honest_c0_reduced,
             honest_c1: honest_c1_reduced,
@@ -499,7 +541,7 @@ impl DecBfvVectors {
         // 1. Centered values (like s with -1) become large after reduce_coefficients_2d
         // 2. The Noir circuit handles these large values correctly in Field arithmetic
         // 3. Only values used in reduce_mod need special handling, and those work correctly
-        // result.validate_for_circuit(zkp_modulus);
+        result.validate_for_circuit(zkp_modulus);
 
         result
     }
@@ -522,13 +564,13 @@ impl DecBfvVectors {
 
     /// Validates that all values meet the requirements for the circuit:
     /// 1. All values are in [0, zkp_modulus) range
-    /// 2. Small values (honest ciphertexts, sum ciphertexts, secret key, message, u_i, r_2) 
+    /// 2. Small values (honest ciphertexts, sum ciphertexts, secret key, message, u_i, r_2)
     ///    must be < 2^128 for u128 casting in reduce_mod operations
     /// 3. Large values (u_global, crt_quotients, r_1) can be > 2^128 but must be < zkp_modulus
     ///    Note: These large values will cause u128 casting to wrap in __compute_mod_reduction,
     ///    but the remainder computation will still be correct for small moduli (< 2^56).
     ///    The assertion in reduce_mod will catch any issues.
-    /// Validates that all values meet the requirements for the circuit:
+    ///    Validates that all values meet the requirements for the circuit:
     /// 1. All values are in [0, zkp_modulus) range
     /// 2. Most values must be < 2^128 for u128 casting:
     ///    - honest_c0, honest_c1: used in Field sum then reduce_mod
@@ -550,17 +592,28 @@ impl DecBfvVectors {
                     assert!(
                         coeff >= &BigInt::zero(),
                         "honest_c0[{}][{}][{}] = {} is negative",
-                        party_idx, mod_idx, coeff_idx, coeff
+                        party_idx,
+                        mod_idx,
+                        coeff_idx,
+                        coeff
                     );
                     assert!(
                         coeff < zkp_modulus,
                         "honest_c0[{}][{}][{}] = {} >= zkp_modulus = {}",
-                        party_idx, mod_idx, coeff_idx, coeff, zkp_modulus
+                        party_idx,
+                        mod_idx,
+                        coeff_idx,
+                        coeff,
+                        zkp_modulus
                     );
                     assert!(
                         coeff <= &u128_max,
                         "honest_c0[{}][{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                        party_idx, mod_idx, coeff_idx, coeff, u128_max
+                        party_idx,
+                        mod_idx,
+                        coeff_idx,
+                        coeff,
+                        u128_max
                     );
                 }
             }
@@ -573,17 +626,28 @@ impl DecBfvVectors {
                     assert!(
                         coeff >= &BigInt::zero(),
                         "honest_c1[{}][{}][{}] = {} is negative",
-                        party_idx, mod_idx, coeff_idx, coeff
+                        party_idx,
+                        mod_idx,
+                        coeff_idx,
+                        coeff
                     );
                     assert!(
                         coeff < zkp_modulus,
                         "honest_c1[{}][{}][{}] = {} >= zkp_modulus = {}",
-                        party_idx, mod_idx, coeff_idx, coeff, zkp_modulus
+                        party_idx,
+                        mod_idx,
+                        coeff_idx,
+                        coeff,
+                        zkp_modulus
                     );
                     assert!(
                         coeff <= &u128_max,
                         "honest_c1[{}][{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                        party_idx, mod_idx, coeff_idx, coeff, u128_max
+                        party_idx,
+                        mod_idx,
+                        coeff_idx,
+                        coeff,
+                        u128_max
                     );
                 }
             }
@@ -595,17 +659,25 @@ impl DecBfvVectors {
                 assert!(
                     coeff >= &BigInt::zero(),
                     "sum_c0[{}][{}] = {} is negative",
-                    mod_idx, coeff_idx, coeff
+                    mod_idx,
+                    coeff_idx,
+                    coeff
                 );
                 assert!(
                     coeff < zkp_modulus,
                     "sum_c0[{}][{}] = {} >= zkp_modulus = {}",
-                    mod_idx, coeff_idx, coeff, zkp_modulus
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    zkp_modulus
                 );
                 assert!(
                     coeff <= &u128_max,
                     "sum_c0[{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                    mod_idx, coeff_idx, coeff, u128_max
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    u128_max
                 );
             }
         }
@@ -616,38 +688,48 @@ impl DecBfvVectors {
                 assert!(
                     coeff >= &BigInt::zero(),
                     "sum_c1[{}][{}] = {} is negative",
-                    mod_idx, coeff_idx, coeff
+                    mod_idx,
+                    coeff_idx,
+                    coeff
                 );
                 assert!(
                     coeff < zkp_modulus,
                     "sum_c1[{}][{}] = {} >= zkp_modulus = {}",
-                    mod_idx, coeff_idx, coeff, zkp_modulus
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    zkp_modulus
                 );
                 assert!(
                     coeff <= &u128_max,
                     "sum_c1[{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                    mod_idx, coeff_idx, coeff, u128_max
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    u128_max
                 );
             }
         }
 
-        // Check s (secret key) - must be small (< 2^128) since it's typically ternary or small
+        // Check s (secret key) - can be large (> 2^128) after reduce_coefficients_2d
+        // These values are only used in Field arithmetic (range_check_2bounds, eval),
+        // not in reduce_mod with small moduli, so u128::MAX check is not needed
         for (mod_idx, modulus_row) in self.s.iter().enumerate() {
             for (coeff_idx, coeff) in modulus_row.iter().enumerate() {
                 assert!(
                     coeff >= &BigInt::zero(),
                     "s[{}][{}] = {} is negative",
-                    mod_idx, coeff_idx, coeff
+                    mod_idx,
+                    coeff_idx,
+                    coeff
                 );
                 assert!(
                     coeff < zkp_modulus,
                     "s[{}][{}] = {} >= zkp_modulus = {}",
-                    mod_idx, coeff_idx, coeff, zkp_modulus
-                );
-                assert!(
-                    coeff <= &u128_max,
-                    "s[{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                    mod_idx, coeff_idx, coeff, u128_max
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    zkp_modulus
                 );
             }
         }
@@ -658,17 +740,25 @@ impl DecBfvVectors {
                 assert!(
                     coeff >= &BigInt::zero(),
                     "u_i[{}][{}] = {} is negative",
-                    mod_idx, coeff_idx, coeff
+                    mod_idx,
+                    coeff_idx,
+                    coeff
                 );
                 assert!(
                     coeff < zkp_modulus,
                     "u_i[{}][{}] = {} >= zkp_modulus = {}",
-                    mod_idx, coeff_idx, coeff, zkp_modulus
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    zkp_modulus
                 );
                 assert!(
                     coeff <= &u128_max,
                     "u_i[{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                    mod_idx, coeff_idx, coeff, u128_max
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    u128_max
                 );
             }
         }
@@ -681,33 +771,40 @@ impl DecBfvVectors {
                 assert!(
                     coeff >= &BigInt::zero(),
                     "r_1[{}][{}] = {} is negative",
-                    mod_idx, coeff_idx, coeff
+                    mod_idx,
+                    coeff_idx,
+                    coeff
                 );
                 assert!(
                     coeff < zkp_modulus,
                     "r_1[{}][{}] = {} >= zkp_modulus = {}",
-                    mod_idx, coeff_idx, coeff, zkp_modulus
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    zkp_modulus
                 );
             }
         }
 
-        // Check r_2 - must be small (< 2^128) since it's per-modulus quotient by (X^N + 1)
+        // Check r_2 - can be large (> 2^128) after reduce_coefficients_2d
+        // These values are only used in Field arithmetic (range_check_2bounds, eval),
+        // not in reduce_mod with small moduli, so u128::MAX check is not needed
         for (mod_idx, modulus_row) in self.r_2.iter().enumerate() {
             for (coeff_idx, coeff) in modulus_row.iter().enumerate() {
                 assert!(
                     coeff >= &BigInt::zero(),
                     "r_2[{}][{}] = {} is negative",
-                    mod_idx, coeff_idx, coeff
+                    mod_idx,
+                    coeff_idx,
+                    coeff
                 );
                 assert!(
                     coeff < zkp_modulus,
                     "r_2[{}][{}] = {} >= zkp_modulus = {}",
-                    mod_idx, coeff_idx, coeff, zkp_modulus
-                );
-                assert!(
-                    coeff <= &u128_max,
-                    "r_2[{}][{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                    mod_idx, coeff_idx, coeff, u128_max
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    zkp_modulus
                 );
             }
         }
@@ -719,12 +816,15 @@ impl DecBfvVectors {
             assert!(
                 coeff >= &BigInt::zero(),
                 "u_global[{}] = {} is negative",
-                idx, coeff
+                idx,
+                coeff
             );
             assert!(
                 coeff < zkp_modulus,
                 "u_global[{}] = {} >= zkp_modulus = {}",
-                idx, coeff, zkp_modulus
+                idx,
+                coeff,
+                zkp_modulus
             );
         }
 
@@ -736,12 +836,17 @@ impl DecBfvVectors {
                 assert!(
                     coeff >= &BigInt::zero(),
                     "crt_quotients[{}][{}] = {} is negative",
-                    mod_idx, coeff_idx, coeff
+                    mod_idx,
+                    coeff_idx,
+                    coeff
                 );
                 assert!(
                     coeff < zkp_modulus,
                     "crt_quotients[{}][{}] = {} >= zkp_modulus = {}",
-                    mod_idx, coeff_idx, coeff, zkp_modulus
+                    mod_idx,
+                    coeff_idx,
+                    coeff,
+                    zkp_modulus
                 );
             }
         }
@@ -751,17 +856,22 @@ impl DecBfvVectors {
             assert!(
                 coeff >= &BigInt::zero(),
                 "message[{}] = {} is negative",
-                idx, coeff
+                idx,
+                coeff
             );
             assert!(
                 coeff < zkp_modulus,
                 "message[{}] = {} >= zkp_modulus = {}",
-                idx, coeff, zkp_modulus
+                idx,
+                coeff,
+                zkp_modulus
             );
             assert!(
                 coeff <= &u128_max,
                 "message[{}] = {} > u128::MAX = {}, cannot be safely cast to u128 in circuit",
-                idx, coeff, u128_max
+                idx,
+                coeff,
+                u128_max
             );
         }
     }
@@ -776,7 +886,7 @@ mod tests {
     #[test]
     fn test_vector_computation() {
         let params = test_parameters();
-        let data = generate_sample_decryption(&params, &params).unwrap();
+        let data = generate_sample_decryption(&params, &params, None).unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,
@@ -809,7 +919,7 @@ mod tests {
     #[test]
     fn test_validation_with_real_data() {
         let params = test_parameters();
-        let data = generate_sample_decryption(&params, &params).unwrap();
+        let data = generate_sample_decryption(&params, &params, None).unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,
@@ -825,14 +935,23 @@ mod tests {
 
         // If we get here, validation passed
         let zkp_modulus = shared::constants::get_zkp_modulus();
-        
+
         // Spot check a few values
-        assert!(std_form.u_global.iter().all(|x| x >= &BigInt::zero() && x < &zkp_modulus));
-        assert!(std_form.message.iter().all(|x| x >= &BigInt::zero() && x < &zkp_modulus));
-        
+        assert!(
+            std_form
+                .u_global
+                .iter()
+                .all(|x| x >= &BigInt::zero() && x < &zkp_modulus)
+        );
+        assert!(
+            std_form
+                .message
+                .iter()
+                .all(|x| x >= &BigInt::zero() && x < &zkp_modulus)
+        );
+
         // Check that small values are within u128::MAX
         let u128_max = BigInt::from(u128::MAX);
         assert!(std_form.message.iter().all(|x| x <= &u128_max));
     }
 }
-

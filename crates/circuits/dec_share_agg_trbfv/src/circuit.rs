@@ -4,7 +4,7 @@ use crate::toml::DecShareAggTrBfvTomlGenerator;
 use crate::vectors::DecShareAggTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::ParameterType;
+use shared::circuit::{CiphernodesConfig, ParameterType};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -28,14 +28,14 @@ impl Circuit for DecShareAggTrBfvCircuit {
         trbfv_params: &Arc<BfvParameters>,
         _bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
+        ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
         // Generate sample decryption share aggregation data
         let decryption_data =
-            generate_sample_decryption_share_aggregation(trbfv_params).map_err(|e| {
-                shared::errors::ZkFheError::Bfv {
+            generate_sample_decryption_share_aggregation(trbfv_params, ciphernodes_config)
+                .map_err(|e| shared::errors::ZkFheError::Bfv {
                     message: e.to_string(),
-                }
-            })?;
+                })?;
 
         let (crypto_params, bounds) =
             DecShareAggTrBfvBounds::compute(trbfv_params, 0).map_err(|e| {

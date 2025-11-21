@@ -318,7 +318,7 @@ mod tests {
 
         let params = test_parameters();
 
-        let decryption_data = generate_sample_decryption_share(&params, &params).unwrap();
+        let decryption_data = generate_sample_decryption_share(&params, &params, None).unwrap();
 
         // Compute vectors
         let vecs = DecShareTrBfvVectors::compute(

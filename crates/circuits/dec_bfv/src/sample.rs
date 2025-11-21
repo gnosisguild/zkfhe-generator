@@ -7,6 +7,7 @@ use fhe::bfv::{BfvParameters, Ciphertext, Encoding, Plaintext, PublicKey, Secret
 use fhe::trbfv::{ShareManager, TRBFV};
 use fhe_traits::{FheDecrypter, FheEncoder, FheEncrypter};
 use rand::rngs::OsRng;
+use shared::circuit::CiphernodesConfig;
 use std::sync::Arc;
 
 /// Data from a sample BFV decryption of encrypted shares
@@ -35,6 +36,8 @@ pub struct DecryptionData {
 ///
 /// * `bfv_params` - BFV parameters for share encryption
 /// * `trbfv_params` - trBFV parameters (for generating realistic share data)
+/// * `ciphernodes_config` - Optional configuration for number of parties, honest parties, and threshold.
+///   If None, uses default values (5 parties, 3 honest parties, threshold 2).
 ///
 /// # Returns
 ///
@@ -43,56 +46,60 @@ pub struct DecryptionData {
 pub fn generate_sample_decryption(
     bfv_params: &Arc<BfvParameters>,
     trbfv_params: &Arc<BfvParameters>,
+    ciphernodes_config: Option<&CiphernodesConfig>,
 ) -> Result<DecryptionData, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
-    
-    // H = number of honest parties whose ciphertexts we're aggregating and decrypting
-    // Using 3 parties to keep noise within delta_half bound for INSECURE_SET_512_10_1 preset
+
+    // Use provided config or defaults
+    // Default: 5 parties, 3 honest parties, threshold 2
+    // This keeps noise within delta_half bound for INSECURE_SET_512_10_1 preset
     // With larger parameter sets, more parties can be supported
-    let num_parties = 3;
-    let num_honest_parties = num_parties;
-    let threshold = 1;
+    let config = ciphernodes_config
+        .cloned()
+        .unwrap_or_else(CiphernodesConfig::defaults);
+    let num_honest_parties = config.num_honest_parties;
+    let threshold = config.threshold;
 
     // Generate BFV key pair (receiver's keys - party who will decrypt)
     let sk_bfv = SecretKey::random(bfv_params, &mut rng);
     let pk_bfv = PublicKey::new(&sk_bfv, &mut rng);
-    
+
     // Create TRBFV instance for generating realistic share data
     let trbfv = TRBFV::new(num_honest_parties, threshold, trbfv_params.clone())
         .map_err(|e| format!("Failed to create TRBFV: {:?}", e))?;
-    
+
     let share_manager = ShareManager::new(num_honest_parties, threshold, trbfv_params.clone());
 
     // Generate H honest ciphertexts (one from each party)
     // In practice: each party encrypts their Shamir share and sends it
     let mut honest_ciphertexts = Vec::new();
-    
+
     for _ in 0..num_honest_parties {
         // Generate a secret key and split it into shares (simulating party i's shares)
         let sk = SecretKey::random(trbfv_params, &mut rng);
         let sk_poly = share_manager.coeffs_to_poly_level0(sk.coeffs.clone().as_ref())?;
-        let sk_sss = trbfv.generate_secret_shares_from_poly(sk_poly, &mut rng)?;
-        
+        let sk_sss = trbfv.generate_secret_shares_from_poly(sk_poly, rng)?;
+
         // Extract the share that party i sends to the receiver (party 0)
         let share_row = sk_sss[0].row(0).to_vec();
-        
+
         // Encrypt this share with BFV using receiver's public key
         let pt = Plaintext::try_encode(&share_row, Encoding::poly(), bfv_params)?;
         let ct = pk_bfv.try_encrypt(&pt, &mut rng)?;
-        
+
         honest_ciphertexts.push(ct);
     }
-    
+
     // Compute the sum of all honest ciphertexts (homomorphic addition)
     // sum_ct = ct_1 + ct_2 + ... + ct_H
     let mut sum_ct = honest_ciphertexts[0].clone();
     for ct in honest_ciphertexts.iter().skip(1) {
         sum_ct = &sum_ct + ct;
     }
-    
+
     // Decrypt the sum to get the aggregate plaintext
     let decrypted_pt = sk_bfv.try_decrypt(&sum_ct)?;
-    
+
     Ok(DecryptionData {
         honest_ciphertexts,
         sum_ciphertext: sum_ct,
@@ -106,19 +113,18 @@ pub fn generate_sample_decryption(
 mod tests {
     use super::*;
     use shared::utils::test_parameters;
-    
+
     #[test]
     fn test_sample_decryption_generation() {
         let trbfv_params = test_parameters();
         let bfv_params = test_parameters(); // In practice, different params
-        
-        let result = generate_sample_decryption(&bfv_params, &trbfv_params);
+
+        let result = generate_sample_decryption(&bfv_params, &trbfv_params, None);
         assert!(result.is_ok(), "Sample generation should succeed");
-        
+
         let data = result.unwrap();
         assert_eq!(data.sum_ciphertext.level, 0);
         assert_eq!(data.honest_ciphertexts.len(), data.num_honest_parties);
         assert!(data.num_honest_parties > 0);
     }
 }
-
