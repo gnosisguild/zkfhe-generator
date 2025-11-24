@@ -19,7 +19,7 @@ use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
 use crypto_params::utils::approx_bits_from_log2;
 use crypto_params::utils::fmt_big_summary;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
-use shared::circuit::{ParameterType, SampleType};
+use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
 use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
 use std::sync::Arc;
@@ -101,16 +101,40 @@ enum Commands {
         #[arg(long)]
         main: bool,
 
-        /// Sample type for share_row generation (Greco circuit only)
+        /// Sample type for share_row generation (Greco and dec-bfv circuits only)
         ///
-        /// This option is only applicable to the greco circuit with BFV parameter type.
+        /// This option is applicable to:
+        /// - greco circuit with BFV parameter type
+        /// - dec-bfv circuit
+        ///
         /// Determines what type of share_row to generate:
         /// - `secret-key`: Generate sk_sss share_row (default)
         /// - `smudging-noise`: Generate es_sss share_row
         ///
-        /// This affects the type of threshold share that gets encrypted in Circuit 4.
+        /// This affects the type of threshold share that gets encrypted/decrypted.
         #[arg(long, default_value = "secret-key")]
         sample_type: String,
+
+        /// Number of parties (N)
+        ///
+        /// Total number of parties in the threshold cryptography setup.
+        /// If not specified, circuits will use their default values.
+        #[arg(long)]
+        num_parties: Option<usize>,
+
+        /// Number of honest parties (H)
+        ///
+        /// Number of honest parties participating in the protocol.
+        /// If not specified, circuits will use their default values.
+        #[arg(long)]
+        num_honest_parties: Option<usize>,
+
+        /// Threshold (T)
+        ///
+        /// Threshold value for the threshold cryptography scheme.
+        /// If not specified, circuits will use their default values.
+        #[arg(long)]
+        threshold: Option<usize>,
     },
 
     /// List available circuits and presets
@@ -209,6 +233,10 @@ fn get_circuit(
                 dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type);
             Ok(Box::new(circuit))
         }
+        "dec-bfv" => {
+            let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type);
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -220,6 +248,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "pk-trbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
+        "dec-bfv" => vec![ParameterType::Bfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -334,6 +363,7 @@ fn create_bfv_config(
 /// 2. Creates the BFV configuration from the preset
 /// 3. Generates circuit parameters
 /// 4. Creates the TOML file
+#[allow(clippy::too_many_arguments)]
 fn generate_circuit_params(
     circuit_name: &str,
     preset: Option<&str>,
@@ -342,6 +372,9 @@ fn generate_circuit_params(
     output_dir: &Path,
     generate_main: bool,
     sample_type: SampleType,
+    num_parties: Option<usize>,
+    num_honest_parties: Option<usize>,
+    threshold: Option<usize>,
 ) -> anyhow::Result<()> {
     if let Some(preset_name) = preset {
         println!("📋 Using preset: {preset_name}");
@@ -382,6 +415,7 @@ fn generate_circuit_params(
                 .set_degree(512)
                 .set_plaintext_modulus(0xffffee001)
                 .set_moduli(&[0x7fffffffe0001])
+                .set_variance(3)
                 .build_arc()
                 .unwrap();
 
@@ -594,10 +628,27 @@ fn generate_circuit_params(
         );
     }
 
+    // Create ciphernodes config if provided
+    let ciphernodes_config =
+        if let (Some(np), Some(nhp), Some(t)) = (num_parties, num_honest_parties, threshold) {
+            println!(
+                "📋 Using ciphernodes config: num_parties={}, num_honest_parties={}, threshold={}",
+                np, nhp, t
+            );
+            Some(CiphernodesConfig::new(np, nhp, t))
+        } else {
+            None // Use defaults in sample functions
+        };
+
     // Generate TOML file
     println!("📄 Generating TOML file...");
     circuit
-        .generate_toml(&trbfv_params, &bfv_params, output_dir)
+        .generate_toml(
+            &trbfv_params,
+            &bfv_params,
+            output_dir,
+            ciphernodes_config.as_ref(),
+        )
         .map_err(|e| anyhow::anyhow!("Failed to generate TOML: {e}"))?;
     println!("✅ TOML file generated successfully");
 
@@ -605,9 +656,19 @@ fn generate_circuit_params(
     if generate_main {
         println!("📄 Generating main.nr template...");
         if circuit.parameter_type() == ParameterType::Trbfv {
-            generate_main_template(circuit.as_ref(), &trbfv_params, output_dir)?;
+            generate_main_template(
+                circuit.as_ref(),
+                &trbfv_params,
+                output_dir,
+                ciphernodes_config.as_ref(),
+            )?;
         } else {
-            generate_main_template(circuit.as_ref(), &bfv_params, output_dir)?;
+            generate_main_template(
+                circuit.as_ref(),
+                &bfv_params,
+                output_dir,
+                ciphernodes_config.as_ref(),
+            )?;
         }
         println!("✅ main.nr template generated successfully");
     }
@@ -627,6 +688,7 @@ fn generate_main_template(
     circuit: &dyn Circuit,
     bfv_params: &Arc<BfvParameters>,
     output_dir: &Path,
+    ciphernodes_config: Option<&CiphernodesConfig>,
 ) -> anyhow::Result<()> {
     // Extract base parameters (N, L) that are common to all circuits
     let l = bfv_params.moduli().len();
@@ -723,15 +785,49 @@ fn generate_main_template(
                 delta_half: bounds.delta_half.to_string(),
             };
 
+            let threshold = ciphernodes_config
+                .map(|c| c.threshold)
+                .unwrap_or(CiphernodesConfig::defaults().threshold); // Default to 2 if not provided
+
             let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
-                2, // threshold - this should be configurable, but using default for now
+                threshold as u32,
                 &bounds_data,
             )?;
 
             let template_generator = DecShareAggTrBfvMainTemplate;
             template_generator
                 .generate_main_file(&dec_share_agg_trbfv_template_params, output_dir)?;
+        }
+        "dec-bfv" => {
+            use dec_bfv::bounds::DecBfvBounds;
+            use dec_bfv::template::{DecBfvBoundsData, DecBfvMainTemplate, DecBfvTemplateParams};
+
+            let (_, bounds) = DecBfvBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute dec_bfv bounds: {e:?}"))?;
+
+            let bounds_data = DecBfvBoundsData {
+                s_bound: bounds.s_bound.to_string(),
+                u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
+                u_global_bound: bounds.u_global_bound.to_string(),
+                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                delta: bounds.delta.to_string(),
+                delta_half: bounds.delta_half.to_string(),
+            };
+
+            let num_honest_parties = ciphernodes_config
+                .map(|c| c.num_honest_parties)
+                .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 3 if not provided
+
+            let dec_bfv_template_params = DecBfvTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                num_honest_parties,
+                &bounds_data,
+            )?;
+
+            let template_generator = DecBfvMainTemplate;
+            template_generator.generate_main_file(&dec_bfv_template_params, output_dir)?;
         }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
@@ -762,6 +858,9 @@ fn main() -> anyhow::Result<()> {
             output,
             main,
             sample_type,
+            num_parties,
+            num_honest_parties,
+            threshold,
         } => {
             // Ensure output directory exists
             std::fs::create_dir_all(&output)?;
@@ -783,14 +882,15 @@ fn main() -> anyhow::Result<()> {
                 parsed_type
             } else {
                 // Default to SecretKey for other circuits or parameter types
-                // Warn if user specified a sample type for non-greco or non-BFV
-                if circuit.to_lowercase() != "greco" {
+                // Warn if user specified a sample type for circuits that don't support it
+                let circuit_name = circuit.to_lowercase();
+                if circuit_name == "greco" && param_type != ParameterType::Bfv {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to the greco circuit. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to greco with BFV parameter type. This flag will be ignored."
                     );
-                } else if param_type != ParameterType::Bfv {
+                } else if circuit_name != "greco" && circuit_name != "dec-bfv" {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to BFV parameter type. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to the greco and dec-bfv circuits. This flag will be ignored."
                     );
                 }
                 SampleType::SecretKey
@@ -804,6 +904,9 @@ fn main() -> anyhow::Result<()> {
                 &output,
                 main,
                 effective_sample_type,
+                num_parties,
+                num_honest_parties,
+                threshold,
             )?;
         }
         Commands::List { circuits, presets } => {
@@ -819,6 +922,7 @@ fn main() -> anyhow::Result<()> {
                 println!(
                     "  • dec-share-agg-trbfv   - Decryption Share Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
+                println!("  • dec-bfv   - BFV Decryption circuit implementation (supports bfv)");
             }
             if presets {
                 println!("\n⚙️  Available presets:");

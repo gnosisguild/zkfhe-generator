@@ -74,6 +74,50 @@ To list all available presets:
 cargo run -p zkfhe-generator -- list --presets
 ```
 
+### Cipher Node Configuration
+
+The generator supports configurable threshold cryptography parameters for circuits that use threshold schemes. You can specify the number of parties, honest parties, and threshold values via CLI arguments.
+
+#### Configuration Options
+
+- `--num-parties` (N): Total number of parties in the threshold cryptography setup
+- `--num-honest-parties` (H): Number of honest parties participating in the protocol
+- `--threshold` (T): Threshold value for the threshold cryptography scheme
+
+All three arguments are optional. If not specified, circuits will use their default values:
+- Default `num_parties`: 5
+- Default `num_honest_parties`: 3
+- Default `threshold`: 2
+
+**Note**: The threshold must be strictly less than `num_parties / 2` for security.
+
+#### Examples
+
+```bash
+# Use default values (backward compatible)
+cargo run -p zkfhe-generator -- generate --circuit dec-bfv --parameter-type bfv
+
+# Specify custom cipher node configuration
+cargo run -p zkfhe-generator -- generate --circuit dec-bfv --parameter-type bfv \
+  --num-parties 5 --num-honest-parties 3 --threshold 1
+
+# Generate with custom configuration for threshold decryption circuits
+cargo run -p zkfhe-generator -- generate --circuit dec-share-agg-trbfv --parameter-type trbfv \
+  --num-parties 7 --num-honest-parties 4 --threshold 2
+
+# Combine with other options
+cargo run -p zkfhe-generator -- generate --circuit greco --preset SET_8192_1000_4 \
+  --parameter-type bfv --num-parties 5 --threshold 2 --main --output ./circuit_4
+```
+
+#### Circuit Support
+
+The following circuits support cipher node configuration:
+- **dec-bfv**: Uses `num_honest_parties` and `threshold`
+- **dec-share-agg-trbfv**: Uses `num_parties` and `threshold`
+- **dec-share-trbfv**: Uses `num_parties` and `threshold`
+- **greco**: Uses `num_parties` and `threshold` (only when `--parameter-type bfv`)
+
 ### Public Key TrBfv Circuit (Circuits 1 & 2 - Key Generation)
 
 The `pk_trbfv` circuit proves correct key generation for threshold BFV.
@@ -128,10 +172,23 @@ The generator creates a `Prover.toml` file containing the following. Please, not
   - BFV parameter type: Encrypts threshold shares (Circuit 4)
   - trBFV parameter type: Encrypts messages/votes (Circuit 6)
   - Note: Circuit 5 (decryption proof) requires a custom circuit
+  - Supports cipher node configuration (BFV only)
 
 - **pk_trbfv**: Supports both trBFV and BFV parameter types
   - Proves correct **key generation**
   - Covers Circuits 1 and 2 from the threshold BFV protocol
+
+- **dec-bfv**: Supports BFV parameter type
+  - Proves correct BFV **decryption** of encrypted Shamir shares
+  - Supports cipher node configuration
+
+- **dec-share-trbfv**: Supports trBFV parameter type
+  - Proves correct **decryption share** computation in threshold BFV
+  - Supports cipher node configuration
+
+- **dec-share-agg-trbfv**: Supports trBFV parameter type
+  - Proves correct **decryption share aggregation** in threshold BFV
+  - Supports cipher node configuration
 
 ## Architecture
 
@@ -183,6 +240,10 @@ cargo run -p zkfhe-generator -- generate --circuit greco --preset SET_8192_1000_
 
 # Generate with custom output and main.nr template for Circuit 6
 cargo run -p zkfhe-generator -- generate --circuit greco --preset SET_8192_1000_4 --parameter-type trbfv --output ./circuit_6 --main
+
+# Generate with custom cipher node configuration
+cargo run -p zkfhe-generator -- generate --circuit dec-bfv --parameter-type bfv \
+  --num-parties 5 --num-honest-parties 3 --threshold 1 --main
 
 # List available options
 cargo run -p zkfhe-generator -- list

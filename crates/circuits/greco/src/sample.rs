@@ -3,7 +3,7 @@ use fhe::trbfv::{ShareManager, TRBFV};
 use fhe_math::rq::Poly;
 use fhe_traits::FheEncoder;
 use rand::{SeedableRng, rngs::StdRng};
-use shared::circuit::{ParameterType, SampleType};
+use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use std::sync::Arc;
 
 /// Data from a sample BFV encryption
@@ -25,9 +25,12 @@ pub struct EncryptionData {
 ///
 /// # Arguments
 ///
-/// * `params` - BFV parameters
+/// * `trbfv_params` - Threshold BFV parameters
+/// * `bfv_params` - Standard BFV parameters
 /// * `parameter_type` - The parameter type (BFV or trBFV)
 /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
+/// * `ciphernodes_config` - Optional configuration for number of parties, honest parties, and threshold.
+///   If None, uses default values (5 parties, 3 honest parties, threshold 2). Only used when parameter_type is BFV.
 ///
 /// # Parameter Type Usage
 ///
@@ -46,6 +49,7 @@ pub fn generate_sample_encryption(
     bfv_params: &Arc<BfvParameters>,
     parameter_type: ParameterType,
     sample_type: SampleType,
+    ciphernodes_config: Option<&CiphernodesConfig>,
 ) -> Result<EncryptionData, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -71,10 +75,13 @@ pub fn generate_sample_encryption(
     } else {
         // BFV: Encrypt threshold shares (Circuit 4 - send phase)
 
-        // Default threshold params for sample generation
+        // Use provided config or defaults
         // threshold must be strictly less than num_parties/2
-        let num_parties = 3;
-        let threshold = 1;
+        let config = ciphernodes_config
+            .cloned()
+            .unwrap_or_else(CiphernodesConfig::defaults);
+        let num_parties = config.num_parties;
+        let threshold = config.threshold;
         let num_ciphertexts = 10;
 
         let trbfv = TRBFV::new(num_parties, threshold, trbfv_params.clone())?;

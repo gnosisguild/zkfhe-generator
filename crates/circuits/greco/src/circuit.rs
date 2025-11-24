@@ -4,7 +4,7 @@ use crate::toml::GrecoTomlGenerator;
 use crate::vectors::GrecoVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::{ParameterType, SampleType};
+use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -64,6 +64,7 @@ impl Circuit for GrecoCircuit {
         trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
+        ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
         let selected_params = if self.parameter_type == ParameterType::Trbfv {
             trbfv_params
@@ -79,6 +80,7 @@ impl Circuit for GrecoCircuit {
             bfv_params,
             self.parameter_type,
             self.sample_type,
+            ciphernodes_config,
         )
         .map_err(|e| shared::errors::ZkFheError::Bfv {
             message: e.to_string(),

@@ -4,7 +4,7 @@ use crate::toml::PkTrBfvTomlGenerator;
 use crate::vectors::PkTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::ParameterType;
+use shared::circuit::{CiphernodesConfig, ParameterType};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -29,6 +29,7 @@ impl Circuit for PkTrBfvCircuit {
         trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
+        _ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
         let selected_params = if self.parameter_type == ParameterType::Trbfv {
             trbfv_params

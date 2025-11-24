@@ -5,6 +5,7 @@ use fhe_math::rq::Poly;
 use fhe_traits::{FheEncoder, FheEncrypter};
 use ndarray::ArrayView;
 use rand::{rngs::OsRng, thread_rng};
+use shared::circuit::CiphernodesConfig;
 use std::sync::Arc;
 
 /// Output structure representing all components involved in a sample decryption share computation.
@@ -34,15 +35,27 @@ pub struct DecryptionShareData {
 ///
 /// Useful for generating input vectors for zero-knowledge circuits
 /// or verifying decryption share computation behavior.
+///
+/// # Arguments
+///
+/// * `trbfv_params` - Threshold BFV parameters
+/// * `_` - BFV parameters (unused, kept for compatibility)
+/// * `ciphernodes_config` - Optional configuration for number of parties, honest parties, and threshold.
+///   If None, uses default values (3 parties, 3 honest parties, threshold 1).
 pub fn generate_sample_decryption_share(
     trbfv_params: &Arc<BfvParameters>,
     _: &Arc<BfvParameters>,
+    ciphernodes_config: Option<&CiphernodesConfig>,
 ) -> Result<DecryptionShareData, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
     let mut thread_rng = thread_rng();
 
-    let num_parties = 3;
-    let threshold = 1;
+    // Use provided config or defaults
+    let config = ciphernodes_config
+        .cloned()
+        .unwrap_or_else(CiphernodesConfig::defaults);
+    let num_parties = config.num_parties;
+    let threshold = config.threshold;
     let num_ciphertexts = 10;
 
     // Create TRBFV instance for share generation
@@ -228,7 +241,7 @@ mod tests {
     #[test]
     fn generates_sample_decryption_share() {
         let params = test_parameters();
-        let result = generate_sample_decryption_share(&params, &params);
+        let result = generate_sample_decryption_share(&params, &params, None);
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",

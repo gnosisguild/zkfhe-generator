@@ -86,6 +86,46 @@ impl ParameterType {
     }
 }
 
+/// Configuration for cipher node parameters
+///
+/// This struct holds the number of parties, honest parties, and threshold
+/// values used in threshold cryptography circuits. These values can be
+/// specified by the user or use defaults for backward compatibility.
+#[derive(Debug, Clone)]
+pub struct CiphernodesConfig {
+    /// Total number of parties (N)
+    pub num_parties: usize,
+    /// Number of honest parties (H)
+    pub num_honest_parties: usize,
+    /// Threshold value (T)
+    pub threshold: usize,
+}
+
+impl CiphernodesConfig {
+    /// Create a new CiphernodesConfig with the specified values
+    pub fn new(num_parties: usize, num_honest_parties: usize, threshold: usize) -> Self {
+        Self {
+            num_parties,
+            num_honest_parties,
+            threshold,
+        }
+    }
+
+    /// Default values for backward compatibility
+    ///
+    /// These are the default values used when no configuration is provided:
+    /// - num_parties: 3
+    /// - num_honest_parties: 3
+    /// - threshold: 2
+    pub fn defaults() -> Self {
+        Self {
+            num_parties: 5,
+            num_honest_parties: 3,
+            threshold: 1,
+        }
+    }
+}
+
 /// Base configuration for all circuit implementations
 ///
 /// This struct holds the common configuration that all circuits share.
@@ -153,10 +193,18 @@ pub trait Circuit {
     ///
     /// This method should create a TOML file containing all the parameters
     /// needed for the Noir circuit to function correctly.
+    ///
+    /// # Arguments
+    ///
+    /// * `trbfv_params` - Threshold BFV parameters
+    /// * `bfv_params` - Standard BFV parameters
+    /// * `output_dir` - Directory where the TOML file should be written
+    /// * `ciphernodes_config` - Optional configuration for number of parties, honest parties, and threshold. If None, circuits should use their default values.
     fn generate_toml(
         &self,
         trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
+        ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> ZkFheResult<()>;
 }

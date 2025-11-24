@@ -557,7 +557,7 @@ mod tests {
             .build_arc()
             .unwrap();
 
-        let decryption_data = generate_sample_decryption_share_aggregation(&params).unwrap();
+        let decryption_data = generate_sample_decryption_share_aggregation(&params, None).unwrap();
 
         // Compute vectors
         let vecs = DecShareAggTrBfvVectors::compute(
