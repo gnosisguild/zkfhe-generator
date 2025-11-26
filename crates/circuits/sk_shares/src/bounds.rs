@@ -43,7 +43,7 @@ impl SkSharesBounds {
 
         // Extract BFV parameters
         let n = bfv_params.degree();
-        let t = bfv_params.plaintext().modulus();
+        let t = bfv_params.plaintext();
 
         let qis = moduli.clone();
         let randomness_bound = qis.iter().copied().map(|q| (q - 1) / 2).max().unwrap_or(0);
@@ -98,7 +98,7 @@ pub fn r_bounds(n: usize, t: usize, qjs: &[u64]) -> (i64, u64) {
         let _r_abs: BigUint = (&num + (&den - BigUint::one())) / &den;
 
         let r_abs_u64 = u64::MAX;
-        assert!(r_abs_u64 <= u64::MAX, "r_abs doesn't fit in i64");
+        // assert!(r_abs_u64 <= u64::MAX, "r_abs doesn't fit in i64");
 
         uppers.push(r_abs_u64);
         lowers.push(-(r_abs_u64 as i64));

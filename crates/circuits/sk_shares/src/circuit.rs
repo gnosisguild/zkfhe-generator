@@ -9,9 +9,9 @@ use crate::toml::{CircuitParams, SkSharesTomlGenerator};
 use crate::vectors::SkSharesVectors;
 use fhe::bfv::BfvParameters;
 use rand::thread_rng;
+use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType};
 use shared::toml::TomlGenerator;
-use shared::Circuit;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -47,6 +47,7 @@ impl Circuit for SkSharesCircuit {
     /// - Propagates errors from bounds computation, vector generation, or TOML I/O.
     fn generate_toml(
         &self,
+        trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
         ciphernodes_config: Option<&CiphernodesConfig>,
@@ -56,8 +57,14 @@ impl Circuit for SkSharesCircuit {
             .cloned()
             .unwrap_or_else(CiphernodesConfig::defaults);
 
+        let selected_params = if self.parameter_type == ParameterType::Trbfv {
+            trbfv_params
+        } else {
+            bfv_params
+        };
+
         // Compute bounds and cryptographic parameters
-        let (crypto_params, bounds) = SkSharesBounds::compute(bfv_params)?;
+        let (crypto_params, bounds) = SkSharesBounds::compute(selected_params)?;
 
         // Generate witness vectors
         let vectors = SkSharesVectors::compute(
