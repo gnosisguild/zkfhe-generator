@@ -7,6 +7,7 @@ members = [
     "crates/circuits/pk_trbfv",
     "crates/circuits/dec_share_trbfv",
     "crates/circuits/dec_bfv",
+    "crates/circuits/sk_shares",
     "crates/crypto_params"
 ]
 
@@ -40,6 +41,7 @@ thiserror = "1.0"
 fhe = { git = "https://github.com/gnosisguild/fhe.rs" }
 fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs" }
 fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git" }
+fhe-util = { git = "https://github.com/gnosisguild/fhe.rs" }
 serde_json = "1.0.133"
 rand = "0.8.5"
 bigint-poly = { git = "https://github.com/gnosisguild/bigint-poly", features = ["serde"] }

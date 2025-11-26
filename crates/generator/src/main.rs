@@ -237,6 +237,10 @@ fn get_circuit(
             let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type);
             Ok(Box::new(circuit))
         }
+        "sk-shares" => {
+            let circuit = sk_shares::circuit::SkSharesCircuit::new(parameter_type);
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -249,6 +253,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
+        "sk-shares" => vec![ParameterType::Bfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
