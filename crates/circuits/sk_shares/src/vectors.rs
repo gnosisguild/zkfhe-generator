@@ -15,9 +15,9 @@
 //! - Before returning, each `f[i][j]` is **reversed** to highest-first order
 //!   to match circuit evaluation semantics.
 
+use crate::sample::SecretKeyShareData;
 use bigint_poly::*;
 use fhe::trbfv::ShamirSecretSharing;
-use fhe_util::sample_vec_cbd_f32;
 use num_bigint::{BigInt, RandBigInt, Sign};
 use num_traits::Zero;
 use rand::rngs::ThreadRng;
@@ -63,18 +63,16 @@ impl SkSharesVectors {
         }
     }
 
-    /// Generates all witness vectors.
+    /// Generates all witness vectors from sample secret key data.
     ///
     /// Inputs:
-    /// - `degree` (`N`): number of secret coefficients.
+    /// - `share_data`: Sample secret key data from the sampler (contains realistic BFV secret key).
     /// - `moduli` (`[q_j]`, length `L`): CRT moduli.
-    /// - `n_parties` (`P`): number of evaluation points (`x_k = 1..=P`).
-    /// - `t` (`T`): Shamir polynomial degree (each polynomial has `T+1` coefficients).
-    /// - `rng`: randomness source.
+    /// - `rng`: randomness source for Shamir polynomial generation and commitment randomness.
     ///
     /// Process:
-    /// 1. Builds `x_coords = [1,2,…,P]`.
-    /// 2. Samples `sk` via centered binomial (CBD) with small variance.
+    /// 1. Extracts secret key coefficients from sample data.
+    /// 2. Builds `x_coords = [1,2,…,P]`.
     /// 3. For each `(i,j)`, samples a degree-`t` Shamir polynomial over `Z_{q_j}`
     ///    with constant term `a_i`, then computes `d[i][j]`, and splits
     ///    evaluations at each `x_k` into `(r,y)` by Euclidean division.
@@ -87,20 +85,27 @@ impl SkSharesVectors {
     /// - `moduli` is empty,
     /// - `n_parties >= min_j q_j` (evaluation points would collide mod `q_j`).
     pub fn compute(
-        degree: usize,
+        share_data: &SecretKeyShareData,
         moduli: &[u64],
-        n_parties: usize,
-        t: usize,
         mut rng: ThreadRng,
     ) -> Result<SkSharesVectors, Box<dyn std::error::Error>> {
+        let degree = share_data.secret_key.coeffs.len();
+        let n_parties = share_data.num_parties;
+        let t = share_data.threshold;
+
         assert!(degree > 0 && n_parties > 0 && !moduli.is_empty());
         let min_q = *moduli.iter().min().unwrap();
         assert!((n_parties as u64) < min_q, "need n_parties < min(q_j)");
 
         let x_coords: Vec<BigInt> = (1..=n_parties).map(|k| BigInt::from(k as u64)).collect();
 
-        let sk_cbd = sample_vec_cbd_f32(degree, 0.5, &mut rng)?;
-        let sk: Vec<BigInt> = sk_cbd.into_iter().map(BigInt::from).collect();
+        // Extract secret key coefficients from sample data (realistic BFV key)
+        let sk: Vec<BigInt> = share_data
+            .secret_key
+            .coeffs
+            .iter()
+            .map(|&c| BigInt::from(c as i64))
+            .collect();
 
         let l = moduli.len();
         let mut f = vec![vec![vec![BigInt::zero(); t + 1]; l]; degree];

@@ -5,6 +5,7 @@
 //! - and TOML serialization consumed by the prover.
 
 use crate::bounds::SkSharesBounds;
+use crate::sample::generate_sample_sk_shares;
 use crate::toml::{CircuitParams, SkSharesTomlGenerator};
 use crate::vectors::SkSharesVectors;
 use fhe::bfv::BfvParameters;
@@ -66,12 +67,16 @@ impl Circuit for SkSharesCircuit {
         // Compute bounds and cryptographic parameters
         let (crypto_params, bounds) = SkSharesBounds::compute(selected_params)?;
 
-        // Generate witness vectors
+        // Generate sample secret key shares
+        let share_data = generate_sample_sk_shares(bfv_params, trbfv_params, Some(&config))
+            .map_err(|e| shared::errors::ZkFheError::Bfv {
+                message: e.to_string(),
+            })?;
+
+        // Generate witness vectors from sample data
         let vectors = SkSharesVectors::compute(
-            bfv_params.degree(),
+            &share_data,
             bfv_params.ctx_at_level(0)?.moduli(),
-            config.num_parties,
-            config.threshold,
             thread_rng(),
         )?;
         let vectors_standard = vectors.standard_form();
