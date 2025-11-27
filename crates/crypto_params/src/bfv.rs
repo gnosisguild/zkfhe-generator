@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 use crate::constants::{D_POW2_MAX, D_POW2_START, K_MAX, PlaintextMode};
 use crate::errors::{BfvParamsResult, SearchError, ValidationError};
 use crate::prime::PrimeItem;
-use crate::prime::{build_prime_items, build_prime_items_for_second, select_max_q_under_cap};
+use crate::prime::{
+    build_prime_items, build_prime_items_for_second, has_duplicate_primes, select_max_q_under_cap,
+};
 use crate::utils::{approx_bits_from_log2, big_shift_pow2, fmt_big_summary, log2_big, product};
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
@@ -103,7 +105,7 @@ pub fn bfv_search(bfv_search_config: &BfvSearchConfig) -> BfvParamsResult<BfvSea
         if let Some(initial_res) = finalize_bfv_candidate(bfv_search_config, d, initial_sel.clone())
         {
             if bfv_search_config.verbose {
-                println!("\n--- First feasible before reduction (d={}) ---", d);
+                println!("\n--- trBFV: First feasible before reduction (d={}) ---", d);
                 println!(
                     "BFV qi used ({}): {}",
                     initial_res.selected_primes.len(),
@@ -144,6 +146,16 @@ pub fn finalize_bfv_candidate(
     d: u64,
     chosen: Vec<PrimeItem>,
 ) -> Option<BfvSearchResult> {
+    // Safety check: ensure all primes are distinct
+    if has_duplicate_primes(&chosen) {
+        println!(
+            "[BFV] d={} candidate rejected: duplicate primes in selection.",
+            d
+        );
+
+        return None;
+    }
+
     let q_bfv = product(&chosen.iter().map(|pi| pi.value.clone()).collect::<Vec<_>>());
 
     // Compute plaintext space per mode
@@ -315,6 +327,11 @@ pub fn construct_qi_for_target_bits(
     // Build candidate selections mixing floor/ceil buckets; choose best by closeness once
     let mut tried: Vec<Vec<PrimeItem>> = Vec::new();
     for k in 0..=s {
+        // When floor_r == ceil_r, only k=0 gives a unique selection (avoids duplicates)
+
+        if floor_r == ceil_r && k > 0 {
+            continue;
+        }
         let take_ceil = k;
         let take_floor = s - k;
         let mut sel: Vec<PrimeItem> = Vec::new();
@@ -338,7 +355,7 @@ pub fn construct_qi_for_target_bits(
                 continue;
             }
         }
-        if sel.len() == s {
+        if sel.len() == s && !has_duplicate_primes(&sel) {
             tried.push(sel);
         }
     }
@@ -348,9 +365,11 @@ pub fn construct_qi_for_target_bits(
             tried.push(b.iter().take(s).cloned().collect());
         }
     }
-    if let Some(b) = by_bits_large.get(&ceil_r) {
-        if b.len() >= s {
-            tried.push(b.iter().take(s).cloned().collect());
+    if floor_r != ceil_r {
+        if let Some(b) = by_bits_large.get(&ceil_r) {
+            if b.len() >= s {
+                tried.push(b.iter().take(s).cloned().collect());
+            }
         }
     }
 
@@ -376,53 +395,54 @@ pub fn construct_qi_for_target_bits(
     None
 }
 
-pub fn bfv_search_second_param(
+pub fn bfv_search_pvss_param(
     bfv_search_config: &BfvSearchConfig,
-    first: &BfvSearchResult,
+    trbfv: &BfvSearchResult,
 ) -> Option<BfvSearchResult> {
-    // Plaintext space for second set: next power of 2 above max qi of first set.
-    let max_qi_bits_first: u64 = first
+    // Plaintext space for PVSS-BFV second set: next power of 2 above max qi of trBFV set.
+    let max_qi_bits_trbfv: u64 = trbfv
         .selected_primes
         .iter()
         .map(|pi| pi.value.bits())
         .max()
         .unwrap_or(61);
-    let k_second: u128 = if max_qi_bits_first >= 127 {
+    let k_pvss: u128 = if max_qi_bits_trbfv >= 127 {
         u128::MAX
     } else {
-        1u128 << ((max_qi_bits_first + 1) as u32)
+        1u128 << ((max_qi_bits_trbfv + 1) as u32)
     };
 
     if bfv_search_config.verbose {
         println!(
-            "Second set: k(plaintext) = {} ({} bits), derived from first max qi = {} bits",
-            k_second,
-            max_qi_bits_first + 1,
-            max_qi_bits_first
+            "PVSS-BFV: k(plaintext) = {} ({} bits), derived from trBFV max qi = {} bits",
+            k_pvss,
+            max_qi_bits_trbfv + 1,
+            max_qi_bits_trbfv
         );
     }
 
     let log2_b = (bfv_search_config.b as f64).log2();
-    // Start from the dimension of the first set
-    let mut d: u64 = first.d;
+    // Start from the dimension of trBFV
+    let mut d: u64 = trbfv.d;
 
     while d <= D_POW2_MAX {
         // Eq4: d ≥ 37.5*log2(q/B) + 75  =>  log2(q) ≤ log2(B) + (d-75)/37.5
         let log2_q_limit = log2_b + ((d as f64) - 75.0) / 37.5;
 
         if bfv_search_config.verbose {
-            println!("\n[BFV-2nd] d={d} checking for log2_q_limit = {log2_q_limit:.3}).");
+            println!("\n[PVSS-BFV] d={d} checking for log2_q_limit = {log2_q_limit:.3}).");
         }
 
         // Try decreasing q at this fixed d, collect all passing candidates
-        // For second set, use a separate prime pool that includes 62-bit primes
-        let prime_items_second = build_prime_items_for_second();
+        // For PVSS-BFV, use a separate prime pool that includes 62-bit primes
+        let prime_items_pvss = build_prime_items_for_second();
         if let Some(res) = refine_second_param_at_d(
             bfv_search_config,
             d,
-            &prime_items_second,
+            &prime_items_pvss,
             log2_q_limit,
-            k_second,
+            k_pvss,
+            &trbfv.selected_primes,
         ) {
             return Some(res);
         }
@@ -437,6 +457,7 @@ pub fn refine_second_param_at_d(
     prime_items: &[PrimeItem],
     log2_q_limit: f64,
     k_plain: u128,
+    first_primes: &[PrimeItem], // q_i's from trBFV (first parameter set)
 ) -> Option<BfvSearchResult> {
     // Start from largest q under cap at this d and decrease by 2 bits, collecting all passing
     let initial_sel = select_max_q_under_cap(log2_q_limit, prime_items);
@@ -454,16 +475,27 @@ pub fn refine_second_param_at_d(
     let mut all_passing: Vec<BfvSearchResult> = Vec::new();
 
     // Try the initial selection
-    if let Some(res) = finalize_second_param(bfv_search_config, d, initial_sel.clone(), k_plain) {
+    if let Some(res) = finalize_second_param(
+        bfv_search_config,
+        d,
+        initial_sel.clone(),
+        k_plain,
+        first_primes,
+    ) {
         all_passing.push(res);
     }
 
     // Decrease by 2 bits at a time, continue even if some fail (don't stop at first failure)
     while current_bits > 40 {
         let target_bits = current_bits.saturating_sub(2);
-        if let Some(res) =
-            construct_qi_second_param(bfv_search_config, d, prime_items, target_bits, k_plain)
-        {
+        if let Some(res) = construct_qi_second_param(
+            bfv_search_config,
+            d,
+            prime_items,
+            target_bits,
+            k_plain,
+            first_primes,
+        ) {
             all_passing.push(res);
         }
         // Continue decreasing regardless of whether this target passed or failed
@@ -490,6 +522,7 @@ pub fn construct_qi_second_param(
     prime_items: &[PrimeItem],
     target_bits: u64,
     k_plain: u128,
+    first_primes: &[PrimeItem], // q_i's from trBFV (first parameter set)
 ) -> Option<BfvSearchResult> {
     let mut by_bits_small: BTreeMap<u8, Vec<PrimeItem>> = BTreeMap::new();
     let mut by_bits_large: BTreeMap<u8, Vec<PrimeItem>> = BTreeMap::new();
@@ -512,6 +545,11 @@ pub fn construct_qi_second_param(
 
     let mut tried: Vec<Vec<PrimeItem>> = Vec::new();
     for k in 0..=s {
+        // When floor_r == ceil_r, only k=0 gives a unique selection (avoids duplicates)
+
+        if floor_r == ceil_r && k > 0 {
+            continue;
+        }
         let take_ceil = k;
         let take_floor = s - k;
         let mut sel: Vec<PrimeItem> = Vec::new();
@@ -535,7 +573,7 @@ pub fn construct_qi_second_param(
                 continue;
             }
         }
-        if sel.len() == s {
+        if sel.len() == s && !has_duplicate_primes(&sel) {
             tried.push(sel);
         }
     }
@@ -544,9 +582,11 @@ pub fn construct_qi_second_param(
             tried.push(b.iter().take(s).cloned().collect());
         }
     }
-    if let Some(b) = by_bits_large.get(&ceil_r) {
-        if b.len() >= s {
-            tried.push(b.iter().take(s).cloned().collect());
+    if floor_r != ceil_r {
+        if let Some(b) = by_bits_large.get(&ceil_r) {
+            if b.len() >= s {
+                tried.push(b.iter().take(s).cloned().collect());
+            }
         }
     }
 
@@ -564,7 +604,7 @@ pub fn construct_qi_second_param(
         }
     }
     if let Some((_, sel)) = best {
-        return finalize_second_param(bfv_search_config, d, sel.clone(), k_plain);
+        return finalize_second_param(bfv_search_config, d, sel.clone(), k_plain, first_primes);
     }
     None
 }
@@ -574,7 +614,18 @@ pub fn finalize_second_param(
     d: u64,
     chosen: Vec<PrimeItem>,
     k_plain: u128,
+    first_primes: &[PrimeItem], // q_i's from trBFV (first parameter set)
 ) -> Option<BfvSearchResult> {
+    // Safety check: ensure all primes are distinct
+
+    if has_duplicate_primes(&chosen) {
+        println!(
+            "[BFV-2nd] d={} candidate rejected: duplicate primes in selection.",
+            d
+        );
+
+        return None;
+    }
     // Check that all qi are more than one bit larger than k_plain
     // If k_plain = 2^b, then qi must be > 2^{b+1}
     let k_big = BigUint::from(k_plain);
@@ -607,10 +658,27 @@ pub fn finalize_second_param(
         }
     }
 
-    let q_bfv = product(&chosen.iter().map(|pi| pi.value.clone()).collect::<Vec<_>>());
-    let rkq_big = &q_bfv % &k_big;
+    let q_pvss = product(&chosen.iter().map(|pi| pi.value.clone()).collect::<Vec<_>>());
+    // r_max(q_PVSS) = max of (q_PVSS mod q_i) for each q_i from trBFV
+
+    let r_max: BigUint = first_primes
+        .iter()
+        .map(|pi| &q_pvss % &pi.value)
+        .max()
+        .unwrap_or_else(BigUint::zero);
+
+    // delta_min = min of (q_PVSS / q_i) for each q_i from trBFV
+
+    let delta_min: BigUint = first_primes
+        .iter()
+        .map(|pi| &q_pvss / &pi.value)
+        .min()
+        .unwrap_or_else(BigUint::one);
+
+    // Also compute r_k(q) for reference
+
+    let rkq_big = &q_pvss % &k_big;
     let rkq: u128 = rkq_big.to_u128().unwrap_or(0);
-    let delta = &q_bfv / &k_big;
 
     // For second set: B_Enc = B (simpler), B_fresh = B_Enc + d*B*B_chi + d*B*B_chi
     let benc = BigUint::from(bfv_search_config.b);
@@ -618,14 +686,15 @@ pub fn finalize_second_param(
         * BigUint::from(bfv_search_config.b)
         * BigUint::from(bfv_search_config.b_chi);
     let b_fresh = &benc + &term_d_bbchi + &term_d_bbchi;
-    let b_c = b_fresh.clone(); // B_C = B_fresh
+    // B_C = n * B_fresh + r_max(q_PVSS)
+    let b_c = BigUint::from(bfv_search_config.n) * &b_fresh + &r_max;
 
     let lhs = &b_c << 1; // 2*B_C
     let lhs_log2 = log2_big(&lhs);
-    let rhs_log2 = log2_big(&delta);
+    let rhs_log2 = log2_big(&delta_min);
 
     if bfv_search_config.verbose {
-        println!("\n[BFV-2nd] d={d} candidate:");
+        println!("\n[PVSS-BFV] d={d} candidate:");
         println!(
             "  CRT primes ({}): {}",
             chosen.len(),
@@ -635,23 +704,47 @@ pub fn finalize_second_param(
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        println!("  |q_BFV| {}", fmt_big_summary(&q_bfv));
+        println!("  |q_PVSS| {}", fmt_big_summary(&q_pvss));
         println!(
-            "  k(plaintext_space)={} Δ={}",
-            k_plain,
-            delta.to_str_radix(10)
+            "  L = {} plaintexts (k_i = q_i from trBFV)",
+            first_primes.len()
         );
+
+        println!(
+            "  r_max(q_PVSS) = {} (max of q_PVSS mod k_i)",
+            r_max.to_str_radix(10)
+        );
+
+        println!("  Δ_i values (Δ_i = q_PVSS / k_i):");
+
+        for (i, pi) in first_primes.iter().enumerate() {
+            let delta_i = &q_pvss / &pi.value;
+
+            println!(
+                "    Δ_{} = {} (k_{} = {} [{} bits])",
+                i + 1,
+                delta_i.to_str_radix(10),
+                i + 1,
+                pi.hex,
+                pi.bitlen
+            );
+        }
+
+        println!("  Δ_min = {} (min of above)", delta_min.to_str_radix(10));
         println!(
             "  BEnc(taken as B) = {}   B_fresh = {}",
             bfv_search_config.b,
             b_fresh.to_str_radix(10)
         );
-        println!("  B_C = B_fresh = {}", b_c.to_str_radix(10));
-        println!("  log2(2*B_C)≈{:.3}   log2(Δ)≈{:.3}", lhs_log2, rhs_log2);
+        println!("  B_C = n * B_fresh + r_max = {}", b_c.to_str_radix(10));
 
-        let ok = lhs < delta;
         println!(
-            "  2*B_C {} Δ   => {}",
+            "  log2(2*B_C)≈{:.3}   log2(Δ_min)≈{:.3}",
+            lhs_log2, rhs_log2
+        );
+        let ok = lhs < delta_min;
+        println!(
+            "  2*B_C {} Δ_min   => {}",
             if ok { "<" } else { "≥" },
             if ok { "PASS ✅" } else { "fail ❌" }
         );
@@ -659,20 +752,20 @@ pub fn finalize_second_param(
             return None;
         }
 
-        println!("\n*** BFV-2nd FEASIBLE at d={} ***", d);
+        println!("\n*** PVSS-BFV FEASIBLE at d={} ***", d);
     }
 
     Some(BfvSearchResult {
         d,
         k_plain_eff: k_plain,
-        q_bfv,
+        q_bfv: q_pvss,
         selected_primes: chosen,
         rkq,
-        delta,
+        delta: delta_min, // Store delta_min as the effective delta
         benc_min: benc,
         b_fresh,
         b_c,
-        b_sm_min: BigUint::zero(), // not used in second set
+        b_sm_min: r_max, // Store r_max in b_sm_min for reference
         lhs_log2,
         rhs_log2,
     })

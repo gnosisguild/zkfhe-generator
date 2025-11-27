@@ -15,7 +15,7 @@ use clap::{Args, Parser, Subcommand};
 use num_bigint::BigUint;
 use std::path::{Path, PathBuf};
 
-use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
+use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_pvss_param};
 use crypto_params::utils::approx_bits_from_log2;
 use crypto_params::utils::fmt_big_summary;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
@@ -581,8 +581,10 @@ fn generate_circuit_params(
 
             // Choose which parameter set to use based on parameter type
             let final_trbfv_params = trbfv.clone();
-            let final_bfv_params = bfv_search_second_param(&param_config, &trbfv)
+            let final_bfv_params = bfv_search_pvss_param(&param_config, &trbfv)
                 .ok_or_else(|| anyhow::anyhow!("No second BFV parameter set found"))?;
+            println!("final_trbfv_params: {:?}", final_trbfv_params);
+            println!("final_bfv_params: {:?}", final_bfv_params);
             let trbfv_params = BfvParametersBuilder::new()
                 .set_degree(final_trbfv_params.d as usize)
                 .set_plaintext_modulus(final_trbfv_params.k_plain_eff as u64)

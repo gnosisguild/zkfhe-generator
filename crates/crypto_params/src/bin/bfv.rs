@@ -4,7 +4,7 @@
 
 use clap::Parser;
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
-use zkfhe_crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
+use zkfhe_crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_pvss_param};
 use zkfhe_crypto_params::constants::K_MAX;
 use zkfhe_crypto_params::utils::log2_big;
 use zkfhe_crypto_params::utils::{approx_bits_from_log2, fmt_big_summary};
@@ -127,8 +127,8 @@ fn main() {
         variance_uniform_sym_str_big(&bfv.benc_min),
     );
 
-    // ===== Second BFV parameter set (simpler conditions) =====
-    let bfv2_opt = bfv_search_second_param(&config, &bfv);
+    // ===== PVSS-BFV parameter set =====
+    let bfv2_opt = bfv_search_pvss_param(&config, &bfv);
 
     // ===== Final summary: both parameter sets =====
     println!("\n\n");
@@ -136,7 +136,7 @@ fn main() {
     println!("                         FINAL BFV PARAMETER SETS");
     println!("================================================================================");
 
-    println!("\n=== FIRST BFV PARAMETER SET ===");
+    println!("\n=== trBFV PARAMETER SET ===");
     println!("n (number of ciphernodes)                = {}", config.n);
     println!("z (number of votes)                      = {}", config.z);
     println!(
@@ -183,12 +183,16 @@ fn main() {
     );
 
     if let Some(bfv2) = bfv2_opt {
-        println!("\n=== SECOND BFV PARAMETER SET ===");
+        println!("\n=== PVSS-BFV PARAMETER SET ===");
+        println!("n (number of ciphernodes)                = {}", config.n);
         println!(
-            "k (plaintext space)                      = {} ({} bits)",
-            bfv2.k_plain_eff,
-            approx_bits_from_log2((bfv2.k_plain_eff as f64).log2())
+            "L (number of plaintexts)                 = {} (the q_i's from trBFV)",
+            bfv.selected_primes.len()
         );
+        println!("Plaintexts (k_i = q_i from trBFV):");
+        for (i, pi) in bfv.selected_primes.iter().enumerate() {
+            println!("  k_{} = {} ({} bits)", i + 1, pi.hex, pi.bitlen);
+        }
         println!(
             "λ (Statistical security parameter)       = {}",
             config.lambda
@@ -202,18 +206,36 @@ fn main() {
             config.b_chi, dist_b_chi, var_chi
         );
         println!("d (LWE dimension)               = {}", bfv2.d);
-        println!("q_BFV (decimal)  = {}", bfv2.q_bfv.to_str_radix(10));
-        println!("|q_BFV|          = {}", fmt_big_summary(&bfv2.q_bfv));
-        println!("Δ (decimal)      = {}", bfv2.delta.to_str_radix(10));
-        println!("r_k(q)           = {}", bfv2.rkq);
+        println!("q_PVSS (decimal) = {}", bfv2.q_bfv.to_str_radix(10));
+        println!("|q_PVSS|         = {}", fmt_big_summary(&bfv2.q_bfv));
+        println!(
+            "r_max(q_PVSS)    = {} (max of q_PVSS mod k_i for k_i in trBFV)",
+            bfv2.b_sm_min.to_str_radix(10)
+        );
+        println!("Δ_i values (Δ_i = q_PVSS / k_i):");
+        for (i, pi) in bfv.selected_primes.iter().enumerate() {
+            let delta_i = &bfv2.q_bfv / &pi.value;
+            println!(
+                "  Δ_{} = {} (k_{} = {} [{} bits])",
+                i + 1,
+                delta_i.to_str_radix(10),
+                i + 1,
+                pi.hex,
+                pi.bitlen
+            );
+        }
+        println!(
+            "Δ_min            = {} (min of above)",
+            bfv2.delta.to_str_radix(10)
+        );
         println!(
             "BEnc (bound on e1, taken as B)  = {}   [Dist: {}, Var = {}]",
             config.b, dist_b, var_b
         );
         println!("B_fresh          = {}", bfv2.b_fresh.to_str_radix(10));
-        println!("B_C              = {}", bfv2.b_c.to_str_radix(10));
+        println!("B_C = n * B_fresh + r_max = {}", bfv2.b_c.to_str_radix(10));
         println!("log2(2*B_C)      = {:.6}", log2_big(&(&bfv2.b_c << 1)));
-        println!("log2(Δ)          = {:.6}", bfv2.rhs_log2);
+        println!("log2(Δ_min)          = {:.6}", bfv2.rhs_log2);
         println!(
             "q_i used ({}): {}",
             bfv2.selected_primes.len(),
@@ -224,8 +246,8 @@ fn main() {
                 .join(", ")
         );
     } else {
-        println!("\n=== SECOND BFV PARAMETER SET ===");
-        println!("No second BFV parameter set found.");
+        println!("\n=== PVSS-BFV PARAMETER SET ===");
+        println!("No PVSS-BFV parameter set found.");
     }
 
     println!("\n================================================================================");

@@ -84,3 +84,15 @@ pub fn select_max_q_under_cap(limit_log2: f64, all: &[PrimeItem]) -> Vec<PrimeIt
 
     sel
 }
+
+/// Check if all primes in the selection are distinct (by value)
+pub fn has_duplicate_primes(sel: &[PrimeItem]) -> bool {
+    for i in 0..sel.len() {
+        for j in (i + 1)..sel.len() {
+            if sel[i].value == sel[j].value {
+                return true;
+            }
+        }
+    }
+    false
+}
