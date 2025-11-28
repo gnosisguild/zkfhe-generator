@@ -104,7 +104,7 @@ impl SkSharesVectors {
             .secret_key
             .coeffs
             .iter()
-            .map(|&c| BigInt::from(c as i64))
+            .map(|&c| BigInt::from(c))
             .collect();
 
         let l = moduli.len();
