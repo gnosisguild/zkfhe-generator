@@ -271,14 +271,18 @@ impl GrecoVectors {
 
                 // Compute e0_quotients[i] = (e0 - e0i) / qi for each coefficient
                 // This is used for CRT consistency check: e0[j] = e0i[j] + e0_quotients[i][j] * qi
-                let e0_quotient: Vec<BigInt> = e0_vec.iter().zip(e0i.iter()).map(|(e0_coeff, e0i_coeff)| {
-                    let diff = e0_coeff - e0i_coeff;
-                    // Division should be exact since e0 = e0i (mod qi)
-                    let quotient = &diff / &qi_bigint;
-                    // Verify the CRT relationship
-                    assert_eq!(e0_coeff, &(e0i_coeff + &quotient * &qi_bigint));
-                    quotient
-                }).collect();
+                let e0_quotient: Vec<BigInt> = e0_vec
+                    .iter()
+                    .zip(e0i.iter())
+                    .map(|(e0_coeff, e0i_coeff)| {
+                        let diff = e0_coeff - e0i_coeff;
+                        // Division should be exact since e0 = e0i (mod qi)
+                        let quotient = &diff / &qi_bigint;
+                        // Verify the CRT relationship
+                        assert_eq!(e0_coeff, &(e0i_coeff + &quotient * &qi_bigint));
+                        quotient
+                    })
+                    .collect();
 
                 // k0qi = -t^{-1} mod qi
                 let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
@@ -461,13 +465,28 @@ impl GrecoVectors {
                 }
 
                 assert_eq!(&ct1i, &ct1i_calculated);
-                (i, r2i, r1i, k0qi, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i, e0_quotient)
+                (
+                    i,
+                    r2i,
+                    r1i,
+                    k0qi,
+                    ct0i,
+                    ct1i,
+                    pk0i,
+                    pk1i,
+                    p1i,
+                    p2i,
+                    e0i,
+                    e0_quotient,
+                )
             },
         )
         .collect();
 
         // Merge results into the `res` structure after parallel execution
-        for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i, e0_quotient) in results.into_iter() {
+        for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i, e0_quotient) in
+            results.into_iter()
+        {
             res.r2is[i] = r2i;
             res.r1is[i] = r1i;
             res.k0is[i] = k0i;
@@ -577,8 +596,21 @@ mod tests {
 
         // Check all required fields are present
         let required_fields = [
-            "pk0is", "pk1is", "u", "e0", "e1", "e0is", "e0_quotients", "k1", "r2is", "r1is", "p2is", "p1is",
-            "k0is", "ct0is", "ct1is",
+            "pk0is",
+            "pk1is",
+            "u",
+            "e0",
+            "e1",
+            "e0is",
+            "e0_quotients",
+            "k1",
+            "r2is",
+            "r1is",
+            "p2is",
+            "p1is",
+            "k0is",
+            "ct0is",
+            "ct1is",
         ];
 
         for field in required_fields.iter() {
