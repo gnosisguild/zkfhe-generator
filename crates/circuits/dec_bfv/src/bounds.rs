@@ -5,8 +5,9 @@
 
 use fhe::bfv::{BfvParameters, SecretKey};
 use num_bigint::{BigInt, BigUint};
+use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
-use shared::errors::ZkFheResult;
+use shared::errors::{ZkFheError, ZkFheResult};
 use std::sync::Arc;
 
 /// Cryptographic parameters for BFV decryption circuit
@@ -14,6 +15,7 @@ use std::sync::Arc;
 pub struct DecBfvCryptographicParameters {
     pub moduli: Vec<u64>,
     pub plaintext_modulus: u64,
+    pub q_inverse_mod_t: u64,
 }
 
 /// Bounds for BFV decryption circuit polynomial coefficients
@@ -83,9 +85,26 @@ impl DecBfvBounds {
         // We use Q as the bound to be safe
         let u_global_bound: BigInt = q.clone();
 
+        // Compute Q^{-1} mod t using extended Euclidean algorithm
+        let q_inverse_mod_t = {
+            let gcd_result = q.extended_gcd(&t);
+            if gcd_result.gcd != BigInt::from(1) {
+                return Err(ZkFheError::Bfv {
+                    message: format!("Q and t are not coprime, gcd = {}", gcd_result.gcd),
+                });
+            }
+            // Ensure the inverse is positive
+            let inv = gcd_result.x % &t;
+            let inv_positive = if inv < BigInt::from(0) { inv + &t } else { inv };
+            inv_positive.to_u64().ok_or_else(|| ZkFheError::Bfv {
+                message: format!("q_inverse_mod_t too large to fit in u64: {}", inv_positive),
+            })?
+        };
+
         let crypto_params = DecBfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
             plaintext_modulus: params.plaintext(),
+            q_inverse_mod_t,
         };
 
         let bounds = DecBfvBounds {
@@ -116,6 +135,7 @@ impl DecBfvCryptographicParameters {
         serde_json::json!({
             "moduli": self.moduli,
             "plaintext_modulus": self.plaintext_modulus,
+            "q_inverse_mod_t": self.q_inverse_mod_t,
         })
     }
 }
