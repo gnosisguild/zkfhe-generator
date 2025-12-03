@@ -55,9 +55,20 @@ impl Circuit for DecShareAggTrBfvCircuit {
 
         let vectors_standard = vectors.standard_form();
 
+        // Trim vectors based on non-zero message coefficients
+
+        let nonzero_count = vectors_standard.count_nonzero_message_coefficients();
+
+        let vectors_trimmed = vectors_standard.trim_to_nonzero(nonzero_count);
+
+        println!(
+            "📊 Trimming vectors to {} non-zero message coefficients",
+            nonzero_count
+        );
+
         // Create TOML generator and generate file
         let toml_generator =
-            DecShareAggTrBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+            DecShareAggTrBfvTomlGenerator::new(crypto_params, bounds, vectors_trimmed);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())

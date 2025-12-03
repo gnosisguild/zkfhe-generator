@@ -773,9 +773,11 @@ fn generate_main_template(
         }
         "dec-share-agg-trbfv" => {
             use dec_share_agg_trbfv::bounds::DecShareAggTrBfvBounds;
+            use dec_share_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
             use dec_share_agg_trbfv::template::{
                 DecShareAggTrBfvMainTemplate, DecShareAggTrBfvTemplateParams,
             };
+            use dec_share_agg_trbfv::vectors::DecShareAggTrBfvVectors;
 
             let (_, bounds) = DecShareAggTrBfvBounds::compute(bfv_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute bounds: {e:?}"))?;
@@ -789,8 +791,27 @@ fn generate_main_template(
                 .map(|c| c.threshold)
                 .unwrap_or(CiphernodesConfig::defaults().threshold); // Default to 2 if not provided
 
+            // Generate sample data to determine the trimmed degree
+            let decryption_data =
+                generate_sample_decryption_share_aggregation(bfv_params, ciphernodes_config)
+                    .map_err(|e| anyhow::anyhow!("Failed to generate sample data: {e:?}"))?;
+
+            let vectors = DecShareAggTrBfvVectors::compute(
+                &decryption_data.d_share_polys,
+                &decryption_data.party_ids,
+                &decryption_data.message,
+                bfv_params,
+                decryption_data.threshold,
+                decryption_data.num_parties,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to compute vectors: {e:?}"))?;
+
+            let vectors_standard = vectors.standard_form();
+
+            let trimmed_degree = vectors_standard.count_nonzero_message_coefficients();
+
             let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                BaseTemplateParams::new(trimmed_degree, l, circuit_type),
                 threshold as u32,
                 &bounds_data,
             )?;

@@ -4,8 +4,10 @@
 //! used in threshold BFV decryption share aggregation verification.
 
 use fhe::bfv::BfvParameters;
-use num_bigint::BigUint;
-use shared::errors::ZkFheResult;
+use num_bigint::{BigInt, BigUint};
+use num_integer::Integer;
+use num_traits::ToPrimitive;
+use shared::errors::{ZkFheError, ZkFheResult};
 use std::sync::Arc;
 
 /// Cryptographic parameters for Decryption Share Aggregation TRBFV circuit
@@ -13,6 +15,7 @@ use std::sync::Arc;
 pub struct DecShareAggTrBfvCryptographicParameters {
     pub moduli: Vec<u64>,
     pub plaintext_modulus: u64,
+    pub q_inverse_mod_t: u64,
 }
 
 /// Bounds for Decryption Share Aggregation TRBFV circuit
@@ -50,9 +53,32 @@ impl DecShareAggTrBfvBounds {
         // Compute delta_half = floor(delta / 2)
         let delta_half = &delta / BigUint::from(2u64);
 
+        // Compute Q^{-1} mod t using extended Euclidean algorithm
+        let q_inverse_mod_t = {
+            let q_bigint = BigInt::from(q_product.clone());
+            let t_bigint = BigInt::from(params.plaintext());
+            let gcd_result = q_bigint.extended_gcd(&t_bigint);
+            if gcd_result.gcd != BigInt::from(1) {
+                return Err(ZkFheError::Bfv {
+                    message: format!("Q and t are not coprime, gcd = {}", gcd_result.gcd),
+                });
+            }
+            // Ensure the inverse is positive
+            let inv = gcd_result.x % &t_bigint;
+            let inv_positive = if inv < BigInt::from(0) {
+                inv + &t_bigint
+            } else {
+                inv
+            };
+            inv_positive.to_u64().ok_or_else(|| ZkFheError::Bfv {
+                message: format!("q_inverse_mod_t too large to fit in u64: {}", inv_positive),
+            })?
+        };
+
         let crypto_params = DecShareAggTrBfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
             plaintext_modulus: params.plaintext(),
+            q_inverse_mod_t,
         };
 
         let bounds = DecShareAggTrBfvBounds { delta, delta_half };
@@ -66,6 +92,7 @@ impl DecShareAggTrBfvCryptographicParameters {
         serde_json::json!({
             "qis": self.moduli,
             "plaintext_modulus": self.plaintext_modulus.to_string(),
+            "q_inverse_mod_t": self.q_inverse_mod_t.to_string(),
         })
     }
 }
