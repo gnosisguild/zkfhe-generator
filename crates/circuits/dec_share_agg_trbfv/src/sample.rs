@@ -5,7 +5,7 @@ use fhe_math::rq::{Poly, Representation};
 use fhe_traits::FheDecoder;
 use fhe_traits::{FheEncoder, FheEncrypter};
 use ndarray::ArrayView;
-use rand::{distributions::Uniform, prelude::Distribution, rngs::OsRng, thread_rng};
+use rand::{rngs::OsRng, thread_rng};
 use shared::circuit::CiphernodesConfig;
 use std::sync::Arc;
 

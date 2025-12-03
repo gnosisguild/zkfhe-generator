@@ -483,7 +483,6 @@ impl DecShareAggTrBfvVectors {
     }
 
     /// Count the number of non-zero coefficients in the message
-
     pub fn count_nonzero_message_coefficients(&self) -> usize {
         self.message
             .iter()
@@ -492,9 +491,7 @@ impl DecShareAggTrBfvVectors {
     }
 
     /// Trim all vectors to the specified length based on non-zero message coefficients
-
     /// If trim_length is 0, returns the full vectors unchanged
-
     pub fn trim_to_nonzero(&self, trim_length: usize) -> Self {
         if trim_length == 0 || trim_length >= self.message.len() {
             // Don't trim if length is 0 or >= current length

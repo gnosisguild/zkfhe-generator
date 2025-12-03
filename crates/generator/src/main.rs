@@ -237,6 +237,10 @@ fn get_circuit(
             let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type);
             Ok(Box::new(circuit))
         }
+        "dec-bfv-no-hom-add" => {
+            let circuit = dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new();
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -249,6 +253,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
+        "dec-bfv-no-hom-add" => vec![ParameterType::Bfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -659,6 +664,7 @@ fn generate_circuit_params(
             generate_main_template(
                 circuit.as_ref(),
                 &trbfv_params,
+                &trbfv_params,
                 output_dir,
                 ciphernodes_config.as_ref(),
             )?;
@@ -666,6 +672,7 @@ fn generate_circuit_params(
             generate_main_template(
                 circuit.as_ref(),
                 &bfv_params,
+                &trbfv_params,
                 output_dir,
                 ciphernodes_config.as_ref(),
             )?;
@@ -687,6 +694,7 @@ fn generate_circuit_params(
 fn generate_main_template(
     circuit: &dyn Circuit,
     bfv_params: &Arc<BfvParameters>,
+    trbfv_params: &Arc<BfvParameters>,
     output_dir: &Path,
     ciphernodes_config: Option<&CiphernodesConfig>,
 ) -> anyhow::Result<()> {
@@ -850,6 +858,51 @@ fn generate_main_template(
             let template_generator = DecBfvMainTemplate;
             template_generator.generate_main_file(&dec_bfv_template_params, output_dir)?;
         }
+        "dec-bfv-no-hom-add" => {
+            use dec_bfv_no_hom_add::bounds::DecBfvNoHomAddBounds;
+            use dec_bfv_no_hom_add::template::{
+                DecBfvNoHomAddBoundsData, DecBfvNoHomAddMainTemplate, DecBfvNoHomAddTemplateParams,
+            };
+
+            // For this circuit, we need both BFV and TRBFV params
+            // bfv_params is used for BFV decryption, trbfv_params for TRBFV aggregation
+            // trbfv_params provides the TRBFV moduli for aggregation
+            let (crypto_params, bounds) =
+                DecBfvNoHomAddBounds::compute(bfv_params, trbfv_params, 0).map_err(|e| {
+                    anyhow::anyhow!("Failed to compute dec_bfv_no_hom_add bounds: {e:?}")
+                })?;
+
+            let bounds_data = DecBfvNoHomAddBoundsData {
+                s_bound: bounds.s_bound.to_string(),
+                u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
+                u_global_bound: bounds.u_global_bound.to_string(),
+                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                delta: bounds.delta.to_string(),
+                delta_half: bounds.delta_half.to_string(),
+            };
+
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
+
+            // L = number of TRBFV bases (from trbfv_params)
+            // L' = number of BFV bases (from bfv_params)
+            let num_trbfv_bases = crypto_params.trbfv_moduli.len();
+            let num_bfv_bases = crypto_params.bfv_moduli.len();
+
+            let dec_bfv_no_hom_add_template_params = DecBfvNoHomAddTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                config.num_honest_parties,
+                num_trbfv_bases, // L (TRBFV bases)
+                num_bfv_bases,   // L' (BFV bases)
+                &bounds_data,
+            )?;
+
+            let template_generator = DecBfvNoHomAddMainTemplate;
+            template_generator
+                .generate_main_file(&dec_bfv_no_hom_add_template_params, output_dir)?;
+        }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }
@@ -944,6 +997,9 @@ fn main() -> anyhow::Result<()> {
                     "  • dec-share-agg-trbfv   - Decryption Share Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
                 println!("  • dec-bfv   - BFV Decryption circuit implementation (supports bfv)");
+                println!(
+                    "  • dec-bfv-no-hom-add   - BFV Decryption circuit (no homomorphic addition) for dummy params (supports bfv)"
+                );
             }
             if presets {
                 println!("\n⚙️  Available presets:");
