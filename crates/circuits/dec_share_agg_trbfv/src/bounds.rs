@@ -16,6 +16,8 @@ pub struct DecShareAggTrBfvCryptographicParameters {
     pub moduli: Vec<u64>,
     pub plaintext_modulus: u64,
     pub q_inverse_mod_t: u64,
+    pub q_mod_t: BigUint,
+    pub t_inv_mod_q: BigUint,
 }
 
 /// Bounds for Decryption Share Aggregation TRBFV circuit
@@ -74,11 +76,69 @@ impl DecShareAggTrBfvBounds {
                 message: format!("q_inverse_mod_t too large to fit in u64: {}", inv_positive),
             })?
         };
+        // Helper function: Extended Euclidean Algorithm
+        // Finds gcd(a, b) and coefficients x, y such that ax + by = gcd(a, b)
+        fn extended_gcd(
+            a: &num_bigint::BigInt,
+            b: &num_bigint::BigInt,
+        ) -> (num_bigint::BigInt, num_bigint::BigInt, num_bigint::BigInt) {
+            use num_bigint::BigInt;
+            use num_traits::Zero;
+
+            if b.is_zero() {
+                return (a.clone(), BigInt::from(1u64), BigInt::from(0u64));
+            }
+            let (gcd, x1, y1) = extended_gcd(b, &(a % b));
+            let x = y1.clone();
+            let y = x1 - (a / b) * &y1;
+            (gcd, x, y)
+        }
+
+        // Compute q_mod_t: Q mod t
+        // This is simply the remainder when Q is divided by t
+        let q_mod_t = &q_product % &t;
+
+        // Compute t_inv_mod_q: t^(-1) mod Q
+        // This is the modular multiplicative inverse of t modulo Q
+        let t_inv_mod_q = {
+            use num_bigint::BigInt;
+
+            let q_bigint = BigInt::from(q_product.clone());
+            let t_bigint = BigInt::from(t.clone());
+
+            let (gcd, _x, y) = extended_gcd(&q_bigint, &t_bigint);
+
+            // Check that gcd(Q, t) = 1 (already checked above, but being explicit)
+            if gcd != BigInt::from(1u64) {
+                return Err(shared::errors::ZkFheError::Bfv {
+                    message: format!(
+                        "Q and t are not coprime (gcd = {}), cannot compute modular inverse",
+                        gcd
+                    ),
+                });
+            }
+
+            // y is t^(-1) mod Q (from the extended GCD: Q*x + t*y = gcd)
+            // But may be negative, so normalize to [0, Q)
+            let t_inverse_bigint = if y < BigInt::from(0u64) {
+                y + &q_bigint
+            } else {
+                y
+            };
+
+            t_inverse_bigint
+                .to_biguint()
+                .ok_or_else(|| shared::errors::ZkFheError::Bfv {
+                    message: "Failed to convert t_inv_mod_q to BigUint".to_string(),
+                })?
+        };
 
         let crypto_params = DecShareAggTrBfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
             plaintext_modulus: params.plaintext(),
             q_inverse_mod_t,
+            q_mod_t,
+            t_inv_mod_q,
         };
 
         let bounds = DecShareAggTrBfvBounds { delta, delta_half };
@@ -93,6 +153,8 @@ impl DecShareAggTrBfvCryptographicParameters {
             "qis": self.moduli,
             "plaintext_modulus": self.plaintext_modulus.to_string(),
             "q_inverse_mod_t": self.q_inverse_mod_t.to_string(),
+            "q_mod_t": self.q_mod_t.to_string(),
+            "t_inv_mod_q": self.t_inv_mod_q.to_string(),
         })
     }
 }

@@ -52,6 +52,8 @@ impl TomlGenerator for DecShareAggTrBfvTomlGenerator {
             "qis": self.crypto_params.moduli.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
             "plaintext_modulus": self.crypto_params.plaintext_modulus.to_string(),
             "q_inverse_mod_t": self.crypto_params.q_inverse_mod_t.to_string(),
+            "q_mod_t": self.crypto_params.q_mod_t.to_string(),
+            "t_inv_mod_q": self.crypto_params.t_inv_mod_q.to_string(),
         });
         params_json.insert("crypto".to_string(), crypto_json);
 
