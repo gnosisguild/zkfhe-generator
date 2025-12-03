@@ -120,8 +120,8 @@ impl CiphernodesConfig {
     pub fn defaults() -> Self {
         Self {
             num_parties: 5,
-            num_honest_parties: 3,
-            threshold: 1,
+            num_honest_parties: 5,
+            threshold: 2,
         }
     }
 }

@@ -176,17 +176,32 @@ pub fn generate_sample_decryption_share_aggregation(
         .map_err(|e| format!("Failed to aggregate public key: {:?}", e))?;
 
     // Encrypt a sample message (e.g., 1) to create a ciphertext
-    let dist = Uniform::new_inclusive(0, 1);
-    let numbers: Vec<u64> = dist
-        .sample_iter(&mut thread_rng.clone())
-        .take(num_ciphertexts)
-        .collect();
+    // let dist = Uniform::new_inclusive(0, 1);
+    // let numbers: Vec<u64> = dist
+    //     .sample_iter(&mut thread_rng.clone())
+    //     .take(num_ciphertexts)
+    //     .collect();
 
-    let numbers_encrypted: Vec<Ciphertext> = numbers
+    // let numbers_encrypted: Vec<Ciphertext> = numbers
+    //     .iter()
+    //     .map(|&number| {
+    //         let mut rng = thread_rng.clone();
+    //         let pt = Plaintext::try_encode(&[number], Encoding::poly(), trbfv_params).unwrap();
+    //         public_key.try_encrypt(&pt, &mut rng).unwrap()
+    //     })
+    //     .collect();
+
+    let messages: Vec<Vec<u64>> = vec![
+        vec![2, 1, 5, 0, 1], // msg1
+        vec![3, 0, 3, 2, 3], // msg2
+        vec![4, 6, 1, 0, 1], // msg3
+    ];
+
+    let numbers_encrypted: Vec<Ciphertext> = messages
         .iter()
-        .map(|&number| {
+        .map(|msg| {
             let mut rng = thread_rng.clone();
-            let pt = Plaintext::try_encode(&[number], Encoding::poly(), trbfv_params).unwrap();
+            let pt = Plaintext::try_encode(msg, Encoding::poly(), trbfv_params).unwrap();
             public_key.try_encrypt(&pt, &mut rng).unwrap()
         })
         .collect();
