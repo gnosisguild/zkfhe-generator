@@ -20,6 +20,16 @@ pub fn to_string_2d_vec(poly: &[Vec<BigInt>]) -> Vec<Vec<String>> {
     poly.iter().map(|row| to_string_1d_vec(row)).collect()
 }
 
+/// Convert a 3D vector of BigInt to a vector of vectors of vectors of strings
+pub fn to_string_3d_vec(vec: &[Vec<Vec<BigInt>>]) -> Vec<Vec<Vec<String>>> {
+    vec.iter().map(|d1| to_string_2d_vec(d1)).collect()
+}
+
+/// Convert a 4D vector of BigInt to a vector of vectors of vectors of vectors of strings
+pub fn to_string_4d_vec(vec: &[Vec<Vec<Vec<BigInt>>>]) -> Vec<Vec<Vec<Vec<String>>>> {
+    vec.iter().map(|d1| to_string_3d_vec(d1)).collect()
+}
+
 /// Exact variance string for Uniform(-B..B): Var = B(B+1)/3 (exact)
 pub fn variance_uniform_sym_str_u128(b: u128) -> String {
     let num = b.checked_mul(b + 1).expect("overflow in B(B+1)");

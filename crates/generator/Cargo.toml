@@ -23,6 +23,7 @@ pk_trbfv = { package = "zkfhe-pk-trbfv", path = "../circuits/pk_trbfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "../circuits/dec_share_trbfv" }
 dec_share_agg_trbfv = { package = "zkfhe-dec-share-agg-trbfv", path = "../circuits/dec_share_agg_trbfv" }
 dec_bfv = { package = "zkfhe-dec-bfv", path = "../circuits/dec_bfv" }
+dec_bfv_no_hom_add = { package = "zkfhe-dec-bfv-no-hom-add", path = "../circuits/dec_bfv_no_hom_add" }
 crypto_params = { package = "zkfhe-crypto-params", path = "../crypto_params" }
 fhe = { workspace = true }
 clap = { workspace = true }
