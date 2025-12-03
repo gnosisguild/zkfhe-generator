@@ -35,6 +35,7 @@ pub struct GrecoVectors {
     pub p2is: Vec<Vec<BigInt>>,
     pub k0is: Vec<BigInt>,
     pub e0is: Vec<Vec<BigInt>>,
+    pub e0_quotients: Vec<Vec<BigInt>>,
     pub e0: Vec<BigInt>,
     pub e1: Vec<BigInt>,
     pub u: Vec<BigInt>,
@@ -65,6 +66,7 @@ impl GrecoVectors {
             e0: vec![BigInt::zero(); degree],
             e1: vec![BigInt::zero(); degree],
             e0is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            e0_quotients: vec![vec![BigInt::zero(); degree]; num_moduli],
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
             k1: vec![BigInt::zero(); degree],
@@ -267,6 +269,21 @@ impl GrecoVectors {
                 // Check that e0i equals e0 reduced modulo q_i (from e0_poly)
                 assert_eq!(e0i, e0i_from_poly);
 
+                // Compute e0_quotients[i] = (e0 - e0i) / qi for each coefficient
+                // This is used for CRT consistency check: e0[j] = e0i[j] + e0_quotients[i][j] * qi
+                let e0_quotient: Vec<BigInt> = e0_vec
+                    .iter()
+                    .zip(e0i.iter())
+                    .map(|(e0_coeff, e0i_coeff)| {
+                        let diff = e0_coeff - e0i_coeff;
+                        // Division should be exact since e0 = e0i (mod qi)
+                        let quotient = &diff / &qi_bigint;
+                        // Verify the CRT relationship
+                        assert_eq!(e0_coeff, &(e0i_coeff + &quotient * &qi_bigint));
+                        quotient
+                    })
+                    .collect();
+
                 // k0qi = -t^{-1} mod qi
                 let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
                 let k0qi = BigInt::from(koqi_u64); // Do not need to center this
@@ -448,13 +465,28 @@ impl GrecoVectors {
                 }
 
                 assert_eq!(&ct1i, &ct1i_calculated);
-                (i, r2i, r1i, k0qi, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i)
+                (
+                    i,
+                    r2i,
+                    r1i,
+                    k0qi,
+                    ct0i,
+                    ct1i,
+                    pk0i,
+                    pk1i,
+                    p1i,
+                    p2i,
+                    e0i,
+                    e0_quotient,
+                )
             },
         )
         .collect();
 
         // Merge results into the `res` structure after parallel execution
-        for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i) in results.into_iter() {
+        for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i, e0_quotient) in
+            results.into_iter()
+        {
             res.r2is[i] = r2i;
             res.r1is[i] = r1i;
             res.k0is[i] = k0i;
@@ -465,6 +497,7 @@ impl GrecoVectors {
             res.p1is[i] = p1i;
             res.p2is[i] = p2i;
             res.e0is[i] = e0i;
+            res.e0_quotients[i] = e0_quotient;
         }
 
         // Set final result vectors
@@ -489,6 +522,7 @@ impl GrecoVectors {
             p1is: reduce_coefficients_2d(&self.p1is, zkp_modulus),
             p2is: reduce_coefficients_2d(&self.p2is, zkp_modulus),
             e0is: reduce_coefficients_2d(&self.e0is, zkp_modulus),
+            e0_quotients: reduce_coefficients_2d(&self.e0_quotients, zkp_modulus),
             e0: reduce_coefficients(&self.e0, zkp_modulus),
             e1: reduce_coefficients(&self.e1, zkp_modulus),
             k0is: self.k0is.clone(),
@@ -502,6 +536,7 @@ impl GrecoVectors {
             "pk0is": to_string_2d_vec(&self.pk0is),
             "pk1is": to_string_2d_vec(&self.pk1is),
             "e0is": to_string_2d_vec(&self.e0is),
+            "e0_quotients": to_string_2d_vec(&self.e0_quotients),
             "u": to_string_1d_vec(&self.u),
             "e0": to_string_1d_vec(&self.e0),
             "e1": to_string_1d_vec(&self.e1),
@@ -561,8 +596,21 @@ mod tests {
 
         // Check all required fields are present
         let required_fields = [
-            "pk0is", "pk1is", "u", "e0", "e1", "e0is", "k1", "r2is", "r1is", "p2is", "p1is",
-            "k0is", "ct0is", "ct1is",
+            "pk0is",
+            "pk1is",
+            "u",
+            "e0",
+            "e1",
+            "e0is",
+            "e0_quotients",
+            "k1",
+            "r2is",
+            "r1is",
+            "p2is",
+            "p1is",
+            "k0is",
+            "ct0is",
+            "ct1is",
         ];
 
         for field in required_fields.iter() {

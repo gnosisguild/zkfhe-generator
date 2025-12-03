@@ -44,6 +44,7 @@ struct ProverTomlFormat {
     p1is: Vec<serde_json::Value>,
     p2is: Vec<serde_json::Value>,
     e0is: Vec<serde_json::Value>,
+    e0_quotients: Vec<serde_json::Value>,
     e0: serde_json::Value,
     e1: serde_json::Value,
     u: serde_json::Value,
@@ -171,6 +172,16 @@ impl TomlGenerator for GrecoTomlGenerator {
                     })
                 })
                 .collect(),
+            e0_quotients: self
+                .vectors
+                .e0_quotients
+                .iter()
+                .map(|v| {
+                    serde_json::json!({
+                        "coefficients": to_string_1d_vec(v)
+                    })
+                })
+                .collect(),
             e0: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.e0)
             }),
@@ -232,6 +243,7 @@ mod tests {
         assert!(content.contains("p1is"));
         assert!(content.contains("p2is"));
         assert!(content.contains("e0is"));
+        assert!(content.contains("e0_quotients"));
         assert!(content.contains("u"));
         assert!(content.contains("e0"));
         assert!(content.contains("e1"));
@@ -248,6 +260,7 @@ mod tests {
         assert!(toml_string.contains("[[p1is]]"));
         assert!(toml_string.contains("[[p2is]]"));
         assert!(toml_string.contains("[[e0is]]"));
+        assert!(toml_string.contains("[[e0_quotients]]"));
         assert!(toml_string.contains("[u]"));
         assert!(toml_string.contains("[e0]"));
         assert!(toml_string.contains("[e1]"));
