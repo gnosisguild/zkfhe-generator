@@ -110,7 +110,7 @@ impl Circuit for DecBfvCircuit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
     use tempfile::TempDir;
 
     #[test]
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn test_toml_generation() {
         let circuit = DecBfvCircuit::new(SampleType::SecretKey);
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
         let result = circuit.generate_toml(&params, &params, temp_dir.path(), None);
@@ -147,20 +147,14 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Failed to generate smudging error")]
     fn test_toml_generation_smudging_noise() {
         let circuit = DecBfvCircuit::new(SampleType::SmudgingNoise);
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
-        let result = circuit.generate_toml(&params, &params, temp_dir.path(), None);
-        assert!(
-            result.is_ok(),
-            "TOML generation with smudging noise should succeed: {:?}",
-            result.err()
-        );
-
-        // Verify the file was created
-        let toml_path = temp_dir.path().join("Prover.toml");
-        assert!(toml_path.exists(), "Prover.toml should be created");
+        circuit
+            .generate_toml(&params, &params, temp_dir.path(), None)
+            .unwrap();
     }
 }

@@ -523,7 +523,7 @@ mod tests {
     use fhe::bfv::{Encoding, Plaintext, SecretKey};
     use fhe_traits::FheEncoder;
     use rand::{SeedableRng, rngs::StdRng};
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     #[test]
     fn test_standard_form() {
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_vector_computation_to_json() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
 
         let mut rng = StdRng::seed_from_u64(0);
         let sk = SecretKey::random(&params, &mut rng);

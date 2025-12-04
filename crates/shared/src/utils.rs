@@ -50,13 +50,23 @@ pub fn variance_uniform_sym_str_big(b: &BigUint) -> String {
     }
 }
 
-pub fn test_parameters() -> Arc<BfvParameters> {
+pub fn test_parameters_trbfv() -> Arc<BfvParameters> {
     BfvParametersBuilder::new()
-        .set_degree(8192)
-        .set_plaintext_modulus(16384)
-        .set_moduli(&[0x1ffffffea0001, 0x1ffffffe88001, 0x1ffffffe48001])
+        .set_degree(512)
+        .set_plaintext_modulus(10)
+        .set_moduli(&[0xffffee001, 0xffffc4001])
         .set_variance(10)
-        .set_error1_variance(BigUint::from(10u32))
+        .set_error1_variance(BigUint::from(3u32))
+        .build_arc()
+        .unwrap()
+}
+
+pub fn test_parameters_bfv() -> Arc<BfvParameters> {
+    BfvParametersBuilder::new()
+        .set_degree(512)
+        .set_plaintext_modulus(0xffffee001)
+        .set_moduli(&[0x7fffffffe0001])
+        .set_variance(3)
         .build_arc()
         .unwrap()
 }

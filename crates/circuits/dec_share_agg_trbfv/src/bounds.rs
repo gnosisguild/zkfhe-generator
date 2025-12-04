@@ -171,25 +171,14 @@ impl DecShareAggTrBfvBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fhe::bfv::BfvParametersBuilder;
-
-    fn setup_test_params() -> Arc<BfvParameters> {
-        BfvParametersBuilder::new()
-            .set_degree(2048)
-            .set_plaintext_modulus(1032193)
-            .set_moduli(&[0x3FFFFFFF000001])
-            .set_variance(10)
-            .set_error1_variance(num_bigint::BigUint::from(10u32))
-            .build_arc()
-            .unwrap()
-    }
+    use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn test_bounds_computation() {
-        let params = setup_test_params();
+        let params = test_parameters_trbfv();
         let (crypto_params, bounds) = DecShareAggTrBfvBounds::compute(&params, 0).unwrap();
 
-        assert_eq!(crypto_params.moduli.len(), 1);
+        assert_eq!(crypto_params.moduli.len(), 2);
         assert!(bounds.delta > BigUint::from(0u64));
         assert!(bounds.delta_half > BigUint::from(0u64));
         assert_eq!(bounds.delta_half, bounds.delta_half);

@@ -314,9 +314,9 @@ mod tests {
 
     #[test]
     fn test_vector_computation_to_json() {
-        use shared::utils::test_parameters;
+        use shared::utils::test_parameters_trbfv;
 
-        let params = test_parameters();
+        let params = test_parameters_trbfv();
 
         let decryption_data = generate_sample_decryption_share(&params, &params, None).unwrap();
 

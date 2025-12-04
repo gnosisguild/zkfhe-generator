@@ -194,13 +194,13 @@ mod tests {
     use super::*;
     use crate::bounds::GrecoBounds;
     use crate::vectors::GrecoVectors;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
 
         let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
         let vectors = GrecoVectors::new(1, 2048);

@@ -149,12 +149,12 @@ pub fn generate_sample_decryption_no_hom_add(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
 
     #[test]
     fn test_sample_decryption_generation() {
-        let trbfv_params = test_parameters();
-        let bfv_params = test_parameters();
+        let trbfv_params = test_parameters_trbfv();
+        let bfv_params = test_parameters_bfv();
 
         let result = generate_sample_decryption_no_hom_add(&bfv_params, &trbfv_params, None);
         assert!(
@@ -173,8 +173,8 @@ mod tests {
 
     #[test]
     fn test_sample_decryption_with_custom_config() {
-        let trbfv_params = test_parameters();
-        let bfv_params = test_parameters();
+        let trbfv_params = test_parameters_trbfv();
+        let bfv_params = test_parameters_bfv();
 
         let config = CiphernodesConfig::new(5, 5, 2);
         let result =

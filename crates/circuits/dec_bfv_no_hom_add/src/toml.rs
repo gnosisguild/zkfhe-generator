@@ -267,13 +267,13 @@ mod tests {
     use super::*;
     use crate::bounds::DecBfvNoHomAddBounds;
     use crate::vectors::DecBfvNoHomAddVectors;
-    use shared::utils::test_parameters;
+    use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let bfv_params = test_parameters();
-        let trbfv_params = test_parameters();
+        let bfv_params = test_parameters_bfv();
+        let trbfv_params = test_parameters_trbfv();
 
         let (crypto_params, bounds) =
             DecBfvNoHomAddBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();

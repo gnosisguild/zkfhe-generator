@@ -177,12 +177,12 @@ impl DecBfvNoHomAddBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
 
     #[test]
     fn test_bounds_computation() {
-        let bfv_params = test_parameters();
-        let trbfv_params = test_parameters();
+        let bfv_params = test_parameters_bfv();
+        let trbfv_params = test_parameters_trbfv();
         let (crypto_params, bounds) =
             DecBfvNoHomAddBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
 
