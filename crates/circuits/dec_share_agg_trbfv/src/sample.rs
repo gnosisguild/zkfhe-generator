@@ -261,20 +261,11 @@ pub fn generate_sample_decryption_share_aggregation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fhe::bfv::BfvParametersBuilder;
-    use num_bigint::BigUint;
+    use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn generates_sample_decryption_share_aggregation() {
-        let params = BfvParametersBuilder::new()
-            .set_degree(8192)
-            .set_plaintext_modulus(16384)
-            .set_moduli(&[0x1ffffffea0001, 0x1ffffffe88001, 0x1ffffffe48001])
-            .set_variance(10)
-            .set_error1_variance(BigUint::from(10u32))
-            .build_arc()
-            .unwrap();
-
+        let params = test_parameters_trbfv();
         let result = generate_sample_decryption_share_aggregation(&params, None);
         assert!(
             result.is_ok(),
@@ -285,6 +276,6 @@ mod tests {
         let data = result.unwrap();
         assert_eq!(data.d_share_polys.len(), data.threshold + 1);
         assert_eq!(data.party_ids.len(), data.threshold + 1);
-        assert_eq!(data.party_ids, vec![1, 2]);
+        assert_eq!(data.party_ids, vec![1, 2, 3]);
     }
 }

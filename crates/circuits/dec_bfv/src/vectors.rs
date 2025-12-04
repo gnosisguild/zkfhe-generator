@@ -854,11 +854,11 @@ mod tests {
     use super::*;
     use crate::sample::generate_sample_decryption;
     use shared::circuit::SampleType;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     #[test]
     fn test_vector_computation() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let data =
             generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
 
@@ -892,7 +892,7 @@ mod tests {
 
     #[test]
     fn test_validation_with_real_data() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let data =
             generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
 

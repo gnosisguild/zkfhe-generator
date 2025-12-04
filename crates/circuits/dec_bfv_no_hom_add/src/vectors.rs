@@ -715,12 +715,12 @@ fn reduce_coefficients_4d(
 mod tests {
     use super::*;
     use crate::sample::generate_sample_decryption_no_hom_add;
-    use shared::utils::test_parameters;
+    use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
 
     #[test]
     fn test_vector_computation() {
-        let bfv_params = test_parameters();
-        let trbfv_params = test_parameters();
+        let bfv_params = test_parameters_bfv();
+        let trbfv_params = test_parameters_trbfv();
 
         let data = generate_sample_decryption_no_hom_add(&bfv_params, &trbfv_params, None).unwrap();
 
@@ -760,8 +760,8 @@ mod tests {
 
     #[test]
     fn test_verify_circuit_constraints() {
-        let bfv_params = test_parameters();
-        let trbfv_params = test_parameters();
+        let bfv_params = test_parameters_bfv();
+        let trbfv_params = test_parameters_trbfv();
 
         let data = generate_sample_decryption_no_hom_add(&bfv_params, &trbfv_params, None).unwrap();
 

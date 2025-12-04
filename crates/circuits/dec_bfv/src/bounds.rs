@@ -157,11 +157,11 @@ impl DecBfvBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     #[test]
     fn test_bounds_computation() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
 
         assert_eq!(crypto_params.moduli.len(), params.moduli().len());

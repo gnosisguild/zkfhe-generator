@@ -335,7 +335,7 @@ mod tests {
     use super::*;
     use fhe::bfv::SecretKey;
     use rand::{SeedableRng, rngs::StdRng};
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn test_standard_form() {
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn test_vector_computation_to_json() {
-        let params = test_parameters();
+        let params = test_parameters_trbfv();
 
         // Use key generation to get the polynomial data
         let mut rng = StdRng::seed_from_u64(0);

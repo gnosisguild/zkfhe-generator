@@ -105,7 +105,7 @@ impl Circuit for DecBfvNoHomAddCircuit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
     use tempfile::TempDir;
 
     #[test]
@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn test_toml_generation() {
         let circuit = DecBfvNoHomAddCircuit::new();
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
         let result = circuit.generate_toml(&params, &params, temp_dir.path(), None);
@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_toml_generation_with_custom_config() {
         let circuit = DecBfvNoHomAddCircuit::new();
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
         let config = CiphernodesConfig::new(5, 5, 2);

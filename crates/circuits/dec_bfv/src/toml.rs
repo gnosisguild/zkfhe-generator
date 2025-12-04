@@ -192,12 +192,12 @@ mod tests {
     use super::*;
     use crate::bounds::DecBfvBounds;
     use crate::vectors::DecBfvVectors;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
 
         let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
         let vectors = DecBfvVectors::new(3, params.moduli().len(), params.degree());
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_toml_string_format() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
         let vectors = DecBfvVectors::new(3, params.moduli().len(), params.degree());
 
