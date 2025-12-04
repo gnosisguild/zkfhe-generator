@@ -236,11 +236,11 @@ pub fn generate_sample_decryption_share(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn generates_sample_decryption_share() {
-        let params = test_parameters();
+        let params = test_parameters_trbfv();
         let result = generate_sample_decryption_share(&params, &params, None);
         assert!(
             result.is_ok(),

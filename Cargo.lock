@@ -330,7 +330,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fhe"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#7692b954ce887ee78f0b6baae36447ca1aa74708"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#d4a41d93b9d9d5826ef5ae985a311c1ca5d004d7"
 dependencies = [
  "doc-comment",
  "fhe-math",
@@ -355,7 +355,7 @@ dependencies = [
 [[package]]
 name = "fhe-math"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#7692b954ce887ee78f0b6baae36447ca1aa74708"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#d4a41d93b9d9d5826ef5ae985a311c1ca5d004d7"
 dependencies = [
  "ethnum",
  "fhe-traits",
@@ -377,7 +377,7 @@ dependencies = [
 [[package]]
 name = "fhe-traits"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#7692b954ce887ee78f0b6baae36447ca1aa74708"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#d4a41d93b9d9d5826ef5ae985a311c1ca5d004d7"
 dependencies = [
  "rand",
 ]
@@ -385,7 +385,7 @@ dependencies = [
 [[package]]
 name = "fhe-util"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#7692b954ce887ee78f0b6baae36447ca1aa74708"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#d4a41d93b9d9d5826ef5ae985a311c1ca5d004d7"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint-dig",
@@ -1348,6 +1348,31 @@ dependencies = [
  "itertools 0.14.0",
  "ndarray",
  "num-bigint",
+ "num-integer",
+ "num-traits",
+ "rand",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "zkfhe-shared",
+]
+
+[[package]]
+name = "zkfhe-dec-bfv-no-hom-add"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bigint-poly",
+ "blake3",
+ "fhe",
+ "fhe-math",
+ "fhe-traits",
+ "itertools 0.14.0",
+ "ndarray",
+ "num-bigint",
+ "num-integer",
  "num-traits",
  "rand",
  "rayon",
@@ -1371,6 +1396,7 @@ dependencies = [
  "itertools 0.14.0",
  "ndarray",
  "num-bigint",
+ "num-integer",
  "num-traits",
  "rand",
  "rayon",
@@ -1415,6 +1441,7 @@ dependencies = [
  "num-bigint",
  "zkfhe-crypto-params",
  "zkfhe-dec-bfv",
+ "zkfhe-dec-bfv-no-hom-add",
  "zkfhe-dec-share-agg-trbfv",
  "zkfhe-dec-share-trbfv",
  "zkfhe-greco",

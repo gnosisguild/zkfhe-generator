@@ -11,7 +11,7 @@ use fhe_math::rq::{Poly, Representation};
 use num_bigint::{BigInt, BigUint};
 use num_traits::{Signed, ToPrimitive, Zero};
 use serde_json::json;
-use shared::errors::ZkFheResult;
+use shared::errors::{ZkFheError, ZkFheResult};
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 use std::sync::Arc;
 
@@ -412,6 +412,118 @@ impl DecShareAggTrBfvVectors {
         }
     }
 
+    /// Verify decoding using the alternative direct method (mimics circuit's verify_decoding_alternative)
+    ///
+    /// This implements the new direct decoding verification that computes:
+    /// 1. (t * u_global) mod Q
+    /// 2. Uses Q^{-1} mod t to recover the message
+    /// 3. Handles centering based on whether (t*u) >= Q/2
+    ///
+    /// # Arguments
+    /// * `q_modulus` - The product of all CRT moduli Q
+    /// * `plaintext_modulus` - The plaintext modulus t
+    /// * `q_inverse_mod_t` - The modular inverse Q^{-1} mod t
+    ///
+    /// # Returns
+    /// Ok(()) if verification passes, Error otherwise
+    pub fn verify_decoding_alternative(
+        &self,
+        q_modulus: &BigInt,
+        plaintext_modulus: u64,
+        q_inverse_mod_t: u64,
+    ) -> ZkFheResult<()> {
+        let t = BigInt::from(plaintext_modulus);
+        let q_inv_mod_t = BigInt::from(q_inverse_mod_t);
+        let q_half = q_modulus / BigInt::from(2);
+
+        // Verify decoding for each coefficient
+        for (coeff_idx, (u_global_coeff, message_coeff)) in
+            self.u_global.iter().zip(self.message.iter()).enumerate()
+        {
+            // Compute (t * u_global) mod Q using regular modular arithmetic
+            let t_times_u = (u_global_coeff * &t) % q_modulus;
+
+            // Check if centering is needed: (t*u) mod Q >= Q/2
+            let needs_centering = t_times_u > q_half;
+
+            let computed_message = if needs_centering {
+                // When (t*u) mod Q >= Q/2: treat as negative in centered form
+                // Noir: mul_mod(q_inverse_mod_t, mul_mod(q_modulus - t_times_u_q, t, q_modulus), t)
+                // This is: (q_inv * (((Q - t*u) * t) % Q)) % t
+                let centered = q_modulus - &t_times_u;
+                let inner = (&centered * &t) % q_modulus;
+                (&q_inv_mod_t * &inner) % &t
+            } else {
+                // When (t*u) mod Q < Q/2: stays positive in centered form
+                // Noir: mul_mod(q_inverse_mod_t, mul_mod(t_times_u_q, t, q_modulus), t)
+                // This is: (q_inv * ((t*u * t) % Q)) % t = (q_inv * ((t^2 * u) % Q)) % t
+                // Then: t - product (unless product is 0)
+                let inner = (&t_times_u * &t) % q_modulus;
+                let product = (&q_inv_mod_t * &inner) % &t;
+                if product == BigInt::zero() {
+                    BigInt::zero()
+                } else {
+                    &t - product
+                }
+            };
+
+            // Verify: only check non-zero coefficients (mimics Noir circuit behavior)
+            if *message_coeff != BigInt::zero() && computed_message != *message_coeff {
+                return Err(ZkFheError::Bfv {
+                    message: format!(
+                        "Alternative decoding verification failed at coefficient {}: expected message = {}, computed message = {}. \
+                        This means the decryption is incorrect. Check decryption shares and aggregation.",
+                        coeff_idx, message_coeff, computed_message
+                    ),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Count the number of non-zero coefficients in the message
+    pub fn count_nonzero_message_coefficients(&self) -> usize {
+        self.message
+            .iter()
+            .filter(|&coeff| !coeff.is_zero())
+            .count()
+    }
+
+    /// Trim all vectors to the specified length based on non-zero message coefficients
+    /// If trim_length is 0, returns the full vectors unchanged
+    pub fn trim_to_nonzero(&self, trim_length: usize) -> Self {
+        if trim_length == 0 || trim_length >= self.message.len() {
+            // Don't trim if length is 0 or >= current length
+            return self.clone();
+        }
+
+        DecShareAggTrBfvVectors {
+            decryption_shares: self
+                .decryption_shares
+                .iter()
+                .map(|party| {
+                    party
+                        .iter()
+                        .map(|modulus| modulus.iter().take(trim_length).cloned().collect())
+                        .collect()
+                })
+                .collect(),
+
+            party_ids: self.party_ids.clone(), // party_ids don't need trimming
+
+            message: self.message.iter().take(trim_length).cloned().collect(),
+
+            u_global: self.u_global.iter().take(trim_length).cloned().collect(),
+
+            crt_quotients: self
+                .crt_quotients
+                .iter()
+                .map(|modulus| modulus.iter().take(trim_length).cloned().collect())
+                .collect(),
+        }
+    }
+
     /// Verifies the global noise bound exactly as the Noir circuit's range_check_2bounds
     ///
     /// This reproduces exactly the logic from the Noir circuit's `verify_global_noise_bound`:
@@ -543,20 +655,11 @@ impl DecShareAggTrBfvVectors {
 mod tests {
     use super::*;
     use crate::sample::generate_sample_decryption_share_aggregation;
-    use fhe::bfv::BfvParametersBuilder;
-    use num_bigint::BigUint;
+    use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn test_vector_computation() {
-        let params = BfvParametersBuilder::new()
-            .set_degree(8192)
-            .set_plaintext_modulus(16384)
-            .set_moduli(&[0x1ffffffea0001, 0x1ffffffe88001, 0x1ffffffe48001])
-            .set_variance(10)
-            .set_error1_variance(BigUint::from(10u32))
-            .build_arc()
-            .unwrap();
-
+        let params = test_parameters_trbfv();
         let decryption_data = generate_sample_decryption_share_aggregation(&params, None).unwrap();
 
         // Compute vectors

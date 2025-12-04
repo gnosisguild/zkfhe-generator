@@ -138,12 +138,12 @@ pub fn generate_sample_decryption(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
 
     #[test]
     fn test_sample_decryption_generation() {
-        let trbfv_params = test_parameters();
-        let bfv_params = test_parameters(); // In practice, different params
+        let trbfv_params = test_parameters_trbfv();
+        let bfv_params = test_parameters_bfv(); // In practice, different params
 
         // Test with SecretKey sample type
         let result =
@@ -158,8 +158,8 @@ mod tests {
 
     #[test]
     fn test_sample_decryption_generation_smudging_noise() {
-        let trbfv_params = test_parameters();
-        let bfv_params = test_parameters(); // In practice, different params
+        let trbfv_params = test_parameters_trbfv();
+        let bfv_params = test_parameters_bfv(); // In practice, different params
 
         // Test with SmudgingNoise sample type
         let result =

@@ -8,6 +8,7 @@ use fhe::bfv::{BfvParameters, Ciphertext, Plaintext, SecretKey};
 use fhe_math::rq::{Poly, Representation, traits::TryConvertFrom};
 use itertools::izip;
 use num_bigint::{BigInt, BigUint};
+use num_integer::Integer;
 use num_traits::{ToPrimitive, Zero};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
@@ -406,7 +407,7 @@ impl DecBfvVectors {
         Ok(res)
     }
 
-    // Verify decoding in Rust (mimics the circuit's verify_decoding function)
+    // Verify decoding in Rust (mimics the circuit's verify_direct_decoding function)
     // This helps catch issues before running the circuit
     fn verify_decoding_rust(
         &self,
@@ -422,50 +423,56 @@ impl DecBfvVectors {
             q_modulus *= BigInt::from(q_i);
         }
 
-        // Compute delta = floor(Q / t)
-        let delta = &q_modulus / &t;
-        let delta_half = &delta / BigInt::from(2);
+        // Compute Q^{-1} mod t using extended Euclidean algorithm
+        let q_inverse_mod_t = {
+            let gcd_result = q_modulus.extended_gcd(&t);
+            if gcd_result.gcd != BigInt::from(1) {
+                return Err(ZkFheError::Bfv {
+                    message: format!("Q and t are not coprime, gcd = {}", gcd_result.gcd),
+                });
+            }
+            // Ensure the inverse is positive
+            let inv = gcd_result.x % &t;
+            if inv < BigInt::zero() { inv + &t } else { inv }
+        };
+
         let q_half = &q_modulus / BigInt::from(2);
 
-        // Check u_global values
-        let max_u_global = self.u_global.iter().max().unwrap();
-        if max_u_global >= &q_modulus {
-            return Err(ZkFheError::Bfv {
-                message: format!("u_global exceeds Q: {}", max_u_global),
-            });
-        }
-
-        // For each coefficient, verify: |u_global - delta * message| < delta_half
+        // Verify decoding for each coefficient
         for coeff_idx in 0..n {
             let u_global_coeff = &self.u_global[coeff_idx];
             let message_coeff = &self.message[coeff_idx];
 
-            // Compute delta * message
-            let delta_m = &delta * message_coeff;
+            // Compute (t * u_global) mod Q
+            let t_times_u = (u_global_coeff * &t) % &q_modulus;
 
-            // Compute noise = u_global - delta * message (mod Q)
-            let noise_raw = u_global_coeff - &delta_m;
-            let noise_mod_q = &noise_raw % &q_modulus;
-            let noise = if noise_mod_q < BigInt::zero() {
-                &noise_mod_q + &q_modulus
+            // Check if centering is needed: (t*u) mod Q >= Q/2
+            let needs_centering = t_times_u > q_half;
+
+            let computed_message = if needs_centering {
+                // When (t*u) mod Q >= Q/2: treat as negative in centered form
+                // Conceptually: (t*u)_Q - Q (negative value)
+                // -Q^{-1} * (negative) = positive result
+                let centered_positive = &q_modulus - &t_times_u;
+                (&q_inverse_mod_t * centered_positive) % &t
             } else {
-                noise_mod_q
+                // When (t*u) mod Q < Q/2: stays positive in centered form
+                // -Q^{-1} * (positive) = negative result = t - result
+                let product = (&q_inverse_mod_t * &t_times_u) % &t;
+                if product == BigInt::zero() {
+                    BigInt::zero()
+                } else {
+                    &t - product
+                }
             };
 
-            // Center the noise: if noise > Q/2, then noise_centered = Q - noise
-            let noise_centered = if noise > q_half {
-                &q_modulus - &noise
-            } else {
-                noise.clone()
-            };
-
-            // Check if noise_centered <= delta_half
-            if noise_centered > delta_half {
+            // Verify: only check non-zero coefficients (mimics Noir circuit behavior)
+            if *message_coeff != BigInt::zero() && computed_message != *message_coeff {
                 return Err(ZkFheError::Bfv {
                     message: format!(
-                        "Decoding verification failed: noise at coefficient {} is {} which exceeds delta_half = {}. \
-                        This means the decryption noise is too large. Try reducing the number of parties or using parameters with larger noise budget.",
-                        coeff_idx, noise_centered, delta_half
+                        "Decoding verification failed at coefficient {}: expected message = {}, computed message = {}. \
+                        This means the decryption is incorrect. Check ciphertext and secret key inputs.",
+                        coeff_idx, message_coeff, computed_message
                     ),
                 });
             }
@@ -847,11 +854,11 @@ mod tests {
     use super::*;
     use crate::sample::generate_sample_decryption;
     use shared::circuit::SampleType;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     #[test]
     fn test_vector_computation() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let data =
             generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
 
@@ -885,7 +892,7 @@ mod tests {
 
     #[test]
     fn test_validation_with_real_data() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let data =
             generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
 
