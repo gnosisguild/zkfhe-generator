@@ -16,6 +16,8 @@ pub struct DecBfvCryptographicParameters {
     pub moduli: Vec<u64>,
     pub plaintext_modulus: u64,
     pub q_inverse_mod_t: u64,
+    pub q_mod_t: BigUint,
+    pub t_inv_mod_q: BigUint,
 }
 
 /// Bounds for BFV decryption circuit polynomial coefficients
@@ -101,10 +103,48 @@ impl DecBfvBounds {
             })?
         };
 
+        // Compute q_mod_t: Q mod t
+        let q_mod_t = {
+            let q_biguint = q.to_biguint().ok_or_else(|| ZkFheError::Bfv {
+                message: "Q is negative, cannot convert to BigUint".to_string(),
+            })?;
+            let t_biguint = t.to_biguint().ok_or_else(|| ZkFheError::Bfv {
+                message: "t is negative, cannot convert to BigUint".to_string(),
+            })?;
+            &q_biguint % &t_biguint
+        };
+
+        // Compute t_inv_mod_q: t^(-1) mod Q
+        let t_inv_mod_q = {
+            let gcd_result = q.extended_gcd(&t);
+            if gcd_result.gcd != BigInt::from(1) {
+                return Err(ZkFheError::Bfv {
+                    message: format!(
+                        "Q and t are not coprime (gcd = {}), cannot compute modular inverse",
+                        gcd_result.gcd
+                    ),
+                });
+            }
+            // y is t^(-1) mod Q (from the extended GCD: Q*x + t*y = gcd)
+            // But may be negative, so normalize to [0, Q)
+            let t_inverse_bigint = if gcd_result.y < BigInt::from(0) {
+                gcd_result.y + &q
+            } else {
+                gcd_result.y
+            };
+            t_inverse_bigint
+                .to_biguint()
+                .ok_or_else(|| ZkFheError::Bfv {
+                    message: "Failed to convert t_inv_mod_q to BigUint".to_string(),
+                })?
+        };
+
         let crypto_params = DecBfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
             plaintext_modulus: params.plaintext(),
             q_inverse_mod_t,
+            q_mod_t,
+            t_inv_mod_q,
         };
 
         let bounds = DecBfvBounds {
@@ -136,6 +176,8 @@ impl DecBfvCryptographicParameters {
             "moduli": self.moduli,
             "plaintext_modulus": self.plaintext_modulus,
             "q_inverse_mod_t": self.q_inverse_mod_t,
+            "q_mod_t": self.q_mod_t.to_string(),
+            "t_inv_mod_q": self.t_inv_mod_q.to_string(),
         })
     }
 }
