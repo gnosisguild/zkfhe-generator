@@ -174,9 +174,12 @@ impl DecShareAggTrBfvVectors {
         })?;
 
         let mut u_global_coeffs: Vec<BigUint> = Vec::new();
-        for u_x_mod in u_per_modulus.iter().take(degree) {
+        #[allow(clippy::needless_range_loop)]
+        for coeff_idx in 0..degree {
             // Collect per-modulus values for this coefficient
-            let rests: Vec<u64> = (0..num_moduli).map(|m| u_x_mod[m]).collect();
+            let rests: Vec<u64> = (0..num_moduli)
+                .map(|m| u_per_modulus[m][coeff_idx])
+                .collect();
 
             // CRT reconstruction: u_global[coeff_idx] = CRT([u^{(0)}[coeff_idx], u^{(1)}[coeff_idx], ...])
             // This returns the unique value in [0, Q) that has the given residues

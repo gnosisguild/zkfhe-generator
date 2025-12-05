@@ -286,6 +286,7 @@ impl DecBfvNoHomAddVectors {
                 })?;
 
                 let mut u_global_coeffs: Vec<BigUint> = Vec::new();
+                #[allow(clippy::needless_range_loop)]
                 for coeff_idx in 0..n as usize {
                     let rests: Vec<u64> = (0..num_bfv_bases)
                         .map(|m| u_per_modulus[m][coeff_idx])
