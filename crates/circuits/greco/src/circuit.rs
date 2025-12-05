@@ -75,6 +75,9 @@ impl Circuit for GrecoCircuit {
         // Generate bounds and vectors directly
         let (crypto_params, bounds) = GrecoBounds::compute(selected_params, 0)?;
 
+        // Calculate bit_pk from bounds for commitment computation
+        let bit_pk = shared::template::calculate_bit_width(&bounds.pk_bounds[0].to_string())?;
+
         let encryption_data = generate_sample_encryption(
             trbfv_params,
             bfv_params,
@@ -94,6 +97,7 @@ impl Circuit for GrecoCircuit {
             &encryption_data.ciphertext,
             &encryption_data.public_key,
             selected_params,
+            bit_pk,
         )?;
 
         let vectors_standard = vectors.standard_form();
