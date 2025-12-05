@@ -211,20 +211,20 @@ impl GrecoBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     #[test]
     fn test_bounds_computation() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
 
-        assert_eq!(crypto_params.moduli.len(), 3);
-        assert_eq!(crypto_params.k0is.len(), 3);
-        assert_eq!(bounds.pk_bounds.len(), 3);
-        assert_eq!(bounds.r1_low_bounds.len(), 3);
-        assert_eq!(bounds.r1_up_bounds.len(), 3);
-        assert_eq!(bounds.r2_bounds.len(), 3);
-        assert_eq!(bounds.p1_bounds.len(), 3);
-        assert_eq!(bounds.p2_bounds.len(), 3);
+        assert_eq!(crypto_params.moduli.len(), 1);
+        assert_eq!(crypto_params.k0is.len(), 1);
+        assert_eq!(bounds.pk_bounds.len(), 1);
+        assert_eq!(bounds.r1_low_bounds.len(), 1);
+        assert_eq!(bounds.r1_up_bounds.len(), 1);
+        assert_eq!(bounds.r2_bounds.len(), 1);
+        assert_eq!(bounds.p1_bounds.len(), 1);
+        assert_eq!(bounds.p2_bounds.len(), 1);
     }
 }
