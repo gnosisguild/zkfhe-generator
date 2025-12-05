@@ -19,8 +19,45 @@ use serde_json::json;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use ark_bn254::Fr as Field;
+use ark_ff::{BigInteger, PrimeField};
+use safe::SafeSponge;
+
 use shared::errors::ZkFheResult;
+use shared::packing::flatten;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
+
+/// Compute a commitment to the public key polynomials by flattening them and hashing.
+/// This matches the Noir `commitment_payload` and `generate_challenge` functions exactly.
+fn compute_pk_commitment(pk0is: &[Vec<BigInt>], pk1is: &[Vec<BigInt>], bit_pk: u32) -> BigInt {
+    // Step 1: Flatten pk0is and pk1is (matches commitment_payload in Noir)
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, pk0is, bit_pk);
+    inputs = flatten(inputs, pk1is, bit_pk);
+
+    // Step 2: Hash using SafeSponge (matches generate_challenge in Noir)
+    let domain_separator: [u8; 64] = [
+        0x47, 0x72, 0x65, 0x63, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 1];
+
+    let mut sponge = SafeSponge::start(io_pattern, domain_separator);
+    sponge.absorb(inputs);
+    let commitment = sponge.squeeze();
+    sponge.finish();
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
@@ -40,6 +77,7 @@ pub struct GrecoVectors {
     pub e1: Vec<BigInt>,
     pub u: Vec<BigInt>,
     pub k1: Vec<BigInt>,
+    pub pk_commitment: BigInt,
 }
 
 impl GrecoVectors {
@@ -70,6 +108,7 @@ impl GrecoVectors {
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
             k1: vec![BigInt::zero(); degree],
+            pk_commitment: BigInt::zero(),
         }
     }
 
@@ -84,6 +123,7 @@ impl GrecoVectors {
     /// * `e1_rns` - Error polynomial used in cihpertext sampled from error distribution.
     /// * `ct` - Ciphertext from fhe.rs.
     /// * `pk` - Public Key from fhe.rs.
+    /// * `bit_pk` - Bit width for public key bounds (used for packing).
     #[allow(clippy::too_many_arguments)]
     pub fn compute(
         pt: &Plaintext,
@@ -93,6 +133,7 @@ impl GrecoVectors {
         ct: &Ciphertext,
         pk: &PublicKey,
         params: &Arc<BfvParameters>,
+        bit_pk: u32,
     ) -> ZkFheResult<GrecoVectors> {
         // Reconstruct e1_rns in mod Q.
         let mut e0_power = e0_rns.clone();
@@ -505,6 +546,10 @@ impl GrecoVectors {
         res.k1 = k1;
         res.e0 = e0_vec;
         res.e1 = e1;
+
+        // Compute pk_commitment from pk0is and pk1is
+        res.pk_commitment = compute_pk_commitment(&res.pk0is, &res.pk1is, bit_pk);
+
         Ok(res)
     }
 }
@@ -528,6 +573,7 @@ impl GrecoVectors {
             k0is: self.k0is.clone(),
             u: reduce_coefficients(&self.u, zkp_modulus),
             k1: reduce_coefficients(&self.k1, zkp_modulus),
+            pk_commitment: self.pk_commitment.clone() % zkp_modulus,
         }
     }
 
@@ -548,6 +594,7 @@ impl GrecoVectors {
             "k0is": to_string_1d_vec(&self.k0is),
             "ct0is": to_string_2d_vec(&self.ct0is),
             "ct1is": to_string_2d_vec(&self.ct1is),
+            "pk_commitment": self.pk_commitment.to_string(),
         })
     }
 }
@@ -588,9 +635,15 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0);
         let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
+        // Calculate bit_pk from bounds
+        use crate::bounds::GrecoBounds;
+        let (_, bounds) = GrecoBounds::compute(&params, 0).unwrap();
+        let bit_pk =
+            shared::template::calculate_bit_width(&bounds.pk_bounds[0].to_string()).unwrap();
+
         // Compute vectors
-        let vecs =
-            GrecoVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params).unwrap();
+        let vecs = GrecoVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params, bit_pk)
+            .unwrap();
 
         let json = vecs.to_json();
 
@@ -611,10 +664,19 @@ mod tests {
             "k0is",
             "ct0is",
             "ct1is",
+            "pk_commitment",
         ];
 
         for field in required_fields.iter() {
             assert!(json.get(field).is_some(), "Missing field: {}", field);
         }
+
+        // Verify pk_commitment is non-zero (since we have actual data)
+        let pk_commitment = json.get("pk_commitment").unwrap().as_str().unwrap();
+        let pk_commitment_bigint = pk_commitment.parse::<num_bigint::BigInt>().unwrap();
+        assert!(
+            !pk_commitment_bigint.is_zero(),
+            "pk_commitment should not be zero"
+        );
     }
 }

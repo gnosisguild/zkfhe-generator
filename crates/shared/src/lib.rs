@@ -15,6 +15,7 @@
 pub mod circuit;
 pub mod constants;
 pub mod errors;
+pub mod packing;
 pub mod template;
 pub mod toml;
 pub mod utils;

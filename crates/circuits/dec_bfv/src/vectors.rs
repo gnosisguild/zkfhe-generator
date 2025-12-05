@@ -301,11 +301,9 @@ impl DecBfvVectors {
 
         // Perform CRT reconstruction coefficient-wise
         let mut u_global_coeffs: Vec<BigUint> = Vec::new();
-        for coeff_idx in 0..n as usize {
+        for u_x_mod in u_per_modulus.iter().take(n as usize) {
             // Collect per-modulus values for this coefficient
-            let rests: Vec<u64> = (0..num_moduli)
-                .map(|m| u_per_modulus[m][coeff_idx])
-                .collect();
+            let rests: Vec<u64> = (0..num_moduli).map(|m| u_x_mod[m]).collect();
 
             // CRT reconstruction: u_global[coeff_idx] = CRT([u^{(0)}[coeff_idx], u^{(1)}[coeff_idx], ...])
             // This returns the unique value in [0, Q) where Q = q_0 * q_1 * ... * q_{L-1}
