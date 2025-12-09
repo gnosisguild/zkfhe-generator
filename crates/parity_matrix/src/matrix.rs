@@ -57,11 +57,11 @@ pub fn null_space(matrix: &[Vec<BigUint>], q: &BigUint) -> ParityMatrixResult<Ve
     let mut aug: Vec<Vec<BigUint>> = vec![vec![BigUint::zero(); rows + cols]; cols];
 
     // Initialize: transpose of original matrix in left part, identity in right part
-    for i in 0..cols {
-        for j in 0..rows {
-            aug[i][j] = matrix[j][i].clone();
+    for (i, aug_row) in aug.iter_mut().enumerate().take(cols) {
+        for (j, aug_cell) in aug_row.iter_mut().enumerate().take(rows) {
+            *aug_cell = matrix[j][i].clone();
         }
-        aug[i][rows + i] = BigUint::one();
+        aug_row[rows + i] = BigUint::one();
     }
 
     // Gaussian elimination with partial pivoting
