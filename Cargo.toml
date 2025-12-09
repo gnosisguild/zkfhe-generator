@@ -9,7 +9,8 @@ members = [
     "crates/circuits/dec_bfv",
     "crates/circuits/dec_bfv_no_hom_add",
     "crates/circuits/dec_share_agg_trbfv",
-    "crates/crypto_params"
+    "crates/crypto_params",
+    "crates/parity_matrix"
 ]
 
 [workspace.package]

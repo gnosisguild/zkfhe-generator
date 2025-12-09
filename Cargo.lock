@@ -1704,6 +1704,7 @@ dependencies = [
  "zkfhe-greco",
  "zkfhe-pk-trbfv",
  "zkfhe-shared",
+ "zkfhe-sk-shares",
 ]
 
 [[package]]
@@ -1729,6 +1730,16 @@ dependencies = [
  "tempfile",
  "toml",
  "zkfhe-shared",
+]
+
+[[package]]
+name = "zkfhe-parity-matrix"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "num-bigint",
+ "num-traits",
+ "thiserror",
 ]
 
 [[package]]
@@ -1772,4 +1783,26 @@ dependencies = [
  "serde_json",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "zkfhe-sk-shares"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bigint-poly",
+ "fhe",
+ "fhe-math",
+ "fhe-traits",
+ "ndarray",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "rand",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "zkfhe-parity-matrix",
+ "zkfhe-shared",
 ]

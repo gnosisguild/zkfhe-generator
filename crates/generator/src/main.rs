@@ -241,6 +241,10 @@ fn get_circuit(
             let circuit = dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new();
             Ok(Box::new(circuit))
         }
+        "sk-shares" => {
+            let circuit = sk_shares::circuit::SkSharesCircuit::new(parameter_type);
+            Ok(Box::new(circuit))
+        }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -254,6 +258,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
         "dec-bfv-no-hom-add" => vec![ParameterType::Bfv],
+        "sk-shares" => vec![ParameterType::Trbfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -903,6 +908,34 @@ fn generate_main_template(
             template_generator
                 .generate_main_file(&dec_bfv_no_hom_add_template_params, output_dir)?;
         }
+        "sk-shares" => {
+            use sk_shares::bounds::SkSharesBounds;
+            use sk_shares::template::{
+                SkSharesBoundsData, SkSharesMainTemplate, SkSharesTemplateParams,
+            };
+
+            let (crypto_params, bounds) = SkSharesBounds::compute(trbfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute sk_shares bounds: {e:?}"))?;
+
+            let bounds_data = SkSharesBoundsData {
+                sk_bound: bounds.sk_bound.to_string(),
+                moduli: crypto_params.moduli,
+            };
+
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
+
+            let sk_shares_template_params = SkSharesTemplateParams::from_bounds(
+                BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
+                config.num_parties,
+                config.threshold,
+                &bounds_data,
+            )?;
+
+            let template_generator = SkSharesMainTemplate;
+            template_generator.generate_main_file(&sk_shares_template_params, output_dir)?;
+        }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }
@@ -1000,6 +1033,9 @@ fn main() -> anyhow::Result<()> {
                 println!(
                     "  • dec-bfv-no-hom-add   - BFV Decryption circuit (no homomorphic addition) for dummy params (supports bfv)"
                 );
+                println!(
+                    "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
+                );
             }
             if presets {
                 println!("\n⚙️  Available presets:");
@@ -1024,6 +1060,9 @@ fn main() -> anyhow::Result<()> {
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
                 println!(
                     "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
+                );
+                println!(
+                    "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
                 );
                 println!("\n⚙️  Available presets:");
                 println!(

@@ -302,6 +302,7 @@ impl DecBfvVectors {
 
         // Perform CRT reconstruction coefficient-wise
         let mut u_global_coeffs: Vec<BigUint> = Vec::new();
+        #[allow(clippy::needless_range_loop)]
         for coeff_idx in 0..n as usize {
             // Collect per-modulus values for this coefficient
             let rests: Vec<u64> = (0..num_moduli)
