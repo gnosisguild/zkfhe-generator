@@ -3,7 +3,6 @@
 //! This module contains the core data structure and computation logic for generating
 //! input validation vectors required for proving correct secret key shares in zero-knowledge.
 
-use bigint_poly::reduce_coefficients_3d;
 use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
 use num_traits::Zero;
@@ -46,7 +45,8 @@ impl SkSharesVectors {
     ///
     /// # Returns
     ///
-    /// A `SkSharesVectors` struct containing all witness vectors normalized to [0, q_j)
+    /// A `SkSharesVectors` struct containing all witness vectors.
+    /// y and h are already normalized from sample data, no need to normalize again.
     pub fn compute(data: &SkSharesData, params: &Arc<BfvParameters>) -> ZkFheResult<Self> {
         let ctx = params.ctx_at_level(0)?;
         let degree = params.degree();
@@ -55,9 +55,6 @@ impl SkSharesVectors {
         // Extract secret key coefficients in signed form
         // The circuit expects sk[i] to equal y[i][j][0] for all j
         // sk[i] is range-checked to be in {-1, 0, 1} using range_check_2bounds
-        // We extract the signed value from the original secret key (Box<[i64]>)
-        // and convert it to Field representation (0, 1, or ZKP_MODULUS - 1 for -1)
-        // All y[i][j][0] will be set to this same Field value
         let mut sk: Vec<BigInt> = Vec::new();
         for coeff_idx in 0..degree {
             // Get the signed value from the original secret key
@@ -68,7 +65,7 @@ impl SkSharesVectors {
 
         // Compute y[coeff_idx][mod_idx][0..N_PARTIES+1] from sk and sk_sss
         // y[i][j][0] = sk[i] (same signed value for all j)
-        // y[i][j][k] = sk_sss[j][k-1][i] (share for party k-1, normalized to [0, q_j))
+        // y[i][j][k] = sk_sss[j][k-1][i] (share for party k-1, already normalized to [0, q_j))
         let mut y: Vec<Vec<Vec<BigInt>>> = Vec::new();
 
         #[allow(clippy::needless_range_loop)]
@@ -76,28 +73,17 @@ impl SkSharesVectors {
             let mut y_coeff: Vec<Vec<BigInt>> = Vec::new();
 
             for mod_idx in 0..num_moduli {
-                let q_j = BigInt::from(ctx.moduli()[mod_idx]);
                 let mut y_mod: Vec<BigInt> = Vec::new();
 
                 // y[i][j][0] = sk[i] (same signed value for all j)
-                // sk[i] is in signed form (-1, 0, 1), we'll keep it as-is
-                // The circuit will compare Field values, and after standard_form
-                // both will be reduced modulo ZKP modulus
-                let sk_value = &sk[coeff_idx];
-                y_mod.push(sk_value.clone());
+                y_mod.push(sk[coeff_idx].clone());
 
                 // y[i][j][k] for k = 1..N_PARTIES from sk_sss
                 // sk_sss[mod_idx][party_idx][coeff_idx] gives the share that party_idx has
+                // Shares are already normalized to [0, q_j) from sample generation
                 for party_idx in 0..data.num_parties {
                     let share_value = data.sk_sss[mod_idx][[party_idx, coeff_idx]];
-                    let mut share_bigint = BigInt::from(share_value);
-
-                    // Normalize share to [0, q_j)
-                    share_bigint %= &q_j;
-                    if share_bigint < BigInt::zero() {
-                        share_bigint += &q_j;
-                    }
-                    y_mod.push(share_bigint);
+                    y_mod.push(BigInt::from(share_value));
                 }
 
                 y_coeff.push(y_mod);
@@ -107,28 +93,15 @@ impl SkSharesVectors {
         }
 
         // Extract parity matrices h[mod_idx][row][col]
-        // Convert from BigUint to BigInt and normalize to [0, q_j)
+        // Convert from BigUint to BigInt (already normalized to [0, q_j) from sample generation)
         let mut h: Vec<Vec<Vec<BigInt>>> = Vec::new();
 
         for mod_idx in 0..num_moduli {
-            let q_j = BigInt::from(ctx.moduli()[mod_idx]);
             let mut h_mod: Vec<Vec<BigInt>> = Vec::new();
 
             for row in &data.h[mod_idx] {
-                let mut h_row: Vec<BigInt> = Vec::new();
-
-                for cell in row {
-                    let mut cell_bigint = BigInt::from(cell.clone());
-
-                    // Normalize to [0, q_j)
-                    cell_bigint %= &q_j;
-                    if cell_bigint < BigInt::zero() {
-                        cell_bigint += &q_j;
-                    }
-
-                    h_row.push(cell_bigint);
-                }
-
+                let h_row: Vec<BigInt> =
+                    row.iter().map(|cell| BigInt::from(cell.clone())).collect();
                 h_mod.push(h_row);
             }
 
@@ -297,6 +270,7 @@ impl SkSharesVectors {
     /// This reduces all coefficients modulo the ZKP field modulus to ensure
     /// they fit within the circuit's field representation.
     pub fn standard_form(self) -> Self {
+        use bigint_poly::reduce_coefficients_3d;
         use shared::constants::get_zkp_modulus;
         let zkp_modulus = get_zkp_modulus();
 
