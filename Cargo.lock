@@ -1472,6 +1472,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zkfhe-parity-matrix"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "num-bigint",
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
 name = "zkfhe-pk-trbfv"
 version = "0.1.0"
 dependencies = [
