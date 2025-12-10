@@ -242,7 +242,7 @@ fn get_circuit(
             Ok(Box::new(circuit))
         }
         "sk-shares" => {
-            let circuit = sk_shares::circuit::SkSharesCircuit::new(parameter_type);
+            let circuit = sk_shares::circuit::SkSharesCircuit::new(parameter_type, sample_type);
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
@@ -995,9 +995,12 @@ fn main() -> anyhow::Result<()> {
                     eprintln!(
                         "⚠️  Warning: --sample-type is only applicable to greco with BFV parameter type. This flag will be ignored."
                     );
-                } else if circuit_name != "greco" && circuit_name != "dec-bfv" {
+                } else if circuit_name != "greco"
+                    && circuit_name != "dec-bfv"
+                    && circuit_name != "sk-shares"
+                {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to the greco and dec-bfv circuits. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to the greco, dec-bfv and sk-shares circuits. This flag will be ignored."
                     );
                 }
                 SampleType::SecretKey

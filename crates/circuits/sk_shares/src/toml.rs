@@ -122,10 +122,11 @@ mod tests {
 
     #[test]
     fn test_toml_generation_and_structure() {
+        use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
 
         let (crypto_params, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
-        let data = generate_sample_sk_shares(&params, None).unwrap();
+        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None).unwrap();
         let vectors = SkSharesVectors::compute(&data, &params).unwrap();
         let vectors_standard = vectors.standard_form();
 
@@ -152,10 +153,11 @@ mod tests {
 
     #[test]
     fn test_toml_string_format() {
+        use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
 
         let (crypto_params, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
-        let data = generate_sample_sk_shares(&params, None).unwrap();
+        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None).unwrap();
         let vectors = SkSharesVectors::compute(&data, &params).unwrap();
         let vectors_standard = vectors.standard_form();
 

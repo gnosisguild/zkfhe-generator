@@ -305,8 +305,9 @@ mod tests {
 
     #[test]
     fn test_vectors_computation() {
+        use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
-        let data = generate_sample_sk_shares(&params, None).unwrap();
+        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None).unwrap();
 
         let vectors = SkSharesVectors::compute(&data, &params).unwrap();
         assert_eq!(vectors.sk.len(), params.degree());
@@ -333,8 +334,9 @@ mod tests {
 
     #[test]
     fn test_standard_form() {
+        use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
-        let data = generate_sample_sk_shares(&params, None).unwrap();
+        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None).unwrap();
 
         let vectors = SkSharesVectors::compute(&data, &params).unwrap();
         let vectors_standard = vectors.standard_form();
@@ -369,8 +371,9 @@ mod tests {
 
     #[test]
     fn test_verify() {
+        use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
-        let data = generate_sample_sk_shares(&params, None).unwrap();
+        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None).unwrap();
 
         let vectors = SkSharesVectors::compute(&data, &params).unwrap();
 
