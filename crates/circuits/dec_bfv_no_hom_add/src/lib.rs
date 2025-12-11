@@ -1,6 +1,6 @@
 //! BFV Decryption circuit (no homomorphic addition) parameter generation in Rust
 //!
-//! This crate provides the BFV decryption circuit parameter generation for dummy parameters.
+//! This crate provides the BFV decryption circuit parameter generation for insecure parameters.
 //! The dec_bfv_no_hom_add circuit is a zero-knowledge proof circuit for BFV homomorphic
 //! decryption that enables proving correct decryption of encrypted TRBFV secret key shares
 //! without revealing the BFV secret key.

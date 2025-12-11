@@ -1037,7 +1037,7 @@ fn main() -> anyhow::Result<()> {
                 );
                 println!("  • dec-bfv   - BFV Decryption circuit implementation (supports bfv)");
                 println!(
-                    "  • dec-bfv-no-hom-add   - BFV Decryption circuit (no homomorphic addition) for dummy params (supports bfv)"
+                    "  • dec-bfv-no-hom-add   - BFV Decryption circuit (no homomorphic addition) for insecure params (supports bfv)"
                 );
                 println!(
                     "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
