@@ -729,7 +729,7 @@ mod tests {
             &trbfv_params,
             SampleType::SecretKey,
             None,
-            2,
+            shared::DEFAULT_INSECURE_LAMBDA,
         )
         .unwrap();
 
@@ -777,7 +777,7 @@ mod tests {
             &trbfv_params,
             SampleType::SecretKey,
             None,
-            2,
+            shared::DEFAULT_INSECURE_LAMBDA,
         )
         .unwrap();
 

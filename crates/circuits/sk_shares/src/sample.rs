@@ -167,7 +167,12 @@ mod tests {
 
         let trbfv_params = test_parameters_trbfv();
 
-        let result = generate_sample_sk_shares(&trbfv_params, SampleType::SecretKey, None, 2);
+        let result = generate_sample_sk_shares(
+            &trbfv_params,
+            SampleType::SecretKey,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         assert!(result.is_ok(), "Sample generation should succeed");
 
         let data = result.unwrap();
@@ -181,7 +186,12 @@ mod tests {
 
         let trbfv_params = test_parameters_trbfv();
 
-        let result = generate_sample_sk_shares(&trbfv_params, SampleType::SmudgingNoise, None, 2);
+        let result = generate_sample_sk_shares(
+            &trbfv_params,
+            SampleType::SmudgingNoise,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         assert!(
             result.is_ok(),
             "Sample generation with smudging noise should succeed"

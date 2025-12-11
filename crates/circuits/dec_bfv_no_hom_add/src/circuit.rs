@@ -58,7 +58,7 @@ impl DecBfvNoHomAddCircuit {
 
 impl Default for DecBfvNoHomAddCircuit {
     fn default() -> Self {
-        Self::new(SampleType::SecretKey, 2) // Default to secure lambda
+        Self::new(SampleType::SecretKey, shared::DEFAULT_INSECURE_LAMBDA) // Default to insecure lambda for testing
     }
 }
 
@@ -137,7 +137,8 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = DecBfvNoHomAddCircuit::new(SampleType::SecretKey, 2);
+        let circuit =
+            DecBfvNoHomAddCircuit::new(SampleType::SecretKey, shared::DEFAULT_INSECURE_LAMBDA);
         assert_eq!(circuit.name(), "dec-bfv-no-hom-add");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Bfv);
@@ -145,7 +146,8 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = DecBfvNoHomAddCircuit::new(SampleType::SecretKey, 2);
+        let circuit =
+            DecBfvNoHomAddCircuit::new(SampleType::SecretKey, shared::DEFAULT_INSECURE_LAMBDA);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
@@ -169,7 +171,8 @@ mod tests {
 
     #[test]
     fn test_toml_generation_with_custom_config() {
-        let circuit = DecBfvNoHomAddCircuit::new(SampleType::SecretKey, 2);
+        let circuit =
+            DecBfvNoHomAddCircuit::new(SampleType::SecretKey, shared::DEFAULT_INSECURE_LAMBDA);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 

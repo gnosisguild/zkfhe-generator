@@ -318,7 +318,13 @@ mod tests {
 
         let params = test_parameters_trbfv();
 
-        let decryption_data = generate_sample_decryption_share(&params, &params, None, 2).unwrap();
+        let decryption_data = generate_sample_decryption_share(
+            &params,
+            &params,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        )
+        .unwrap();
 
         // Compute vectors
         let vecs = DecShareTrBfvVectors::compute(

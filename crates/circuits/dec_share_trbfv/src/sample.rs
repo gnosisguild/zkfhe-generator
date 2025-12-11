@@ -242,7 +242,12 @@ mod tests {
     #[test]
     fn generates_sample_decryption_share() {
         let params = test_parameters_trbfv();
-        let result = generate_sample_decryption_share(&params, &params, None, 2);
+        let result = generate_sample_decryption_share(
+            &params,
+            &params,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",

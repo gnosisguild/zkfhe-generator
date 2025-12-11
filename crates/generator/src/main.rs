@@ -291,7 +291,7 @@ fn create_bfv_config(
             n: 1,
             k: 1000,
             z: 1000,
-            lambda: 2,
+            lambda: shared::DEFAULT_INSECURE_LAMBDA as u32,
             b: 20,
             b_chi: 1,
             verbose,
@@ -303,7 +303,7 @@ fn create_bfv_config(
             n: 1000,
             k: 1000,
             z: 1000,
-            lambda: 80,
+            lambda: shared::DEFAULT_SECURE_LAMBDA as u32,
             b: 20,
             b_chi: 1,
             verbose,
@@ -315,7 +315,7 @@ fn create_bfv_config(
             n: 100,
             k: 100,
             z: 100,
-            lambda: 80,
+            lambda: shared::DEFAULT_SECURE_LAMBDA as u32,
             b: 20,
             b_chi: 1,
             verbose,
@@ -379,10 +379,10 @@ fn generate_circuit_params(
     // For non-presets, create param_config early to get lambda (we'll reuse it later)
     let (lambda, param_config_opt) = if let Some(preset_name) = preset {
         // For hardcoded presets, determine lambda based on preset name
-        // INSECURE presets typically use lower lambda, secure presets use 80+
+        // INSECURE presets typically use lower lambda, secure presets use DEFAULT_SECURE_LAMBDA
         let lambda = match preset_name {
-            "INSECURE_SET_512_10_1" => 2, // Insecure presets
-            _ => 80,                      // Default secure for other presets
+            "INSECURE_SET_512_10_1" => shared::DEFAULT_INSECURE_LAMBDA, // Insecure presets
+            _ => shared::DEFAULT_SECURE_LAMBDA, // Default secure for other presets
         };
         (lambda, None)
     } else {
@@ -395,7 +395,11 @@ fn generate_circuit_params(
     println!(
         "🔐 Security parameter (λ): {} ({})",
         lambda,
-        if lambda >= 80 { "secure" } else { "insecure" }
+        if lambda >= shared::DEFAULT_SECURE_LAMBDA {
+            "secure"
+        } else {
+            "insecure"
+        }
     );
 
     // Get circuit implementation with lambda

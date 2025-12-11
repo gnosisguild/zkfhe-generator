@@ -194,7 +194,7 @@ mod tests {
             &trbfv_params,
             SampleType::SecretKey,
             None,
-            2,
+            shared::DEFAULT_INSECURE_LAMBDA,
         );
         assert!(
             result.is_ok(),
@@ -221,7 +221,7 @@ mod tests {
             &trbfv_params,
             SampleType::SecretKey,
             Some(&config),
-            2,
+            shared::DEFAULT_INSECURE_LAMBDA,
         );
         assert!(
             result.is_ok(),

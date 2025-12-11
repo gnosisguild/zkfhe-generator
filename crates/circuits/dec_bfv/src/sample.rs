@@ -147,8 +147,13 @@ mod tests {
         let bfv_params = test_parameters_bfv(); // In practice, different params
 
         // Test with SecretKey sample type
-        let result =
-            generate_sample_decryption(&bfv_params, &trbfv_params, SampleType::SecretKey, None, 2);
+        let result = generate_sample_decryption(
+            &bfv_params,
+            &trbfv_params,
+            SampleType::SecretKey,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         assert!(result.is_ok(), "Sample generation should succeed");
 
         let data = result.unwrap();
@@ -168,7 +173,7 @@ mod tests {
             &trbfv_params,
             SampleType::SmudgingNoise,
             None,
-            2,
+            shared::DEFAULT_INSECURE_LAMBDA,
         );
         assert!(
             result.is_ok(),

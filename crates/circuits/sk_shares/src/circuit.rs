@@ -128,7 +128,11 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = SkSharesCircuit::new(ParameterType::Trbfv, SampleType::SecretKey, 80);
+        let circuit = SkSharesCircuit::new(
+            ParameterType::Trbfv,
+            SampleType::SecretKey,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         assert_eq!(circuit.name(), "sk-shares");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Trbfv);
@@ -136,7 +140,11 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = SkSharesCircuit::new(ParameterType::Trbfv, SampleType::SecretKey, 80);
+        let circuit = SkSharesCircuit::new(
+            ParameterType::Trbfv,
+            SampleType::SecretKey,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         let params = test_parameters_trbfv();
         let temp_dir = TempDir::new().unwrap();
 

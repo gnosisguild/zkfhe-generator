@@ -267,7 +267,11 @@ mod tests {
     #[test]
     fn generates_sample_decryption_share_aggregation() {
         let params = test_parameters_trbfv();
-        let result = generate_sample_decryption_share_aggregation(&params, None, 2);
+        let result = generate_sample_decryption_share_aggregation(
+            &params,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",

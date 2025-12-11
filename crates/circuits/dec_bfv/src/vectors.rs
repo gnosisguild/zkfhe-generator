@@ -860,8 +860,14 @@ mod tests {
     #[test]
     fn test_vector_computation() {
         let params = test_parameters_bfv();
-        let data =
-            generate_sample_decryption(&params, &params, SampleType::SecretKey, None, 2).unwrap();
+        let data = generate_sample_decryption(
+            &params,
+            &params,
+            SampleType::SecretKey,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        )
+        .unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,
@@ -894,8 +900,14 @@ mod tests {
     #[test]
     fn test_validation_with_real_data() {
         let params = test_parameters_bfv();
-        let data =
-            generate_sample_decryption(&params, &params, SampleType::SecretKey, None, 2).unwrap();
+        let data = generate_sample_decryption(
+            &params,
+            &params,
+            SampleType::SecretKey,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        )
+        .unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,

@@ -12,6 +12,7 @@
 //!
 //! This design allows circuits to support multiple parameter types while maintaining
 //! clean separation between parameter generation and circuit logic.
+use crate::constants::DEFAULT_SECURE_LAMBDA;
 use crate::errors::ZkFheResult;
 use fhe::bfv::BfvParameters;
 use std::path::Path;
@@ -131,9 +132,9 @@ impl CiphernodesConfig {
 /// Parameters are considered secure if lambda >= 80, and insecure if lambda < 80.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecurityLevel {
-    /// Secure parameters (lambda >= 80)
+    /// Secure parameters (lambda >= DEFAULT_SECURE_LAMBDA)
     Secure,
-    /// Insecure parameters (lambda < 80)
+    /// Insecure parameters (lambda < DEFAULT_SECURE_LAMBDA)
     Insecure,
 }
 
@@ -146,9 +147,9 @@ impl SecurityLevel {
     ///
     /// # Returns
     ///
-    /// Returns `SecurityLevel::Secure` if lambda >= 80, otherwise `SecurityLevel::Insecure`
+    /// Returns `SecurityLevel::Secure` if lambda >= DEFAULT_SECURE_LAMBDA, otherwise `SecurityLevel::Insecure`
     pub fn from_lambda(lambda: usize) -> Self {
-        if lambda >= 80 {
+        if lambda >= DEFAULT_SECURE_LAMBDA {
             SecurityLevel::Secure
         } else {
             SecurityLevel::Insecure
@@ -199,12 +200,12 @@ pub trait Circuit {
 
     /// Get the security level of this circuit's parameters
     ///
-    /// This method determines whether the parameter set is secure (lambda >= 80)
-    /// or insecure (lambda < 80) based on the security parameter.
+    /// This method determines whether the parameter set is secure (lambda >= DEFAULT_SECURE_LAMBDA)
+    /// or insecure (lambda < DEFAULT_SECURE_LAMBDA) based on the security parameter.
     ///
     /// # Returns
     ///
-    /// Returns `SecurityLevel::Secure` if lambda >= 80, otherwise `SecurityLevel::Insecure`
+    /// Returns `SecurityLevel::Secure` if lambda >= DEFAULT_SECURE_LAMBDA, otherwise `SecurityLevel::Insecure`
     fn security_level(&self) -> SecurityLevel {
         SecurityLevel::from_lambda(self.security_parameter())
     }

@@ -52,7 +52,7 @@ impl DecBfvCircuit {
 
 impl Default for DecBfvCircuit {
     fn default() -> Self {
-        Self::new(SampleType::SecretKey, 80) // Default to secure lambda
+        Self::new(SampleType::SecretKey, shared::DEFAULT_SECURE_LAMBDA) // Default to secure lambda
     }
 }
 
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = DecBfvCircuit::new(SampleType::SecretKey, 80);
+        let circuit = DecBfvCircuit::new(SampleType::SecretKey, shared::DEFAULT_INSECURE_LAMBDA);
         assert_eq!(circuit.name(), "dec-bfv");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Bfv);
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = DecBfvCircuit::new(SampleType::SecretKey, 80);
+        let circuit = DecBfvCircuit::new(SampleType::SecretKey, shared::DEFAULT_INSECURE_LAMBDA);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
@@ -164,7 +164,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "Failed to generate smudging error")]
     fn test_toml_generation_smudging_noise() {
-        let circuit = DecBfvCircuit::new(SampleType::SmudgingNoise, 80);
+        let circuit =
+            DecBfvCircuit::new(SampleType::SmudgingNoise, shared::DEFAULT_INSECURE_LAMBDA);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
