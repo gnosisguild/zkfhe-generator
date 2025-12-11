@@ -14,3 +14,15 @@ pub const ZKP_MODULUS: &str =
 pub fn get_zkp_modulus() -> BigInt {
     BigInt::from_str(ZKP_MODULUS).expect("Invalid ZKP modulus")
 }
+
+/// Default secure security parameter (λ)
+///
+/// Parameters with lambda >= 80 are considered secure.
+/// This is the recommended value for production use.
+pub const DEFAULT_SECURE_LAMBDA: usize = 80;
+
+/// Default insecure security parameter (λ) for testing/development
+///
+/// Parameters with lambda < 80 are considered insecure.
+/// This value is used for testing and development purposes only.
+pub const DEFAULT_INSECURE_LAMBDA: usize = 2;

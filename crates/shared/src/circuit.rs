@@ -12,6 +12,7 @@
 //!
 //! This design allows circuits to support multiple parameter types while maintaining
 //! clean separation between parameter generation and circuit logic.
+use crate::constants::DEFAULT_SECURE_LAMBDA;
 use crate::errors::ZkFheResult;
 use fhe::bfv::BfvParameters;
 use std::path::Path;
@@ -120,48 +121,53 @@ impl CiphernodesConfig {
     pub fn defaults() -> Self {
         Self {
             num_parties: 5,
-            num_honest_parties: 3,
-            threshold: 1,
+            num_honest_parties: 5,
+            threshold: 2,
         }
     }
 }
 
-/// Base configuration for all circuit implementations
+/// Security level classification based on lambda (security parameter)
 ///
-/// This struct holds the common configuration that all circuits share.
-/// It can be embedded in circuit structs to avoid duplication.
-#[derive(Debug, Clone)]
-pub struct CircuitBase {
-    /// The parameter type this circuit is configured with
-    pub parameter_type: ParameterType,
+/// Parameters are considered secure if lambda >= 80, and insecure if lambda < 80.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityLevel {
+    /// Secure parameters (lambda >= DEFAULT_SECURE_LAMBDA)
+    Secure,
+    /// Insecure parameters (lambda < DEFAULT_SECURE_LAMBDA)
+    Insecure,
 }
 
-impl CircuitBase {
-    /// Create a new CircuitBase with the specified parameter type
-    pub fn new(parameter_type: ParameterType) -> Self {
-        CircuitBase { parameter_type }
+impl SecurityLevel {
+    /// Determine security level from lambda value
+    ///
+    /// # Arguments
+    ///
+    /// * `lambda` - The security parameter (λ)
+    ///
+    /// # Returns
+    ///
+    /// Returns `SecurityLevel::Secure` if lambda >= DEFAULT_SECURE_LAMBDA, otherwise `SecurityLevel::Insecure`
+    pub fn from_lambda(lambda: usize) -> Self {
+        if lambda >= DEFAULT_SECURE_LAMBDA {
+            SecurityLevel::Secure
+        } else {
+            SecurityLevel::Insecure
+        }
     }
-}
 
-/// Macro to generate common circuit struct and constructor
-///
-/// This macro generates a struct with a `parameter_type` field and a `new` constructor.
-/// Usage: shared::circuit::circuit_struct!(MyCircuit);
-#[macro_export]
-macro_rules! circuit_struct {
-    ($struct_name:ident) => {
-        pub struct $struct_name {
-            /// The parameter type this circuit is configured with
-            pub parameter_type: ParameterType,
-        }
+    /// Check if the security level is secure
+    pub fn is_secure(&self) -> bool {
+        matches!(self, SecurityLevel::Secure)
+    }
 
-        impl $struct_name {
-            /// Create a new $struct_name with the specified parameter type
-            pub fn new(parameter_type: ParameterType) -> Self {
-                $struct_name { parameter_type }
-            }
+    /// Get the string representation
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SecurityLevel::Secure => "secure",
+            SecurityLevel::Insecure => "insecure",
         }
-    };
+    }
 }
 
 /// Circuit trait that all circuit implementations must implement
@@ -181,6 +187,28 @@ pub trait Circuit {
     /// This should provide a brief description of what the circuit does
     /// and its intended use case.
     fn description(&self) -> &'static str;
+
+    /// Get the security parameter this circuit is configured with
+    ///
+    /// This method returns the security parameter (λ) that this
+    /// circuit instance is configured to use. This allows circuits to
+    /// discriminate behavior based on the security parameter.
+    ///
+    /// The lambda value is explicitly stored in each circuit instance and
+    /// can be used for fhe.rs function calls that require the security parameter.
+    fn security_parameter(&self) -> usize;
+
+    /// Get the security level of this circuit's parameters
+    ///
+    /// This method determines whether the parameter set is secure (lambda >= DEFAULT_SECURE_LAMBDA)
+    /// or insecure (lambda < DEFAULT_SECURE_LAMBDA) based on the security parameter.
+    ///
+    /// # Returns
+    ///
+    /// Returns `SecurityLevel::Secure` if lambda >= DEFAULT_SECURE_LAMBDA, otherwise `SecurityLevel::Insecure`
+    fn security_level(&self) -> SecurityLevel {
+        SecurityLevel::from_lambda(self.security_parameter())
+    }
 
     /// Get the parameter type this circuit is configured with
     ///
@@ -207,4 +235,40 @@ pub trait Circuit {
         output_dir: &Path,
         ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> ZkFheResult<()>;
+}
+
+/// Macro to generate a circuit struct with common fields
+///
+/// This macro generates a struct with `parameter_type` and `security_parameter` (lambda) fields.
+/// Circuits can extend this struct by adding additional fields after the macro call.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// shared::circuit_struct!(MyCircuit);
+///
+/// impl MyCircuit {
+///     pub fn new(parameter_type: ParameterType, lambda: usize) -> Self {
+///         Self {
+///             parameter_type,
+///             security_parameter: lambda,
+///         }
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! circuit_struct {
+    ($name:ident) => {
+        /// Circuit struct with common configuration fields
+        pub struct $name {
+            /// The parameter type this circuit is configured with
+            pub parameter_type: ParameterType,
+            /// The security parameter (λ) this circuit is configured with
+            ///
+            /// This value is explicitly stored and can be used for fhe.rs function calls
+            /// that require the security parameter. Parameters are considered secure
+            /// if lambda >= 80, and insecure if lambda < 80.
+            pub security_parameter: usize,
+        }
+    };
 }

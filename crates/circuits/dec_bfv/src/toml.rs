@@ -57,6 +57,9 @@ impl TomlGenerator for DecBfvTomlGenerator {
         let crypto_json = serde_json::json!({
             "qis": self.crypto_params.moduli.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
             "plaintext_modulus": self.crypto_params.plaintext_modulus.to_string(),
+            "q_inverse_mod_t": self.crypto_params.q_inverse_mod_t.to_string(),
+            "q_mod_t": self.crypto_params.q_mod_t.to_string(),
+            "t_inv_mod_q": self.crypto_params.t_inv_mod_q.to_string(),
         });
         params_json.insert("crypto".to_string(), crypto_json);
 
@@ -191,12 +194,12 @@ mod tests {
     use super::*;
     use crate::bounds::DecBfvBounds;
     use crate::vectors::DecBfvVectors;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
 
         let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
         let vectors = DecBfvVectors::new(3, params.moduli().len(), params.degree());
@@ -232,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_toml_string_format() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
         let vectors = DecBfvVectors::new(3, params.moduli().len(), params.degree());
 

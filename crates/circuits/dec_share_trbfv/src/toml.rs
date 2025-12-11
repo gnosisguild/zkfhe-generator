@@ -147,14 +147,14 @@ mod tests {
     use crate::bounds::DecShareTrBfvBounds;
     use crate::vectors::DecShareTrBfvVectors;
 
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_trbfv;
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters();
+        let params = test_parameters_trbfv();
         let (crypto_params, bounds) = DecShareTrBfvBounds::compute(&params, 0).unwrap();
-        let vectors = DecShareTrBfvVectors::new(1, 2048);
+        let vectors = DecShareTrBfvVectors::new(1, 512);
 
         let generator = DecShareTrBfvTomlGenerator::new(crypto_params, bounds, vectors);
 

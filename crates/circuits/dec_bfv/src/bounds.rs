@@ -5,8 +5,9 @@
 
 use fhe::bfv::{BfvParameters, SecretKey};
 use num_bigint::{BigInt, BigUint};
+use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
-use shared::errors::ZkFheResult;
+use shared::errors::{ZkFheError, ZkFheResult};
 use std::sync::Arc;
 
 /// Cryptographic parameters for BFV decryption circuit
@@ -14,6 +15,9 @@ use std::sync::Arc;
 pub struct DecBfvCryptographicParameters {
     pub moduli: Vec<u64>,
     pub plaintext_modulus: u64,
+    pub q_inverse_mod_t: u64,
+    pub q_mod_t: BigUint,
+    pub t_inv_mod_q: BigUint,
 }
 
 /// Bounds for BFV decryption circuit polynomial coefficients
@@ -83,9 +87,64 @@ impl DecBfvBounds {
         // We use Q as the bound to be safe
         let u_global_bound: BigInt = q.clone();
 
+        // Compute Q^{-1} mod t using extended Euclidean algorithm
+        let q_inverse_mod_t = {
+            let gcd_result = q.extended_gcd(&t);
+            if gcd_result.gcd != BigInt::from(1) {
+                return Err(ZkFheError::Bfv {
+                    message: format!("Q and t are not coprime, gcd = {}", gcd_result.gcd),
+                });
+            }
+            // Ensure the inverse is positive
+            let inv = gcd_result.x % &t;
+            let inv_positive = if inv < BigInt::from(0) { inv + &t } else { inv };
+            inv_positive.to_u64().ok_or_else(|| ZkFheError::Bfv {
+                message: format!("q_inverse_mod_t too large to fit in u64: {}", inv_positive),
+            })?
+        };
+
+        // Compute q_mod_t: Q mod t
+        let q_mod_t = {
+            let q_biguint = q.to_biguint().ok_or_else(|| ZkFheError::Bfv {
+                message: "Q is negative, cannot convert to BigUint".to_string(),
+            })?;
+            let t_biguint = t.to_biguint().ok_or_else(|| ZkFheError::Bfv {
+                message: "t is negative, cannot convert to BigUint".to_string(),
+            })?;
+            &q_biguint % &t_biguint
+        };
+
+        // Compute t_inv_mod_q: t^(-1) mod Q
+        let t_inv_mod_q = {
+            let gcd_result = q.extended_gcd(&t);
+            if gcd_result.gcd != BigInt::from(1) {
+                return Err(ZkFheError::Bfv {
+                    message: format!(
+                        "Q and t are not coprime (gcd = {}), cannot compute modular inverse",
+                        gcd_result.gcd
+                    ),
+                });
+            }
+            // y is t^(-1) mod Q (from the extended GCD: Q*x + t*y = gcd)
+            // But may be negative, so normalize to [0, Q)
+            let t_inverse_bigint = if gcd_result.y < BigInt::from(0) {
+                gcd_result.y + &q
+            } else {
+                gcd_result.y
+            };
+            t_inverse_bigint
+                .to_biguint()
+                .ok_or_else(|| ZkFheError::Bfv {
+                    message: "Failed to convert t_inv_mod_q to BigUint".to_string(),
+                })?
+        };
+
         let crypto_params = DecBfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
             plaintext_modulus: params.plaintext(),
+            q_inverse_mod_t,
+            q_mod_t,
+            t_inv_mod_q,
         };
 
         let bounds = DecBfvBounds {
@@ -116,6 +175,9 @@ impl DecBfvCryptographicParameters {
         serde_json::json!({
             "moduli": self.moduli,
             "plaintext_modulus": self.plaintext_modulus,
+            "q_inverse_mod_t": self.q_inverse_mod_t,
+            "q_mod_t": self.q_mod_t.to_string(),
+            "t_inv_mod_q": self.t_inv_mod_q.to_string(),
         })
     }
 }
@@ -137,11 +199,11 @@ impl DecBfvBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     #[test]
     fn test_bounds_computation() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
         let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
 
         assert_eq!(crypto_params.moduli.len(), params.moduli().len());

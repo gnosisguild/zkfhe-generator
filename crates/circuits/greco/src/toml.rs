@@ -49,6 +49,7 @@ struct ProverTomlFormat {
     e1: serde_json::Value,
     u: serde_json::Value,
     k1: serde_json::Value,
+    pk_commitment: String,
 }
 
 impl TomlGenerator for GrecoTomlGenerator {
@@ -194,6 +195,7 @@ impl TomlGenerator for GrecoTomlGenerator {
             k1: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.k1)
             }),
+            pk_commitment: self.vectors.pk_commitment.to_string(),
         };
 
         Ok(toml::to_string(&toml_data)?)
@@ -205,16 +207,16 @@ mod tests {
     use super::*;
     use crate::bounds::GrecoBounds;
     use crate::vectors::GrecoVectors;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_bfv;
 
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters();
+        let params = test_parameters_bfv();
 
         let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
-        let vectors = GrecoVectors::new(1, 2048);
+        let vectors = GrecoVectors::new(1, 512);
 
         let generator = GrecoTomlGenerator::new(crypto_params, bounds, vectors);
 
@@ -248,6 +250,7 @@ mod tests {
         assert!(content.contains("e0"));
         assert!(content.contains("e1"));
         assert!(content.contains("k1"));
+        assert!(content.contains("pk_commitment"));
         let toml_string = generator.to_toml_string().unwrap();
 
         // Verify the TOML string contains the expected sections
@@ -267,5 +270,6 @@ mod tests {
         assert!(toml_string.contains("[k1]"));
         assert!(toml_string.contains("[params.crypto]"));
         assert!(toml_string.contains("[params.bounds]"));
+        assert!(toml_string.contains("pk_commitment"));
     }
 }

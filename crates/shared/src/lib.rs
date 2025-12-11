@@ -15,13 +15,14 @@
 pub mod circuit;
 pub mod constants;
 pub mod errors;
+pub mod packing;
 pub mod template;
 pub mod toml;
 pub mod utils;
 
 // Re-export commonly used items for convenience
-pub use circuit::{CiphernodesConfig, Circuit, ParameterType, SampleType};
-pub use constants::{ZKP_MODULUS, get_zkp_modulus};
+pub use circuit::{CiphernodesConfig, Circuit, ParameterType, SampleType, SecurityLevel};
+pub use constants::{DEFAULT_INSECURE_LAMBDA, DEFAULT_SECURE_LAMBDA, ZKP_MODULUS, get_zkp_modulus};
 pub use errors::{BfvError, CircuitError, TomlError, ValidationError, ZkFheError, ZkFheResult};
 pub use template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_width};
 pub use toml::TomlGenerator;

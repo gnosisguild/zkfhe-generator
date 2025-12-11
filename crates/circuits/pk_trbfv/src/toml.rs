@@ -168,16 +168,16 @@ mod tests {
     use super::*;
     use crate::bounds::PkTrBfvBounds;
     use crate::vectors::PkTrBfvVectors;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_trbfv;
 
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters();
+        let params = test_parameters_trbfv();
 
         let (crypto_params, bounds) = PkTrBfvBounds::compute(&params, 0).unwrap();
-        let vectors = PkTrBfvVectors::new(1, 2048);
+        let vectors = PkTrBfvVectors::new(1, 512);
 
         let generator = PkTrBfvTomlGenerator::new(crypto_params, bounds, vectors);
 

@@ -10,6 +10,16 @@ use std::path::Path;
 use std::sync::Arc;
 shared::circuit_struct!(DecShareAggTrBfvCircuit);
 
+impl DecShareAggTrBfvCircuit {
+    /// Create a new DecShareAggTrBfvCircuit with the specified parameter type and security parameter
+    pub fn new(parameter_type: ParameterType, lambda: usize) -> Self {
+        Self {
+            parameter_type,
+            security_parameter: lambda,
+        }
+    }
+}
+
 impl Circuit for DecShareAggTrBfvCircuit {
     fn name(&self) -> &'static str {
         "dec-share-agg-trbfv"
@@ -23,6 +33,10 @@ impl Circuit for DecShareAggTrBfvCircuit {
         self.parameter_type
     }
 
+    fn security_parameter(&self) -> usize {
+        self.security_parameter
+    }
+
     fn generate_toml(
         &self,
         trbfv_params: &Arc<BfvParameters>,
@@ -31,11 +45,14 @@ impl Circuit for DecShareAggTrBfvCircuit {
         ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
         // Generate sample decryption share aggregation data
-        let decryption_data =
-            generate_sample_decryption_share_aggregation(trbfv_params, ciphernodes_config)
-                .map_err(|e| shared::errors::ZkFheError::Bfv {
-                    message: e.to_string(),
-                })?;
+        let decryption_data = generate_sample_decryption_share_aggregation(
+            trbfv_params,
+            ciphernodes_config,
+            self.security_parameter,
+        )
+        .map_err(|e| shared::errors::ZkFheError::Bfv {
+            message: e.to_string(),
+        })?;
 
         let (crypto_params, bounds) =
             DecShareAggTrBfvBounds::compute(trbfv_params, 0).map_err(|e| {
@@ -55,9 +72,20 @@ impl Circuit for DecShareAggTrBfvCircuit {
 
         let vectors_standard = vectors.standard_form();
 
+        // Trim vectors based on non-zero message coefficients
+
+        let nonzero_count = vectors_standard.count_nonzero_message_coefficients();
+
+        let vectors_trimmed = vectors_standard.trim_to_nonzero(nonzero_count);
+
+        println!(
+            "📊 Trimming vectors to {} non-zero message coefficients",
+            nonzero_count
+        );
+
         // Create TOML generator and generate file
         let toml_generator =
-            DecShareAggTrBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+            DecShareAggTrBfvTomlGenerator::new(crypto_params, bounds, vectors_trimmed);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())

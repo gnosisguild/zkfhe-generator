@@ -128,6 +128,7 @@ impl MainTemplateGenerator<GrecoTemplateParams> for GrecoMainTemplate {
 
 fn main(
     params: Params<{}, {}>,
+    pk_commitment: pub Field,
     pk0is: [Polynomial<{}>; {}],
     pk1is: [Polynomial<{}>; {}],
     ct0is: [Polynomial<{}>; {}],

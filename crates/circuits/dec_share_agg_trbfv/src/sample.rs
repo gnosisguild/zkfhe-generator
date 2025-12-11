@@ -5,7 +5,7 @@ use fhe_math::rq::{Poly, Representation};
 use fhe_traits::FheDecoder;
 use fhe_traits::{FheEncoder, FheEncrypter};
 use ndarray::ArrayView;
-use rand::{distributions::Uniform, prelude::Distribution, rngs::OsRng, thread_rng};
+use rand::{rngs::OsRng, thread_rng};
 use shared::circuit::CiphernodesConfig;
 use std::sync::Arc;
 
@@ -47,6 +47,7 @@ pub struct DecryptionShareAggregationData {
 pub fn generate_sample_decryption_share_aggregation(
     trbfv_params: &Arc<BfvParameters>,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    lambda: usize,
 ) -> Result<DecryptionShareAggregationData, Box<dyn std::error::Error>> {
     let mut thread_rng = thread_rng();
 
@@ -112,7 +113,7 @@ pub fn generate_sample_decryption_share_aggregation(
             );
 
             let esi_coeffs = temp_trbfv
-                .generate_smudging_error(num_ciphertexts, &mut rng)
+                .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
                 .map_err(|e| format!("Failed to generate smudging error: {:?}", e))
                 .unwrap();
             let esi_poly = share_manager
@@ -176,17 +177,32 @@ pub fn generate_sample_decryption_share_aggregation(
         .map_err(|e| format!("Failed to aggregate public key: {:?}", e))?;
 
     // Encrypt a sample message (e.g., 1) to create a ciphertext
-    let dist = Uniform::new_inclusive(0, 1);
-    let numbers: Vec<u64> = dist
-        .sample_iter(&mut thread_rng.clone())
-        .take(num_ciphertexts)
-        .collect();
+    // let dist = Uniform::new_inclusive(0, 1);
+    // let numbers: Vec<u64> = dist
+    //     .sample_iter(&mut thread_rng.clone())
+    //     .take(num_ciphertexts)
+    //     .collect();
 
-    let numbers_encrypted: Vec<Ciphertext> = numbers
+    // let numbers_encrypted: Vec<Ciphertext> = numbers
+    //     .iter()
+    //     .map(|&number| {
+    //         let mut rng = thread_rng.clone();
+    //         let pt = Plaintext::try_encode(&[number], Encoding::poly(), trbfv_params).unwrap();
+    //         public_key.try_encrypt(&pt, &mut rng).unwrap()
+    //     })
+    //     .collect();
+
+    let messages: Vec<Vec<u64>> = vec![
+        vec![2, 1, 5, 0, 1], // msg1
+        vec![3, 0, 3, 2, 3], // msg2
+        vec![4, 6, 1, 0, 1], // msg3
+    ];
+
+    let numbers_encrypted: Vec<Ciphertext> = messages
         .iter()
-        .map(|&number| {
+        .map(|msg| {
             let mut rng = thread_rng.clone();
-            let pt = Plaintext::try_encode(&[number], Encoding::poly(), trbfv_params).unwrap();
+            let pt = Plaintext::try_encode(msg, Encoding::poly(), trbfv_params).unwrap();
             public_key.try_encrypt(&pt, &mut rng).unwrap()
         })
         .collect();
@@ -246,21 +262,16 @@ pub fn generate_sample_decryption_share_aggregation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fhe::bfv::BfvParametersBuilder;
-    use num_bigint::BigUint;
+    use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn generates_sample_decryption_share_aggregation() {
-        let params = BfvParametersBuilder::new()
-            .set_degree(8192)
-            .set_plaintext_modulus(16384)
-            .set_moduli(&[0x1ffffffea0001, 0x1ffffffe88001, 0x1ffffffe48001])
-            .set_variance(10)
-            .set_error1_variance(BigUint::from(10u32))
-            .build_arc()
-            .unwrap();
-
-        let result = generate_sample_decryption_share_aggregation(&params, None);
+        let params = test_parameters_trbfv();
+        let result = generate_sample_decryption_share_aggregation(
+            &params,
+            None,
+            shared::DEFAULT_INSECURE_LAMBDA,
+        );
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",
@@ -270,6 +281,6 @@ mod tests {
         let data = result.unwrap();
         assert_eq!(data.d_share_polys.len(), data.threshold + 1);
         assert_eq!(data.party_ids.len(), data.threshold + 1);
-        assert_eq!(data.party_ids, vec![1, 2]);
+        assert_eq!(data.party_ids, vec![1, 2, 3]);
     }
 }

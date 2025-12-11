@@ -97,15 +97,15 @@ impl PkTrBfvBounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::utils::test_parameters;
+    use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn test_bounds_computation() {
-        let params = test_parameters();
+        let params = test_parameters_trbfv();
         let (crypto_params, bounds) = PkTrBfvBounds::compute(&params, 0).unwrap();
 
-        assert_eq!(crypto_params.moduli.len(), 3);
-        assert_eq!(bounds.r1_bounds.len(), 3);
-        assert_eq!(bounds.r2_bounds.len(), 3);
+        assert_eq!(crypto_params.moduli.len(), 2);
+        assert_eq!(bounds.r1_bounds.len(), 2);
+        assert_eq!(bounds.r2_bounds.len(), 2);
     }
 }
