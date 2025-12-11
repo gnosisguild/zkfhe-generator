@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_standard_form() {
-        let vecs = PkTrBfvVectors::new(1, 2048);
+        let vecs = PkTrBfvVectors::new(1, 512);
         let std_form = vecs.standard_form();
 
         // Check that all vectors are properly reduced

@@ -50,6 +50,7 @@ pub fn generate_sample_encryption(
     parameter_type: ParameterType,
     sample_type: SampleType,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    lambda: usize,
 ) -> Result<EncryptionData, Box<dyn std::error::Error>> {
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -94,7 +95,7 @@ pub fn generate_sample_encryption(
         let share_row = match sample_type {
             SampleType::SmudgingNoise => {
                 let esi_coeffs = temp_trbfv
-                    .generate_smudging_error(num_ciphertexts, &mut rng)
+                    .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
                     .unwrap();
                 let esi_poly = share_manager.bigints_to_poly(&esi_coeffs).unwrap();
                 let esi_sss = share_manager

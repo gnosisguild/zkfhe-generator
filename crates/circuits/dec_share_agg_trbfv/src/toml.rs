@@ -126,7 +126,7 @@ mod tests {
         let (crypto_params, bounds) = DecShareAggTrBfvBounds::compute(&params, 0).unwrap();
 
         // Create empty vectors for testing
-        let vectors = DecShareAggTrBfvVectors::new(1, 2048, 2);
+        let vectors = DecShareAggTrBfvVectors::new(1, 512, 2);
 
         let generator = DecShareAggTrBfvTomlGenerator::new(crypto_params, bounds, vectors);
 

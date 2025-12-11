@@ -56,6 +56,7 @@ pub fn generate_sample_sk_shares(
     trbfv_params: &Arc<BfvParameters>,
     sample_type: SampleType,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    lambda: usize,
 ) -> Result<SkSharesData, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
 
@@ -78,7 +79,7 @@ pub fn generate_sample_sk_shares(
             // Generate smudging error and split into shares
             let num_ciphertexts = 10;
             let esi_coeffs = trbfv
-                .generate_smudging_error(num_ciphertexts, &mut rng)
+                .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
                 .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
             let esi_poly = share_manager
                 .bigints_to_poly(&esi_coeffs)
@@ -166,7 +167,7 @@ mod tests {
 
         let trbfv_params = test_parameters_trbfv();
 
-        let result = generate_sample_sk_shares(&trbfv_params, SampleType::SecretKey, None);
+        let result = generate_sample_sk_shares(&trbfv_params, SampleType::SecretKey, None, 2);
         assert!(result.is_ok(), "Sample generation should succeed");
 
         let data = result.unwrap();
@@ -180,7 +181,7 @@ mod tests {
 
         let trbfv_params = test_parameters_trbfv();
 
-        let result = generate_sample_sk_shares(&trbfv_params, SampleType::SmudgingNoise, None);
+        let result = generate_sample_sk_shares(&trbfv_params, SampleType::SmudgingNoise, None, 2);
         assert!(
             result.is_ok(),
             "Sample generation with smudging noise should succeed"

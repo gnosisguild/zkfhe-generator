@@ -126,7 +126,7 @@ mod tests {
         let params = test_parameters_trbfv();
 
         let (crypto_params, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
-        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None).unwrap();
+        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None, 2).unwrap();
         let vectors = SkSharesVectors::compute(&data, &params).unwrap();
         let vectors_standard = vectors.standard_form();
 
@@ -157,7 +157,7 @@ mod tests {
         let params = test_parameters_trbfv();
 
         let (crypto_params, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
-        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None).unwrap();
+        let data = generate_sample_sk_shares(&params, SampleType::SecretKey, None, 2).unwrap();
         let vectors = SkSharesVectors::compute(&data, &params).unwrap();
         let vectors_standard = vectors.standard_form();
 

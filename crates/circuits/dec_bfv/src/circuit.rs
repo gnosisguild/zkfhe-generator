@@ -27,22 +27,32 @@ pub struct DecBfvCircuit {
     /// This determines whether to generate secret key shares (SecretKey) or
     /// smudging error shares (SmudgingNoise) when creating sample decryption data.
     pub sample_type: SampleType,
+    /// The security parameter (λ) this circuit is configured with
+    ///
+    /// This value is explicitly stored and can be used for fhe.rs function calls
+    /// that require the security parameter. Parameters are considered secure
+    /// if lambda >= 80, and insecure if lambda < 80.
+    pub security_parameter: usize,
 }
 
 impl DecBfvCircuit {
-    /// Create a new DecBfvCircuit instance with the specified sample type
+    /// Create a new DecBfvCircuit instance with the specified sample type and security parameter
     ///
     /// # Arguments
     ///
     /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
-    pub fn new(sample_type: SampleType) -> Self {
-        DecBfvCircuit { sample_type }
+    /// * `lambda` - The security parameter (λ)
+    pub fn new(sample_type: SampleType, lambda: usize) -> Self {
+        DecBfvCircuit {
+            sample_type,
+            security_parameter: lambda,
+        }
     }
 }
 
 impl Default for DecBfvCircuit {
     fn default() -> Self {
-        Self::new(SampleType::SecretKey)
+        Self::new(SampleType::SecretKey, 80) // Default to secure lambda
     }
 }
 
@@ -60,6 +70,10 @@ impl Circuit for DecBfvCircuit {
     /// Returns the parameter type this circuit uses
     fn parameter_type(&self) -> ParameterType {
         ParameterType::Bfv // Uses BFV parameters (not trBFV)
+    }
+
+    fn security_parameter(&self) -> usize {
+        self.security_parameter
     }
 
     /// Generate TOML file with sample data and parameters
@@ -82,6 +96,7 @@ impl Circuit for DecBfvCircuit {
             trbfv_params,
             self.sample_type,
             ciphernodes_config,
+            self.security_parameter,
         )
         .map_err(|e| shared::errors::ZkFheError::Bfv {
             message: e.to_string(),
@@ -115,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = DecBfvCircuit::new(SampleType::SecretKey);
+        let circuit = DecBfvCircuit::new(SampleType::SecretKey, 80);
         assert_eq!(circuit.name(), "dec-bfv");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Bfv);
@@ -123,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = DecBfvCircuit::new(SampleType::SecretKey);
+        let circuit = DecBfvCircuit::new(SampleType::SecretKey, 80);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
@@ -149,7 +164,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Failed to generate smudging error")]
     fn test_toml_generation_smudging_noise() {
-        let circuit = DecBfvCircuit::new(SampleType::SmudgingNoise);
+        let circuit = DecBfvCircuit::new(SampleType::SmudgingNoise, 80);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 

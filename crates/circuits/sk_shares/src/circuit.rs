@@ -29,19 +29,27 @@ pub struct SkSharesCircuit {
     /// This determines whether to generate sk_sss (SecretKey) or
     /// es_sss (SmudgingNoise) shares when creating sample data.
     pub sample_type: SampleType,
+    /// The security parameter (λ) this circuit is configured with
+    ///
+    /// This value is explicitly stored and can be used for fhe.rs function calls
+    /// that require the security parameter. Parameters are considered secure
+    /// if lambda >= 80, and insecure if lambda < 80.
+    pub security_parameter: usize,
 }
 
 impl SkSharesCircuit {
-    /// Create a new SkSharesCircuit instance with the specified parameter type and sample type
+    /// Create a new SkSharesCircuit instance with the specified parameter type, sample type, and security parameter
     ///
     /// # Arguments
     ///
     /// * `parameter_type` - The parameter type (Trbfv or Bfv)
     /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
-    pub fn new(parameter_type: ParameterType, sample_type: SampleType) -> Self {
+    /// * `lambda` - The security parameter (λ)
+    pub fn new(parameter_type: ParameterType, sample_type: SampleType, lambda: usize) -> Self {
         SkSharesCircuit {
             parameter_type,
             sample_type,
+            security_parameter: lambda,
         }
     }
 }
@@ -62,6 +70,10 @@ impl Circuit for SkSharesCircuit {
         self.parameter_type
     }
 
+    fn security_parameter(&self) -> usize {
+        self.security_parameter
+    }
+
     /// Generate TOML file with sample data and parameters
     fn generate_toml(
         &self,
@@ -77,11 +89,15 @@ impl Circuit for SkSharesCircuit {
         let (crypto_params, bounds) = SkSharesBounds::compute(selected_params, 0)?;
 
         // Generate sample secret key shares data
-        let shares_data =
-            generate_sample_sk_shares(selected_params, self.sample_type, ciphernodes_config)
-                .map_err(|e| shared::errors::ZkFheError::Bfv {
-                    message: e.to_string(),
-                })?;
+        let shares_data = generate_sample_sk_shares(
+            selected_params,
+            self.sample_type,
+            ciphernodes_config,
+            self.security_parameter,
+        )
+        .map_err(|e| shared::errors::ZkFheError::Bfv {
+            message: e.to_string(),
+        })?;
 
         // Compute witness vectors from the shares data
         let vectors = SkSharesVectors::compute(&shares_data, selected_params)?;
@@ -112,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = SkSharesCircuit::new(ParameterType::Trbfv, SampleType::SecretKey);
+        let circuit = SkSharesCircuit::new(ParameterType::Trbfv, SampleType::SecretKey, 80);
         assert_eq!(circuit.name(), "sk-shares");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Trbfv);
@@ -120,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = SkSharesCircuit::new(ParameterType::Trbfv, SampleType::SecretKey);
+        let circuit = SkSharesCircuit::new(ParameterType::Trbfv, SampleType::SecretKey, 80);
         let params = test_parameters_trbfv();
         let temp_dir = TempDir::new().unwrap();
 

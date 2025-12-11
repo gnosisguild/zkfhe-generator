@@ -11,6 +11,16 @@ use std::sync::Arc;
 
 shared::circuit_struct!(PkTrBfvCircuit);
 
+impl PkTrBfvCircuit {
+    /// Create a new PkTrBfvCircuit with the specified parameter type and security parameter
+    pub fn new(parameter_type: ParameterType, lambda: usize) -> Self {
+        Self {
+            parameter_type,
+            security_parameter: lambda,
+        }
+    }
+}
+
 impl Circuit for PkTrBfvCircuit {
     fn name(&self) -> &'static str {
         "pk-trbfv"
@@ -22,6 +32,10 @@ impl Circuit for PkTrBfvCircuit {
 
     fn parameter_type(&self) -> ParameterType {
         self.parameter_type
+    }
+
+    fn security_parameter(&self) -> usize {
+        self.security_parameter
     }
 
     fn generate_toml(

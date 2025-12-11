@@ -716,6 +716,7 @@ fn reduce_coefficients_4d(
 mod tests {
     use super::*;
     use crate::sample::generate_sample_decryption_no_hom_add;
+    use shared::circuit::SampleType;
     use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
 
     #[test]
@@ -723,7 +724,14 @@ mod tests {
         let bfv_params = test_parameters_bfv();
         let trbfv_params = test_parameters_trbfv();
 
-        let data = generate_sample_decryption_no_hom_add(&bfv_params, &trbfv_params, None).unwrap();
+        let data = generate_sample_decryption_no_hom_add(
+            &bfv_params,
+            &trbfv_params,
+            SampleType::SecretKey,
+            None,
+            2,
+        )
+        .unwrap();
 
         let vectors = DecBfvNoHomAddVectors::compute(
             &data.honest_ciphertexts,
@@ -764,7 +772,14 @@ mod tests {
         let bfv_params = test_parameters_bfv();
         let trbfv_params = test_parameters_trbfv();
 
-        let data = generate_sample_decryption_no_hom_add(&bfv_params, &trbfv_params, None).unwrap();
+        let data = generate_sample_decryption_no_hom_add(
+            &bfv_params,
+            &trbfv_params,
+            SampleType::SecretKey,
+            None,
+            2,
+        )
+        .unwrap();
 
         let vectors = DecBfvNoHomAddVectors::compute(
             &data.honest_ciphertexts,

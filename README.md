@@ -62,7 +62,6 @@ cargo run -p zkfhe-generator -- generate --circuit greco --preset SET_8192_1000_
 
 The generator supports several pre-configured Enclave parameter sets:
 
-- **INSECURE_SET_2048_1032193_1**: Development preset with degree 2048
 - **INSECURE_SET_512_10_1**: Development preset with degree 512
 - **SET_8192_1000_4**: Production preset with degree 8192, 1000 parties (default)
 - **SET_8192_100_4**: Production preset with degree 8192, 100 parties

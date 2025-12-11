@@ -206,6 +206,7 @@ pub struct BfvParams {
 /// * `circuit_name` - The name of the circuit to load
 /// * `parameter_type` - The parameter type (BFV or trBFV)
 /// * `sample_type` - The sample type (only used for greco circuit)
+/// * `lambda` - The security parameter (λ) to use for this circuit instance
 ///
 /// # Returns
 ///
@@ -214,35 +215,39 @@ fn get_circuit(
     circuit_name: &str,
     parameter_type: ParameterType,
     sample_type: SampleType,
+    lambda: usize,
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => {
-            let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type);
+            let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type, lambda);
             Ok(Box::new(circuit))
         }
         "pk-trbfv" => {
-            let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type);
+            let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type, lambda);
             Ok(Box::new(circuit))
         }
         "dec-share-trbfv" => {
-            let circuit = dec_share_trbfv::circuit::DecShareTrBfvCircuit::new(parameter_type);
+            let circuit =
+                dec_share_trbfv::circuit::DecShareTrBfvCircuit::new(parameter_type, lambda);
             Ok(Box::new(circuit))
         }
         "dec-share-agg-trbfv" => {
             let circuit =
-                dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type);
+                dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type, lambda);
             Ok(Box::new(circuit))
         }
         "dec-bfv" => {
-            let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type);
+            let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type, lambda);
             Ok(Box::new(circuit))
         }
         "dec-bfv-no-hom-add" => {
-            let circuit = dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new();
+            let circuit =
+                dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new(sample_type, lambda);
             Ok(Box::new(circuit))
         }
         "sk-shares" => {
-            let circuit = sk_shares::circuit::SkSharesCircuit::new(parameter_type, sample_type);
+            let circuit =
+                sk_shares::circuit::SkSharesCircuit::new(parameter_type, sample_type, lambda);
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
@@ -277,20 +282,6 @@ fn create_bfv_config(
 ) -> anyhow::Result<BfvSearchConfig> {
     // Start with preset defaults
     let mut config = match preset.unwrap_or("SET_8192_1000_4") {
-        // dev would be hardcoded later in the code based on current development parameters for Enclave.
-        // degree: 2048
-        // plaintext_modulus: 1032193
-        // moduli: [0x3FFFFFFF000001]
-        "INSECURE_SET_2048_1032193_1" => BfvSearchConfig {
-            // irrelevant since will be overridden by hardcoded values later in the code.
-            n: 1,
-            k: 1000,
-            z: 1000,
-            lambda: 80,
-            b: 20,
-            b_chi: 1,
-            verbose,
-        },
         // degree: 512
         // plaintext_modulus: 10
         // moduli: [0xffffee001, 0xffffc4001]
@@ -300,7 +291,7 @@ fn create_bfv_config(
             n: 1,
             k: 1000,
             z: 1000,
-            lambda: 80,
+            lambda: 2,
             b: 20,
             b_chi: 1,
             verbose,
@@ -321,15 +312,6 @@ fn create_bfv_config(
         // paired with Set8192_144115188075855872_2
         "SET_8192_100_4" => BfvSearchConfig {
             // irrelevant since will be overridden by hardcoded values later in the code.
-            n: 100,
-            k: 100,
-            z: 100,
-            lambda: 80,
-            b: 20,
-            b_chi: 1,
-            verbose,
-        },
-        "100" => BfvSearchConfig {
             n: 100,
             k: 100,
             z: 100,
@@ -392,8 +374,32 @@ fn generate_circuit_params(
 
     println!("📋 Using parameter type: {}", parameter_type.as_str());
 
-    // Get circuit implementation
-    let circuit = get_circuit(circuit_name, parameter_type, sample_type)?;
+    // Extract lambda (security parameter) - needed for circuit creation
+    // For presets, determine lambda based on preset name.
+    // For non-presets, create param_config early to get lambda (we'll reuse it later)
+    let (lambda, param_config_opt) = if let Some(preset_name) = preset {
+        // For hardcoded presets, determine lambda based on preset name
+        // INSECURE presets typically use lower lambda, secure presets use 80+
+        let lambda = match preset_name {
+            "INSECURE_SET_512_10_1" => 2, // Insecure presets
+            _ => 80,                      // Default secure for other presets
+        };
+        (lambda, None)
+    } else {
+        // For non-presets, create param_config to get lambda (we'll reuse it later)
+        let param_config = create_bfv_config(preset, None, verbose)?;
+        let lambda = param_config.lambda as usize;
+        (lambda, Some(param_config))
+    };
+
+    println!(
+        "🔐 Security parameter (λ): {} ({})",
+        lambda,
+        if lambda >= 80 { "secure" } else { "insecure" }
+    );
+
+    // Get circuit implementation with lambda
+    let circuit = get_circuit(circuit_name, parameter_type, sample_type, lambda)?;
     println!("✅ Loaded circuit: {}", circuit.name());
 
     if !is_compatible(circuit_name, &parameter_type) {
@@ -401,17 +407,7 @@ fn generate_circuit_params(
     }
 
     let (trbfv_params, bfv_params): (Arc<BfvParameters>, Arc<BfvParameters>) =
-        if preset == Some("INSECURE_SET_2048_1032193_1") {
-            // Hardcode INSECURE_SET_2048_1032193_1 parameters based on current development parameters for Enclave.
-            let params = BfvParametersBuilder::new()
-                .set_degree(2048)
-                .set_plaintext_modulus(1032193)
-                .set_moduli(&[0x3FFFFFFF000001])
-                .build_arc()
-                .unwrap();
-
-            (params.clone(), params.clone())
-        } else if preset == Some("INSECURE_SET_512_10_1") {
+        if preset == Some("INSECURE_SET_512_10_1") {
             // Hardcode INSECURE_SET_512_10_1 parameters based on current development parameters for Enclave.
             let params_trbfv = BfvParametersBuilder::new()
                 .set_degree(512)
@@ -483,8 +479,12 @@ fn generate_circuit_params(
 
             (params_trbfv.clone(), params_bfv.clone())
         } else {
-            // Create parameter configuration
-            let param_config = create_bfv_config(preset, None, verbose)?;
+            // Use param_config if we already created it, otherwise create it now
+            let param_config = if let Some(config) = param_config_opt {
+                config
+            } else {
+                create_bfv_config(preset, None, verbose)?
+            };
 
             // Generate BFV parameters (always needed)
             println!(
@@ -805,9 +805,12 @@ fn generate_main_template(
                 .unwrap_or(CiphernodesConfig::defaults().threshold); // Default to 2 if not provided
 
             // Generate sample data to determine the trimmed degree
-            let decryption_data =
-                generate_sample_decryption_share_aggregation(bfv_params, ciphernodes_config)
-                    .map_err(|e| anyhow::anyhow!("Failed to generate sample data: {e:?}"))?;
+            let decryption_data = generate_sample_decryption_share_aggregation(
+                bfv_params,
+                ciphernodes_config,
+                circuit.security_parameter(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to generate sample data: {e:?}"))?;
 
             let vectors = DecShareAggTrBfvVectors::compute(
                 &decryption_data.d_share_polys,
@@ -1042,9 +1045,6 @@ fn main() -> anyhow::Result<()> {
             }
             if presets {
                 println!("\n⚙️  Available presets:");
-                println!(
-                    "  • INSECURE_SET_2048_1032193_1   - Development (n=1, z=1000, λ=80, B=20)"
-                );
                 println!("  • INSECURE_SET_512_10_1   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • SET_8192_1000_4   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");
@@ -1068,9 +1068,6 @@ fn main() -> anyhow::Result<()> {
                     "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
                 );
                 println!("\n⚙️  Available presets:");
-                println!(
-                    "  • INSECURE_SET_2048_1032193_1   - Development (n=1, z=1000, λ=80, B=20)"
-                );
                 println!("  • INSECURE_SET_512_10_1   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • SET_8192_1000_4   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("\n💡 Custom BFV parameters can be specified with --bfv-* flags");

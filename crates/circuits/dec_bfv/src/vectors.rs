@@ -861,7 +861,7 @@ mod tests {
     fn test_vector_computation() {
         let params = test_parameters_bfv();
         let data =
-            generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
+            generate_sample_decryption(&params, &params, SampleType::SecretKey, None, 2).unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,
@@ -882,7 +882,7 @@ mod tests {
 
     #[test]
     fn test_standard_form() {
-        let vecs = DecBfvVectors::new(3, 2, 2048);
+        let vecs = DecBfvVectors::new(3, 2, 512);
         let std_form = vecs.standard_form();
 
         // Check that all vectors are properly reduced
@@ -895,7 +895,7 @@ mod tests {
     fn test_validation_with_real_data() {
         let params = test_parameters_bfv();
         let data =
-            generate_sample_decryption(&params, &params, SampleType::SecretKey, None).unwrap();
+            generate_sample_decryption(&params, &params, SampleType::SecretKey, None, 2).unwrap();
 
         let vectors = DecBfvVectors::compute(
             &data.honest_ciphertexts,

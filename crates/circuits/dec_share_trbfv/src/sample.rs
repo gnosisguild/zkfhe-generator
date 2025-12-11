@@ -46,6 +46,7 @@ pub fn generate_sample_decryption_share(
     trbfv_params: &Arc<BfvParameters>,
     _: &Arc<BfvParameters>,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    lambda: usize,
 ) -> Result<DecryptionShareData, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
     let mut thread_rng = thread_rng();
@@ -117,7 +118,7 @@ pub fn generate_sample_decryption_share(
         all_party_sk_shares.push(sk_sss);
 
         let esi_coeffs = trbfv
-            .generate_smudging_error(num_ciphertexts, &mut rng)
+            .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
             .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
         let esi_poly = share_manager
             .bigints_to_poly(&esi_coeffs)
@@ -241,7 +242,7 @@ mod tests {
     #[test]
     fn generates_sample_decryption_share() {
         let params = test_parameters_trbfv();
-        let result = generate_sample_decryption_share(&params, &params, None);
+        let result = generate_sample_decryption_share(&params, &params, None, 2);
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",

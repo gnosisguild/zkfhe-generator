@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// Greco circuit implementation
 ///
 /// This struct holds the configuration for the Greco circuit, including
-/// the parameter type and sample type for share_row generation.
+/// the parameter type, sample type for share_row generation, and security parameter.
 pub struct GrecoCircuit {
     /// The parameter type this circuit is configured with
     pub parameter_type: ParameterType,
@@ -21,19 +21,27 @@ pub struct GrecoCircuit {
     /// This determines whether to generate sk_sss (SecretKey) or
     /// es_sss (SmudgingNoise) share_row when creating sample encryption data.
     pub sample_type: SampleType,
+    /// The security parameter (λ) this circuit is configured with
+    ///
+    /// This value is explicitly stored and can be used for fhe.rs function calls
+    /// that require the security parameter. Parameters are considered secure
+    /// if lambda >= 80, and insecure if lambda < 80.
+    pub security_parameter: usize,
 }
 
 impl GrecoCircuit {
-    /// Create a new GrecoCircuit with the specified parameter type and sample type
+    /// Create a new GrecoCircuit with the specified parameter type, sample type, and security parameter
     ///
     /// # Arguments
     ///
     /// * `parameter_type` - The parameter type (BFV or trBFV)
     /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
-    pub fn new(parameter_type: ParameterType, sample_type: SampleType) -> Self {
+    /// * `lambda` - The security parameter (λ)
+    pub fn new(parameter_type: ParameterType, sample_type: SampleType, lambda: usize) -> Self {
         GrecoCircuit {
             parameter_type,
             sample_type,
+            security_parameter: lambda,
         }
     }
 }
@@ -57,6 +65,10 @@ impl Circuit for GrecoCircuit {
 
     fn parameter_type(&self) -> ParameterType {
         self.parameter_type
+    }
+
+    fn security_parameter(&self) -> usize {
+        self.security_parameter
     }
 
     fn generate_toml(
@@ -84,6 +96,7 @@ impl Circuit for GrecoCircuit {
             self.parameter_type,
             self.sample_type,
             ciphernodes_config,
+            self.security_parameter,
         )
         .map_err(|e| shared::errors::ZkFheError::Bfv {
             message: e.to_string(),

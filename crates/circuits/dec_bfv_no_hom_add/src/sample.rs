@@ -13,7 +13,7 @@ use fhe::bfv::{BfvParameters, Ciphertext, Encoding, Plaintext, PublicKey, Secret
 use fhe::trbfv::{ShareManager, TRBFV};
 use fhe_traits::{FheEncoder, FheEncrypter};
 use rand::rngs::OsRng;
-use shared::circuit::CiphernodesConfig;
+use shared::circuit::{CiphernodesConfig, SampleType};
 use std::sync::Arc;
 
 /// Data from a sample BFV decryption (no homomorphic addition) of encrypted TRBFV shares
@@ -49,8 +49,10 @@ pub struct DecryptionDataNoHomAdd {
 ///
 /// * `bfv_params` - BFV parameters for share encryption/decryption
 /// * `trbfv_params` - trBFV parameters (for generating realistic share data)
+/// * `sample_type` - The sample type (SecretKey or SmudgingNoise) to determine what type of shares to generate
 /// * `ciphernodes_config` - Optional configuration for number of parties, honest parties, and threshold.
 ///   If None, uses default values (5 parties, 5 honest parties, threshold 2).
+/// * `lambda` - The security parameter (λ)
 ///
 /// # Returns
 ///
@@ -59,7 +61,9 @@ pub struct DecryptionDataNoHomAdd {
 pub fn generate_sample_decryption_no_hom_add(
     bfv_params: &Arc<BfvParameters>,
     trbfv_params: &Arc<BfvParameters>,
+    sample_type: SampleType,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    lambda: usize,
 ) -> Result<DecryptionDataNoHomAdd, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
 
@@ -92,19 +96,48 @@ pub fn generate_sample_decryption_no_hom_add(
         let mut party_ciphertexts: Vec<Ciphertext> = Vec::new();
         let mut party_decrypted_shares: Vec<Vec<u64>> = Vec::new();
 
-        // Generate a secret key for this party and split into shares
-        let sk = SecretKey::random(trbfv_params, &mut rng);
-        let share_manager = ShareManager::new(num_honest_parties, threshold, trbfv_params.clone());
-        let sk_poly = share_manager.coeffs_to_poly_level0(sk.coeffs.clone().as_ref())?;
-        let sk_sss = trbfv.generate_secret_shares_from_poly(sk_poly, rng)?;
+        let mut share_manager =
+            ShareManager::new(num_honest_parties, threshold, trbfv_params.clone());
+
+        // Generate shares based on sample type
+        let share_rows = match sample_type {
+            SampleType::SmudgingNoise => {
+                // Generate smudging error and split into shares
+                // This simulates the scenario where parties share noise for smudging
+                let num_ciphertexts = 1; // For simplicity in sample generation
+                let esi_coeffs = trbfv
+                    .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
+                    .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
+                let esi_poly = share_manager.bigints_to_poly(&esi_coeffs)?;
+                let esi_sss = share_manager.generate_secret_shares_from_poly(esi_poly, rng)?;
+
+                // Extract shares for each TRBFV basis
+                // esi_sss is [num_moduli][num_parties][degree]
+                esi_sss
+                    .iter()
+                    .take(num_trbfv_bases)
+                    .map(|ss| ss.row(0).to_vec())
+                    .collect::<Vec<Vec<u64>>>()
+            }
+            SampleType::SecretKey => {
+                // Generate a secret key for this party and split into shares
+                // This is the default scenario: parties share their secret key parts
+                let sk = SecretKey::random(trbfv_params, &mut rng);
+                let sk_poly = share_manager.coeffs_to_poly_level0(sk.coeffs.clone().as_ref())?;
+                let sk_sss = trbfv.generate_secret_shares_from_poly(sk_poly, rng)?;
+
+                // Extract shares for each TRBFV basis
+                // sk_sss is [num_moduli][num_parties][degree]
+                sk_sss
+                    .iter()
+                    .take(num_trbfv_bases)
+                    .map(|ss| ss.row(0).to_vec())
+                    .collect::<Vec<Vec<u64>>>()
+            }
+        };
 
         // For each TRBFV basis, encrypt the share for that basis
-        for sk_ss in sk_sss.iter().take(num_trbfv_bases) {
-            // Extract the share for this TRBFV basis
-            // sk_ss is a 2D array [num_parties][degree]
-            // We take the row for the receiver (party 0)
-            let share_row: Vec<u64> = sk_ss.row(0).to_vec();
-
+        for share_row in share_rows {
             // Encrypt this share with BFV using receiver's public key
             let pt = Plaintext::try_encode(&share_row, Encoding::poly(), bfv_params)?;
             let ct = pk_bfv.try_encrypt(&pt, &mut rng)?;
@@ -156,7 +189,13 @@ mod tests {
         let trbfv_params = test_parameters_trbfv();
         let bfv_params = test_parameters_bfv();
 
-        let result = generate_sample_decryption_no_hom_add(&bfv_params, &trbfv_params, None);
+        let result = generate_sample_decryption_no_hom_add(
+            &bfv_params,
+            &trbfv_params,
+            SampleType::SecretKey,
+            None,
+            2,
+        );
         assert!(
             result.is_ok(),
             "Sample generation should succeed: {:?}",
@@ -177,8 +216,13 @@ mod tests {
         let bfv_params = test_parameters_bfv();
 
         let config = CiphernodesConfig::new(5, 5, 2);
-        let result =
-            generate_sample_decryption_no_hom_add(&bfv_params, &trbfv_params, Some(&config));
+        let result = generate_sample_decryption_no_hom_add(
+            &bfv_params,
+            &trbfv_params,
+            SampleType::SecretKey,
+            Some(&config),
+            2,
+        );
         assert!(
             result.is_ok(),
             "Sample generation with custom config should succeed: {:?}",

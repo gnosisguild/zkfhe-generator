@@ -47,6 +47,7 @@ pub struct DecryptionShareAggregationData {
 pub fn generate_sample_decryption_share_aggregation(
     trbfv_params: &Arc<BfvParameters>,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    lambda: usize,
 ) -> Result<DecryptionShareAggregationData, Box<dyn std::error::Error>> {
     let mut thread_rng = thread_rng();
 
@@ -112,7 +113,7 @@ pub fn generate_sample_decryption_share_aggregation(
             );
 
             let esi_coeffs = temp_trbfv
-                .generate_smudging_error(num_ciphertexts, &mut rng)
+                .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
                 .map_err(|e| format!("Failed to generate smudging error: {:?}", e))
                 .unwrap();
             let esi_poly = share_manager
@@ -266,7 +267,7 @@ mod tests {
     #[test]
     fn generates_sample_decryption_share_aggregation() {
         let params = test_parameters_trbfv();
-        let result = generate_sample_decryption_share_aggregation(&params, None);
+        let result = generate_sample_decryption_share_aggregation(&params, None, 2);
         assert!(
             result.is_ok(),
             "sample generation should succeed: {:?}",

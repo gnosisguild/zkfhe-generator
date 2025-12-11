@@ -216,7 +216,7 @@ mod tests {
         let params = test_parameters_bfv();
 
         let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
-        let vectors = GrecoVectors::new(1, 2048);
+        let vectors = GrecoVectors::new(1, 512);
 
         let generator = GrecoTomlGenerator::new(crypto_params, bounds, vectors);
 

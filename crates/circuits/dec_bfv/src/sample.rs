@@ -54,6 +54,7 @@ pub fn generate_sample_decryption(
     trbfv_params: &Arc<BfvParameters>,
     sample_type: SampleType,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    lambda: usize,
 ) -> Result<DecryptionData, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
 
@@ -89,7 +90,7 @@ pub fn generate_sample_decryption(
                 // This simulates the scenario where parties share noise for smudging
                 let num_ciphertexts = 1; // For simplicity in sample generation
                 let esi_coeffs = trbfv
-                    .generate_smudging_error(num_ciphertexts, &mut rng)
+                    .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
                     .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
                 let esi_poly = share_manager.bigints_to_poly(&esi_coeffs)?;
                 let esi_sss = share_manager.generate_secret_shares_from_poly(esi_poly, rng)?;
@@ -147,7 +148,7 @@ mod tests {
 
         // Test with SecretKey sample type
         let result =
-            generate_sample_decryption(&bfv_params, &trbfv_params, SampleType::SecretKey, None);
+            generate_sample_decryption(&bfv_params, &trbfv_params, SampleType::SecretKey, None, 2);
         assert!(result.is_ok(), "Sample generation should succeed");
 
         let data = result.unwrap();
@@ -162,8 +163,13 @@ mod tests {
         let bfv_params = test_parameters_bfv(); // In practice, different params
 
         // Test with SmudgingNoise sample type
-        let result =
-            generate_sample_decryption(&bfv_params, &trbfv_params, SampleType::SmudgingNoise, None);
+        let result = generate_sample_decryption(
+            &bfv_params,
+            &trbfv_params,
+            SampleType::SmudgingNoise,
+            None,
+            2,
+        );
         assert!(
             result.is_ok(),
             "Sample generation with smudging noise should succeed"

@@ -10,7 +10,7 @@ use crate::toml::DecBfvNoHomAddTomlGenerator;
 use crate::vectors::DecBfvNoHomAddVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::{CiphernodesConfig, ParameterType};
+use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -27,20 +27,38 @@ use std::sync::Arc;
 pub struct DecBfvNoHomAddCircuit {
     /// The parameter type (always BFV for this circuit)
     pub parameter_type: ParameterType,
+    /// The sample type to use for share generation
+    ///
+    /// This determines whether to generate secret key shares (SecretKey) or
+    /// smudging error shares (SmudgingNoise) when creating sample decryption data.
+    pub sample_type: SampleType,
+    /// The security parameter (λ) this circuit is configured with
+    ///
+    /// This value is explicitly stored and can be used for fhe.rs function calls
+    /// that require the security parameter. Parameters are considered secure
+    /// if lambda >= 80, and insecure if lambda < 80.
+    pub security_parameter: usize,
 }
 
 impl DecBfvNoHomAddCircuit {
-    /// Create a new DecBfvNoHomAddCircuit instance
-    pub fn new() -> Self {
+    /// Create a new DecBfvNoHomAddCircuit instance with the specified sample type and security parameter
+    ///
+    /// # Arguments
+    ///
+    /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
+    /// * `lambda` - The security parameter (λ)
+    pub fn new(sample_type: SampleType, lambda: usize) -> Self {
         DecBfvNoHomAddCircuit {
             parameter_type: ParameterType::Bfv,
+            sample_type,
+            security_parameter: lambda,
         }
     }
 }
 
 impl Default for DecBfvNoHomAddCircuit {
     fn default() -> Self {
-        Self::new()
+        Self::new(SampleType::SecretKey, 2) // Default to secure lambda
     }
 }
 
@@ -60,6 +78,10 @@ impl Circuit for DecBfvNoHomAddCircuit {
         ParameterType::Bfv // Uses BFV parameters
     }
 
+    fn security_parameter(&self) -> usize {
+        self.security_parameter
+    }
+
     /// Generate TOML file with sample data and parameters
     fn generate_toml(
         &self,
@@ -72,11 +94,16 @@ impl Circuit for DecBfvNoHomAddCircuit {
         let (crypto_params, bounds) = DecBfvNoHomAddBounds::compute(bfv_params, trbfv_params, 0)?;
 
         // Generate sample decryption data
-        let decryption_data =
-            generate_sample_decryption_no_hom_add(bfv_params, trbfv_params, ciphernodes_config)
-                .map_err(|e| shared::errors::ZkFheError::Bfv {
-                    message: e.to_string(),
-                })?;
+        let decryption_data = generate_sample_decryption_no_hom_add(
+            bfv_params,
+            trbfv_params,
+            self.sample_type,
+            ciphernodes_config,
+            self.security_parameter,
+        )
+        .map_err(|e| shared::errors::ZkFheError::Bfv {
+            message: e.to_string(),
+        })?;
 
         // Compute witness vectors from the decryption data
         let vectors = DecBfvNoHomAddVectors::compute(
@@ -110,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = DecBfvNoHomAddCircuit::new();
+        let circuit = DecBfvNoHomAddCircuit::new(SampleType::SecretKey, 2);
         assert_eq!(circuit.name(), "dec-bfv-no-hom-add");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Bfv);
@@ -118,7 +145,7 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = DecBfvNoHomAddCircuit::new();
+        let circuit = DecBfvNoHomAddCircuit::new(SampleType::SecretKey, 2);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 
@@ -142,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_toml_generation_with_custom_config() {
-        let circuit = DecBfvNoHomAddCircuit::new();
+        let circuit = DecBfvNoHomAddCircuit::new(SampleType::SecretKey, 2);
         let params = test_parameters_bfv();
         let temp_dir = TempDir::new().unwrap();
 

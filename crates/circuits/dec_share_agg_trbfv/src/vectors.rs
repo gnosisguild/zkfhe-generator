@@ -661,7 +661,8 @@ mod tests {
     #[test]
     fn test_vector_computation() {
         let params = test_parameters_trbfv();
-        let decryption_data = generate_sample_decryption_share_aggregation(&params, None).unwrap();
+        let decryption_data =
+            generate_sample_decryption_share_aggregation(&params, None, 2).unwrap();
 
         // Compute vectors
         let vecs = DecShareAggTrBfvVectors::compute(
