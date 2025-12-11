@@ -4,7 +4,7 @@ use crate::toml::GrecoTomlGenerator;
 use crate::vectors::GrecoVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
+use shared::circuit::{CiphernodesConfig, ParameterType, SampleType, CircuitParameters};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -14,8 +14,8 @@ use std::sync::Arc;
 /// This struct holds the configuration for the Greco circuit, including
 /// the parameter type and sample type for share_row generation.
 pub struct GrecoCircuit {
-    /// The parameter type this circuit is configured with
-    pub parameter_type: ParameterType,
+    /// Circuit parameters
+    pub parameters: CircuitParameters,
     /// The sample type to use for share_row generation
     ///
     /// This determines whether to generate sk_sss (SecretKey) or
@@ -30,9 +30,9 @@ impl GrecoCircuit {
     ///
     /// * `parameter_type` - The parameter type (BFV or trBFV)
     /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
-    pub fn new(parameter_type: ParameterType, sample_type: SampleType) -> Self {
+    pub fn new(parameter_type: ParameterType, lambda: usize, sample_type: SampleType) -> Self {
         GrecoCircuit {
-            parameter_type,
+            parameters: CircuitParameters::new(parameter_type, lambda),
             sample_type,
         }
     }
@@ -56,7 +56,7 @@ impl Circuit for GrecoCircuit {
     }
 
     fn parameter_type(&self) -> ParameterType {
-        self.parameter_type
+        self.parameters.params_type
     }
 
     fn generate_toml(
@@ -66,7 +66,7 @@ impl Circuit for GrecoCircuit {
         output_dir: &Path,
         ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
-        let selected_params = if self.parameter_type == ParameterType::Trbfv {
+        let selected_params = if self.parameters.params_type == ParameterType::Trbfv {
             trbfv_params
         } else {
             bfv_params
@@ -81,7 +81,7 @@ impl Circuit for GrecoCircuit {
         let encryption_data = generate_sample_encryption(
             trbfv_params,
             bfv_params,
-            self.parameter_type,
+            &self.parameters,
             self.sample_type,
             ciphernodes_config,
         )

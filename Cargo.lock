@@ -248,6 +248,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -504,8 +513,9 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fhe"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#b3353fb46ce2219ecd87a1c693591aa56ab13fae"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=prepare-integration#5d59a12e2117cd8560b102acf2991c8727e50009"
 dependencies = [
+ "bincode",
  "doc-comment",
  "fhe-math",
  "fhe-traits",
@@ -529,7 +539,7 @@ dependencies = [
 [[package]]
 name = "fhe-math"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#b3353fb46ce2219ecd87a1c693591aa56ab13fae"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=prepare-integration#5d59a12e2117cd8560b102acf2991c8727e50009"
 dependencies = [
  "ethnum",
  "fhe-traits",
@@ -543,6 +553,7 @@ dependencies = [
  "prost-build",
  "rand",
  "rand_chacha",
+ "serde",
  "sha2",
  "thiserror",
  "zeroize",
@@ -551,7 +562,7 @@ dependencies = [
 [[package]]
 name = "fhe-traits"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#b3353fb46ce2219ecd87a1c693591aa56ab13fae"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=prepare-integration#5d59a12e2117cd8560b102acf2991c8727e50009"
 dependencies = [
  "rand",
 ]
@@ -559,7 +570,7 @@ dependencies = [
 [[package]]
 name = "fhe-util"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs?branch=dummy-params#b3353fb46ce2219ecd87a1c693591aa56ab13fae"
+source = "git+https://github.com/gnosisguild/fhe.rs?branch=prepare-integration#5d59a12e2117cd8560b102acf2991c8727e50009"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint-dig",
@@ -1593,101 +1604,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zkfhe-dec-bfv"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bigint-poly",
- "blake3",
- "fhe",
- "fhe-math",
- "fhe-traits",
- "itertools 0.14.0",
- "ndarray",
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
- "zkfhe-shared",
-]
-
-[[package]]
-name = "zkfhe-dec-bfv-no-hom-add"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bigint-poly",
- "blake3",
- "fhe",
- "fhe-math",
- "fhe-traits",
- "itertools 0.14.0",
- "ndarray",
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
- "zkfhe-shared",
-]
-
-[[package]]
-name = "zkfhe-dec-share-agg-trbfv"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bigint-poly",
- "blake3",
- "fhe",
- "fhe-math",
- "fhe-traits",
- "itertools 0.14.0",
- "ndarray",
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
- "zkfhe-shared",
-]
-
-[[package]]
-name = "zkfhe-dec-share-trbfv"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bigint-poly",
- "blake3",
- "fhe",
- "fhe-math",
- "fhe-traits",
- "itertools 0.14.0",
- "ndarray",
- "num-bigint",
- "num-traits",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
- "zkfhe-shared",
-]
-
-[[package]]
 name = "zkfhe-generator"
 version = "0.1.0"
 dependencies = [
@@ -1697,14 +1613,8 @@ dependencies = [
  "fhe",
  "num-bigint",
  "zkfhe-crypto-params",
- "zkfhe-dec-bfv",
- "zkfhe-dec-bfv-no-hom-add",
- "zkfhe-dec-share-agg-trbfv",
- "zkfhe-dec-share-trbfv",
  "zkfhe-greco",
- "zkfhe-pk-trbfv",
  "zkfhe-shared",
- "zkfhe-sk-shares",
 ]
 
 [[package]]
@@ -1743,28 +1653,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zkfhe-pk-trbfv"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bigint-poly",
- "blake3",
- "fhe",
- "fhe-math",
- "fhe-traits",
- "itertools 0.14.0",
- "num-bigint",
- "num-traits",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
- "zkfhe-shared",
-]
-
-[[package]]
 name = "zkfhe-shared"
 version = "0.1.0"
 dependencies = [
@@ -1783,26 +1671,4 @@ dependencies = [
  "serde_json",
  "thiserror",
  "toml",
-]
-
-[[package]]
-name = "zkfhe-sk-shares"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bigint-poly",
- "fhe",
- "fhe-math",
- "fhe-traits",
- "ndarray",
- "num-bigint",
- "num-integer",
- "num-traits",
- "rand",
- "serde",
- "serde_json",
- "tempfile",
- "toml",
- "zkfhe-parity-matrix",
- "zkfhe-shared",
 ]

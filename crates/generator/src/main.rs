@@ -213,38 +213,39 @@ pub struct BfvParams {
 fn get_circuit(
     circuit_name: &str,
     parameter_type: ParameterType,
+    lambda: usize,
     sample_type: SampleType,
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
         "greco" => {
-            let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type);
+            let circuit = greco::circuit::GrecoCircuit::new(parameter_type, lambda, sample_type);
             Ok(Box::new(circuit))
         }
-        "pk-trbfv" => {
-            let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type);
-            Ok(Box::new(circuit))
-        }
-        "dec-share-trbfv" => {
-            let circuit = dec_share_trbfv::circuit::DecShareTrBfvCircuit::new(parameter_type);
-            Ok(Box::new(circuit))
-        }
-        "dec-share-agg-trbfv" => {
-            let circuit =
-                dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type);
-            Ok(Box::new(circuit))
-        }
-        "dec-bfv" => {
-            let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type);
-            Ok(Box::new(circuit))
-        }
-        "dec-bfv-no-hom-add" => {
-            let circuit = dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new();
-            Ok(Box::new(circuit))
-        }
-        "sk-shares" => {
-            let circuit = sk_shares::circuit::SkSharesCircuit::new(parameter_type, sample_type);
-            Ok(Box::new(circuit))
-        }
+        // "pk-trbfv" => {
+        //     let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type);
+        //     Ok(Box::new(circuit))
+        // }
+        // "dec-share-trbfv" => {
+        //     let circuit = dec_share_trbfv::circuit::DecShareTrBfvCircuit::new(parameter_type);
+        //     Ok(Box::new(circuit))
+        // }
+        // "dec-share-agg-trbfv" => {
+        //     let circuit =
+        //         dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type);
+        //     Ok(Box::new(circuit))
+        // }
+        // "dec-bfv" => {
+        //     let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type);
+        //     Ok(Box::new(circuit))
+        // }
+        // "dec-bfv-no-hom-add" => {
+        //     let circuit = dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new();
+        //     Ok(Box::new(circuit))
+        // }
+        // "sk-shares" => {
+        //     let circuit = sk_shares::circuit::SkSharesCircuit::new(parameter_type, sample_type);
+        //     Ok(Box::new(circuit))
+        // }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
     }
 }
@@ -392,15 +393,11 @@ fn generate_circuit_params(
 
     println!("📋 Using parameter type: {}", parameter_type.as_str());
 
-    // Get circuit implementation
-    let circuit = get_circuit(circuit_name, parameter_type, sample_type)?;
-    println!("✅ Loaded circuit: {}", circuit.name());
-
     if !is_compatible(circuit_name, &parameter_type) {
         anyhow::bail!("Parameter type is not compatible with circuit");
     }
 
-    let (trbfv_params, bfv_params): (Arc<BfvParameters>, Arc<BfvParameters>) =
+    let (trbfv_params, bfv_params, lambda): (Arc<BfvParameters>, Arc<BfvParameters>, usize   ) =
         if preset == Some("INSECURE_SET_2048_1032193_1") {
             // Hardcode INSECURE_SET_2048_1032193_1 parameters based on current development parameters for Enclave.
             let params = BfvParametersBuilder::new()
@@ -410,7 +407,7 @@ fn generate_circuit_params(
                 .build_arc()
                 .unwrap();
 
-            (params.clone(), params.clone())
+            (params.clone(), params.clone(), 80)
         } else if preset == Some("INSECURE_SET_512_10_1") {
             // Hardcode INSECURE_SET_512_10_1 parameters based on current development parameters for Enclave.
             let params_trbfv = BfvParametersBuilder::new()
@@ -429,7 +426,7 @@ fn generate_circuit_params(
                 .build_arc()
                 .unwrap();
 
-            (params_trbfv.clone(), params_bfv.clone())
+            (params_trbfv.clone(), params_bfv.clone(), 2)
         } else if preset == Some("SET_8192_1000_4") {
             // Hardcode SET_8192_1000_4 parameters based on current development parameters for Enclave.
             let params_trbfv = BfvParametersBuilder::new()
@@ -455,7 +452,7 @@ fn generate_circuit_params(
                 .build_arc()
                 .unwrap();
 
-            (params_trbfv.clone(), params_bfv.clone())
+            (params_trbfv.clone(), params_bfv.clone(), 80)
         } else if preset == Some("SET_8192_100_4") {
             // Hardcode SET_8192_100_4 parameters based on current development parameters for Enclave.
             let params_trbfv = BfvParametersBuilder::new()
@@ -481,7 +478,7 @@ fn generate_circuit_params(
                 .build_arc()
                 .unwrap();
 
-            (params_trbfv.clone(), params_bfv.clone())
+            (params_trbfv.clone(), params_bfv.clone(), 80)
         } else {
             // Create parameter configuration
             let param_config = create_bfv_config(preset, None, verbose)?;
@@ -607,8 +604,12 @@ fn generate_circuit_params(
                 .set_moduli(final_bfv_params.qi_values().as_slice())
                 .build_arc()
                 .unwrap();
-            (trbfv_params, bfv_params)
+            (trbfv_params, bfv_params, param_config.lambda as usize)
         };
+
+    // Get circuit implementation
+    let circuit = get_circuit(circuit_name, parameter_type, lambda, sample_type)?;
+    println!("✅ Loaded circuit: {}", circuit.name());
 
     if parameter_type == ParameterType::Trbfv {
         println!(
@@ -739,203 +740,203 @@ fn generate_main_template(
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;
         }
-        "pk-trbfv" => {
-            use pk_trbfv::bounds::PkTrBfvBounds;
-            use pk_trbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
+        // "pk-trbfv" => {
+        //     use pk_trbfv::bounds::PkTrBfvBounds;
+        //     use pk_trbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
 
-            let (_, bounds) = PkTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute PkTrBfv bounds: {e:?}"))?;
+        //     let (_, bounds) = PkTrBfvBounds::compute(bfv_params, 0)
+        //         .map_err(|e| anyhow::anyhow!("Failed to compute PkTrBfv bounds: {e:?}"))?;
 
-            let bounds_data = pk_trbfv::template::PkTrBfvBoundsData {
-                eek_bound: bounds.eek_bound.to_string(),
-                sk_bound: bounds.sk_bound.to_string(),
-                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
-                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-            };
+        //     let bounds_data = pk_trbfv::template::PkTrBfvBoundsData {
+        //         eek_bound: bounds.eek_bound.to_string(),
+        //         sk_bound: bounds.sk_bound.to_string(),
+        //         r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+        //         r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+        //     };
 
-            let pk_trbfv_template_params = PkTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
-                &bounds_data,
-            )?;
+        //     let pk_trbfv_template_params = PkTrBfvTemplateParams::from_bounds(
+        //         BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+        //         &bounds_data,
+        //     )?;
 
-            let template_generator = PkTrBfvMainTemplate;
-            template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
-        }
-        "dec-share-trbfv" => {
-            use dec_share_trbfv::bounds::DecShareTrBfvBounds;
-            use dec_share_trbfv::template::{
-                DecShareTrBfvMainTemplate, DecShareTrBfvTemplateParams,
-            };
+        //     let template_generator = PkTrBfvMainTemplate;
+        //     template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
+        // }
+        // "dec-share-trbfv" => {
+        //     use dec_share_trbfv::bounds::DecShareTrBfvBounds;
+        //     use dec_share_trbfv::template::{
+        //         DecShareTrBfvMainTemplate, DecShareTrBfvTemplateParams,
+        //     };
 
-            let (_, bounds) = DecShareTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
+        //     let (_, bounds) = DecShareTrBfvBounds::compute(bfv_params, 0)
+        //         .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
 
-            let bounds_data = dec_share_trbfv::template::DecShareTrBfvBoundsData {
-                decryption_share_bound: bounds.decryption_share_bound.to_string(),
-                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
-                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-            };
+        //     let bounds_data = dec_share_trbfv::template::DecShareTrBfvBoundsData {
+        //         decryption_share_bound: bounds.decryption_share_bound.to_string(),
+        //         r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+        //         r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+        //     };
 
-            let dec_share_trbfv_template_params = DecShareTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
-                &bounds_data,
-            )?;
+        //     let dec_share_trbfv_template_params = DecShareTrBfvTemplateParams::from_bounds(
+        //         BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+        //         &bounds_data,
+        //     )?;
 
-            let template_generator = DecShareTrBfvMainTemplate;
-            template_generator.generate_main_file(&dec_share_trbfv_template_params, output_dir)?;
-        }
-        "dec-share-agg-trbfv" => {
-            use dec_share_agg_trbfv::bounds::DecShareAggTrBfvBounds;
-            use dec_share_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
-            use dec_share_agg_trbfv::template::{
-                DecShareAggTrBfvMainTemplate, DecShareAggTrBfvTemplateParams,
-            };
-            use dec_share_agg_trbfv::vectors::DecShareAggTrBfvVectors;
+        //     let template_generator = DecShareTrBfvMainTemplate;
+        //     template_generator.generate_main_file(&dec_share_trbfv_template_params, output_dir)?;
+        // }
+        // "dec-share-agg-trbfv" => {
+        //     use dec_share_agg_trbfv::bounds::DecShareAggTrBfvBounds;
+        //     use dec_share_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
+        //     use dec_share_agg_trbfv::template::{
+        //         DecShareAggTrBfvMainTemplate, DecShareAggTrBfvTemplateParams,
+        //     };
+        //     use dec_share_agg_trbfv::vectors::DecShareAggTrBfvVectors;
 
-            let (_, bounds) = DecShareAggTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute bounds: {e:?}"))?;
+        //     let (_, bounds) = DecShareAggTrBfvBounds::compute(bfv_params, 0)
+        //         .map_err(|e| anyhow::anyhow!("Failed to compute bounds: {e:?}"))?;
 
-            let bounds_data = dec_share_agg_trbfv::template::DecShareAggTrBfvBoundsData {
-                delta: bounds.delta.to_string(),
-                delta_half: bounds.delta_half.to_string(),
-            };
+        //     let bounds_data = dec_share_agg_trbfv::template::DecShareAggTrBfvBoundsData {
+        //         delta: bounds.delta.to_string(),
+        //         delta_half: bounds.delta_half.to_string(),
+        //     };
 
-            let threshold = ciphernodes_config
-                .map(|c| c.threshold)
-                .unwrap_or(CiphernodesConfig::defaults().threshold); // Default to 2 if not provided
+        //     let threshold = ciphernodes_config
+        //         .map(|c| c.threshold)
+        //         .unwrap_or(CiphernodesConfig::defaults().threshold); // Default to 2 if not provided
 
-            // Generate sample data to determine the trimmed degree
-            let decryption_data =
-                generate_sample_decryption_share_aggregation(bfv_params, ciphernodes_config)
-                    .map_err(|e| anyhow::anyhow!("Failed to generate sample data: {e:?}"))?;
+        //     // Generate sample data to determine the trimmed degree
+        //     let decryption_data =
+        //         generate_sample_decryption_share_aggregation(bfv_params, ciphernodes_config)
+        //             .map_err(|e| anyhow::anyhow!("Failed to generate sample data: {e:?}"))?;
 
-            let vectors = DecShareAggTrBfvVectors::compute(
-                &decryption_data.d_share_polys,
-                &decryption_data.party_ids,
-                &decryption_data.message,
-                bfv_params,
-                decryption_data.threshold,
-                decryption_data.num_parties,
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to compute vectors: {e:?}"))?;
+        //     let vectors = DecShareAggTrBfvVectors::compute(
+        //         &decryption_data.d_share_polys,
+        //         &decryption_data.party_ids,
+        //         &decryption_data.message,
+        //         bfv_params,
+        //         decryption_data.threshold,
+        //         decryption_data.num_parties,
+        //     )
+        //     .map_err(|e| anyhow::anyhow!("Failed to compute vectors: {e:?}"))?;
 
-            let vectors_standard = vectors.standard_form();
+        //     let vectors_standard = vectors.standard_form();
 
-            let trimmed_degree = vectors_standard.count_nonzero_message_coefficients();
+        //     let trimmed_degree = vectors_standard.count_nonzero_message_coefficients();
 
-            let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(trimmed_degree, l, circuit_type),
-                threshold as u32,
-                &bounds_data,
-            )?;
+        //     let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
+        //         BaseTemplateParams::new(trimmed_degree, l, circuit_type),
+        //         threshold as u32,
+        //         &bounds_data,
+        //     )?;
 
-            let template_generator = DecShareAggTrBfvMainTemplate;
-            template_generator
-                .generate_main_file(&dec_share_agg_trbfv_template_params, output_dir)?;
-        }
-        "dec-bfv" => {
-            use dec_bfv::bounds::DecBfvBounds;
-            use dec_bfv::template::{DecBfvBoundsData, DecBfvMainTemplate, DecBfvTemplateParams};
+        //     let template_generator = DecShareAggTrBfvMainTemplate;
+        //     template_generator
+        //         .generate_main_file(&dec_share_agg_trbfv_template_params, output_dir)?;
+        // }
+        // "dec-bfv" => {
+        //     use dec_bfv::bounds::DecBfvBounds;
+        //     use dec_bfv::template::{DecBfvBoundsData, DecBfvMainTemplate, DecBfvTemplateParams};
 
-            let (_, bounds) = DecBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute dec_bfv bounds: {e:?}"))?;
+        //     let (_, bounds) = DecBfvBounds::compute(bfv_params, 0)
+        //         .map_err(|e| anyhow::anyhow!("Failed to compute dec_bfv bounds: {e:?}"))?;
 
-            let bounds_data = DecBfvBoundsData {
-                s_bound: bounds.s_bound.to_string(),
-                u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
-                u_global_bound: bounds.u_global_bound.to_string(),
-                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
-                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-                delta: bounds.delta.to_string(),
-                delta_half: bounds.delta_half.to_string(),
-            };
+        //     let bounds_data = DecBfvBoundsData {
+        //         s_bound: bounds.s_bound.to_string(),
+        //         u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
+        //         u_global_bound: bounds.u_global_bound.to_string(),
+        //         r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+        //         r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+        //         delta: bounds.delta.to_string(),
+        //         delta_half: bounds.delta_half.to_string(),
+        //     };
 
-            let num_honest_parties = ciphernodes_config
-                .map(|c| c.num_honest_parties)
-                .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 3 if not provided
+        //     let num_honest_parties = ciphernodes_config
+        //         .map(|c| c.num_honest_parties)
+        //         .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 3 if not provided
 
-            let dec_bfv_template_params = DecBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
-                num_honest_parties,
-                &bounds_data,
-            )?;
+        //     let dec_bfv_template_params = DecBfvTemplateParams::from_bounds(
+        //         BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+        //         num_honest_parties,
+        //         &bounds_data,
+        //     )?;
 
-            let template_generator = DecBfvMainTemplate;
-            template_generator.generate_main_file(&dec_bfv_template_params, output_dir)?;
-        }
-        "dec-bfv-no-hom-add" => {
-            use dec_bfv_no_hom_add::bounds::DecBfvNoHomAddBounds;
-            use dec_bfv_no_hom_add::template::{
-                DecBfvNoHomAddBoundsData, DecBfvNoHomAddMainTemplate, DecBfvNoHomAddTemplateParams,
-            };
+        //     let template_generator = DecBfvMainTemplate;
+        //     template_generator.generate_main_file(&dec_bfv_template_params, output_dir)?;
+        // }
+        // "dec-bfv-no-hom-add" => {
+        //     use dec_bfv_no_hom_add::bounds::DecBfvNoHomAddBounds;
+        //     use dec_bfv_no_hom_add::template::{
+        //         DecBfvNoHomAddBoundsData, DecBfvNoHomAddMainTemplate, DecBfvNoHomAddTemplateParams,
+        //     };
 
-            // For this circuit, we need both BFV and TRBFV params
-            // bfv_params is used for BFV decryption, trbfv_params for TRBFV aggregation
-            // trbfv_params provides the TRBFV moduli for aggregation
-            let (crypto_params, bounds) =
-                DecBfvNoHomAddBounds::compute(bfv_params, trbfv_params, 0).map_err(|e| {
-                    anyhow::anyhow!("Failed to compute dec_bfv_no_hom_add bounds: {e:?}")
-                })?;
+        //     // For this circuit, we need both BFV and TRBFV params
+        //     // bfv_params is used for BFV decryption, trbfv_params for TRBFV aggregation
+        //     // trbfv_params provides the TRBFV moduli for aggregation
+        //     let (crypto_params, bounds) =
+        //         DecBfvNoHomAddBounds::compute(bfv_params, trbfv_params, 0).map_err(|e| {
+        //             anyhow::anyhow!("Failed to compute dec_bfv_no_hom_add bounds: {e:?}")
+        //         })?;
 
-            let bounds_data = DecBfvNoHomAddBoundsData {
-                s_bound: bounds.s_bound.to_string(),
-                u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
-                u_global_bound: bounds.u_global_bound.to_string(),
-                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
-                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-                delta: bounds.delta.to_string(),
-                delta_half: bounds.delta_half.to_string(),
-            };
+        //     let bounds_data = DecBfvNoHomAddBoundsData {
+        //         s_bound: bounds.s_bound.to_string(),
+        //         u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
+        //         u_global_bound: bounds.u_global_bound.to_string(),
+        //         r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+        //         r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+        //         delta: bounds.delta.to_string(),
+        //         delta_half: bounds.delta_half.to_string(),
+        //     };
 
-            let config = ciphernodes_config
-                .cloned()
-                .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
+        //     let config = ciphernodes_config
+        //         .cloned()
+        //         .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
 
-            // L = number of TRBFV bases (from trbfv_params)
-            // L' = number of BFV bases (from bfv_params)
-            let num_trbfv_bases = crypto_params.trbfv_moduli.len();
-            let num_bfv_bases = crypto_params.bfv_moduli.len();
+        //     // L = number of TRBFV bases (from trbfv_params)
+        //     // L' = number of BFV bases (from bfv_params)
+        //     let num_trbfv_bases = crypto_params.trbfv_moduli.len();
+        //     let num_bfv_bases = crypto_params.bfv_moduli.len();
 
-            let dec_bfv_no_hom_add_template_params = DecBfvNoHomAddTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
-                config.num_honest_parties,
-                num_trbfv_bases, // L (TRBFV bases)
-                num_bfv_bases,   // L' (BFV bases)
-                &bounds_data,
-            )?;
+        //     let dec_bfv_no_hom_add_template_params = DecBfvNoHomAddTemplateParams::from_bounds(
+        //         BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+        //         config.num_honest_parties,
+        //         num_trbfv_bases, // L (TRBFV bases)
+        //         num_bfv_bases,   // L' (BFV bases)
+        //         &bounds_data,
+        //     )?;
 
-            let template_generator = DecBfvNoHomAddMainTemplate;
-            template_generator
-                .generate_main_file(&dec_bfv_no_hom_add_template_params, output_dir)?;
-        }
-        "sk-shares" => {
-            use sk_shares::bounds::SkSharesBounds;
-            use sk_shares::template::{
-                SkSharesBoundsData, SkSharesMainTemplate, SkSharesTemplateParams,
-            };
+        //     let template_generator = DecBfvNoHomAddMainTemplate;
+        //     template_generator
+        //         .generate_main_file(&dec_bfv_no_hom_add_template_params, output_dir)?;
+        // }
+        // "sk-shares" => {
+        //     use sk_shares::bounds::SkSharesBounds;
+        //     use sk_shares::template::{
+        //         SkSharesBoundsData, SkSharesMainTemplate, SkSharesTemplateParams,
+        //     };
 
-            let (crypto_params, bounds) = SkSharesBounds::compute(trbfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute sk_shares bounds: {e:?}"))?;
+        //     let (crypto_params, bounds) = SkSharesBounds::compute(trbfv_params, 0)
+        //         .map_err(|e| anyhow::anyhow!("Failed to compute sk_shares bounds: {e:?}"))?;
 
-            let bounds_data = SkSharesBoundsData {
-                sk_bound: bounds.sk_bound.to_string(),
-                moduli: crypto_params.moduli,
-            };
+        //     let bounds_data = SkSharesBoundsData {
+        //         sk_bound: bounds.sk_bound.to_string(),
+        //         moduli: crypto_params.moduli,
+        //     };
 
-            let config = ciphernodes_config
-                .cloned()
-                .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
+        //     let config = ciphernodes_config
+        //         .cloned()
+        //         .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
 
-            let sk_shares_template_params = SkSharesTemplateParams::from_bounds(
-                BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
-                config.num_parties,
-                config.threshold,
-                &bounds_data,
-            )?;
+        //     let sk_shares_template_params = SkSharesTemplateParams::from_bounds(
+        //         BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
+        //         config.num_parties,
+        //         config.threshold,
+        //         &bounds_data,
+        //     )?;
 
-            let template_generator = SkSharesMainTemplate;
-            template_generator.generate_main_file(&sk_shares_template_params, output_dir)?;
-        }
+        //     let template_generator = SkSharesMainTemplate;
+        //     template_generator.generate_main_file(&sk_shares_template_params, output_dir)?;
+        // }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }

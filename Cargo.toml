@@ -4,11 +4,6 @@ members = [
     "crates/generator",
     "crates/shared",
     "crates/circuits/greco",
-    "crates/circuits/pk_trbfv",
-    "crates/circuits/dec_share_trbfv",
-    "crates/circuits/dec_bfv",
-    "crates/circuits/dec_bfv_no_hom_add",
-    "crates/circuits/dec_share_agg_trbfv",
     "crates/crypto_params",
     "crates/parity_matrix"
 ]
@@ -27,11 +22,6 @@ rust-version = "1.86.0"
 
 [workspace.dependencies]
 greco = { package = "zkfhe-greco", path = "./crates/circuits/greco" }
-pk_trbfv = { package = "zkfhe-pk-trbfv", path = "./crates/circuits/pk_trbfv" }
-dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "./crates/circuits/dec_share_trbfv" }
-dec_share_agg_trbfv = { package = "zkfhe-dec-share-agg-trbfv", path = "./crates/circuits/dec_share_agg_trbfv" }
-dec_bfv = { package = "zkfhe-dec-bfv", path = "./crates/circuits/dec_bfv" }
-dec_bfv_no_hom_add = { package = "zkfhe-dec-bfv-no-hom-add", path = "./crates/circuits/dec_bfv_no_hom_add" }
 generator = { package = "zkfhe-generator", path = "./crates/generator" }
 shared = { package = "zkfhe-shared", path = "./crates/shared" }
 crypto_params = { package = "zkfhe-crypto-params", path = "./crates/crypto_params" }
@@ -42,9 +32,9 @@ toml = "0.8"
 clap = { version = "4.0", features = ["derive"] }
 anyhow = "1.0"
 thiserror = "1.0"
-fhe = { git = "https://github.com/gnosisguild/fhe.rs", branch = "dummy-params" }
-fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs", branch = "dummy-params" }
-fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git", branch = "dummy-params" }
+fhe = { git = "https://github.com/gnosisguild/fhe.rs", branch = "prepare-integration"  }
+fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs", branch = "prepare-integration"  }
+fhe-math = { git = "https://github.com/gnosisguild/fhe.rs", branch = "prepare-integration"  }
 safe = { git = "https://github.com/gnosisguild/enclave", package = "safe" }
 serde_json = "1.0.133"
 rand = "0.8.5"

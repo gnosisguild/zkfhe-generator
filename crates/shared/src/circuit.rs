@@ -131,37 +131,18 @@ impl CiphernodesConfig {
 /// This struct holds the common configuration that all circuits share.
 /// It can be embedded in circuit structs to avoid duplication.
 #[derive(Debug, Clone)]
-pub struct CircuitBase {
+pub struct CircuitParameters {
     /// The parameter type this circuit is configured with
-    pub parameter_type: ParameterType,
+    pub params_type: ParameterType,
+    /// Security parameter λ
+    pub lambda: usize
 }
 
-impl CircuitBase {
-    /// Create a new CircuitBase with the specified parameter type
-    pub fn new(parameter_type: ParameterType) -> Self {
-        CircuitBase { parameter_type }
+impl CircuitParameters {
+    /// Create a new CircuitParameters with the specified parameter type
+    pub fn new(params_type: ParameterType, lambda: usize) -> Self {
+        CircuitParameters { params_type, lambda }
     }
-}
-
-/// Macro to generate common circuit struct and constructor
-///
-/// This macro generates a struct with a `parameter_type` field and a `new` constructor.
-/// Usage: shared::circuit::circuit_struct!(MyCircuit);
-#[macro_export]
-macro_rules! circuit_struct {
-    ($struct_name:ident) => {
-        pub struct $struct_name {
-            /// The parameter type this circuit is configured with
-            pub parameter_type: ParameterType,
-        }
-
-        impl $struct_name {
-            /// Create a new $struct_name with the specified parameter type
-            pub fn new(parameter_type: ParameterType) -> Self {
-                $struct_name { parameter_type }
-            }
-        }
-    };
 }
 
 /// Circuit trait that all circuit implementations must implement

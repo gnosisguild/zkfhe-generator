@@ -5,6 +5,7 @@ use fhe_traits::FheEncoder;
 use rand::{SeedableRng, rngs::StdRng};
 use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use std::sync::Arc;
+use shared::circuit::CircuitParameters;
 
 /// Data from a sample BFV encryption
 #[derive(Debug, Clone)]
@@ -47,7 +48,7 @@ pub struct EncryptionData {
 pub fn generate_sample_encryption(
     trbfv_params: &Arc<BfvParameters>,
     bfv_params: &Arc<BfvParameters>,
-    parameter_type: ParameterType,
+    parameters: &CircuitParameters,
     sample_type: SampleType,
     ciphernodes_config: Option<&CiphernodesConfig>,
 ) -> Result<EncryptionData, Box<dyn std::error::Error>> {
@@ -61,7 +62,7 @@ pub fn generate_sample_encryption(
     let sk_bfv = SecretKey::random(bfv_params, &mut rng);
     let pk_bfv = PublicKey::new(&sk_bfv, &mut rng);
 
-    let pt = if parameter_type == ParameterType::Trbfv {
+    let pt = if parameters.params_type == ParameterType::Trbfv {
         // trBFV: Encrypt a message/vote (Circuit 6)
         // Create a sample plaintext with some random values, in here we are assigning 3 to all the
         // coefficients
@@ -94,7 +95,7 @@ pub fn generate_sample_encryption(
         let share_row = match sample_type {
             SampleType::SmudgingNoise => {
                 let esi_coeffs = temp_trbfv
-                    .generate_smudging_error(num_ciphertexts, &mut rng)
+                    .generate_smudging_error(num_ciphertexts, parameters.lambda, &mut rng)
                     .unwrap();
                 let esi_poly = share_manager.bigints_to_poly(&esi_coeffs).unwrap();
                 let esi_sss = share_manager
@@ -117,7 +118,7 @@ pub fn generate_sample_encryption(
         Plaintext::try_encode(&share_row, Encoding::poly(), bfv_params)?
     };
 
-    if parameter_type == ParameterType::Trbfv {
+    if parameters.params_type == ParameterType::Trbfv {
         let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng)?;
 
         Ok(EncryptionData {
