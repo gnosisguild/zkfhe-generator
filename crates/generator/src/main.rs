@@ -218,6 +218,10 @@ fn get_circuit(
     lambda: usize,
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
+        "enc-bfv" => {
+            let circuit = enc_bfv::circuit::EncBfvCircuit::new(lambda);
+            Ok(Box::new(circuit))
+        }
         "greco" => {
             let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type, lambda);
             Ok(Box::new(circuit))
@@ -266,6 +270,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
     match circuit_name.to_lowercase().as_str() {
         "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "pk-bfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "enc-bfv" => vec![ParameterType::Bfv],
         "pk-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
@@ -998,6 +1003,47 @@ fn generate_main_template(
             let template_generator = VerifySharesTrbfvMainTemplate;
             template_generator.generate_main_file(&sk_shares_template_params, output_dir)?;
         }
+        "enc-bfv" => {
+            use enc_bfv::bounds::EncBfvBounds;
+            use enc_bfv::template::{EncBfvBoundsData, EncBfvMainTemplate, EncBfvTemplateParams};
+
+            let (crypto_params, bounds) = EncBfvBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute enc_bfv bounds: {e:?}"))?;
+
+            let bounds_data = EncBfvBoundsData {
+                t: crypto_params.t.to_string(),
+                q_mod_t: crypto_params.q_mod_t.to_string(),
+                moduli: crypto_params.moduli,
+                k0is: crypto_params.k0is,
+                u_bound: bounds.u_bound.to_string(),
+                e0_bound: bounds.e0_bound.to_string(),
+                e1_bound: bounds.e1_bound.to_string(),
+                msg_bound: bounds.msg_bound.to_string(),
+                pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
+                r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
+                r1_up_bounds: bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                p1_bounds: bounds.p1_bounds.iter().map(|b| b.to_string()).collect(),
+                p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
+            };
+
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
+            let enc_bfv_template_params = EncBfvTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
+            )?;
+
+            let template_generator = EncBfvMainTemplate;
+            template_generator.generate_main_file(&enc_bfv_template_params, output_dir)?;
+        }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
         }
@@ -1104,6 +1150,7 @@ fn main() -> anyhow::Result<()> {
                 println!(
                     "  • verify-shares-trbfv   - Secret Key Shares verification circuit (supports trbfv)"
                 );
+                println!("  • enc-bfv       - BFV Encryption circuit (supports bfv)");
             }
             if presets {
                 println!("\n⚙️  Available presets:");
@@ -1132,6 +1179,7 @@ fn main() -> anyhow::Result<()> {
                 println!(
                     "  • verify-shares-trbfv   - Secret Key Shares verification circuit (supports trbfv)"
                 );
+                println!("  • enc-bfv       - BFV Encryption circuit (supports bfv)");
                 println!("\n⚙️  Available presets:");
                 println!("  • INSECURE_SET_512_10_1   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • SET_8192_1000_4   - Development (n=1, z=1000, λ=80, B=20)");

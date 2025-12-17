@@ -6,6 +6,7 @@ members = [
     "crates/circuits/greco",
     "crates/circuits/pk_bfv",
     "crates/circuits/verify_shares_trbfv",
+    "crates/circuits/enc_bfv",
     "crates/circuits/dec_share_trbfv",
     "crates/circuits/dec_bfv",
     "crates/circuits/dec_bfv_no_hom_add",
@@ -30,6 +31,7 @@ rust-version = "1.86.0"
 greco = { package = "zkfhe-greco", path = "./crates/circuits/greco" }
 pk_bfv = { package = "zkfhe-pk-bfv", path = "./crates/circuits/pk_bfv" }
 verify_shares_trbfv = { package = "zkfhe-verify-shares-trbfv", path = "./crates/circuits/verify_shares_trbfv" }
+enc_bfv = { package = "zkfhe-enc-bfv", path = "./crates/circuits/enc_bfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "./crates/circuits/dec_share_trbfv" }
 dec_share_agg_trbfv = { package = "zkfhe-dec-share-agg-trbfv", path = "./crates/circuits/dec_share_agg_trbfv" }
 dec_bfv = { package = "zkfhe-dec-bfv", path = "./crates/circuits/dec_bfv" }
