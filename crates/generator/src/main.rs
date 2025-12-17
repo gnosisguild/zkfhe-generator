@@ -226,6 +226,10 @@ fn get_circuit(
             let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type, lambda);
             Ok(Box::new(circuit))
         }
+        "pk-agg-trbfv" => {
+            let circuit = pk_agg_trbfv::circuit::PkAggTrBfvCircuit::new(parameter_type, lambda);
+            Ok(Box::new(circuit))
+        }
         "dec-share-trbfv" => {
             let circuit =
                 dec_share_trbfv::circuit::DecShareTrBfvCircuit::new(parameter_type, lambda);
@@ -259,6 +263,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
     match circuit_name.to_lowercase().as_str() {
         "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "pk-trbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "pk-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
@@ -765,6 +770,21 @@ fn generate_main_template(
             let template_generator = PkTrBfvMainTemplate;
             template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
         }
+        "pk-agg-trbfv" => {
+            use pk_agg_trbfv::template::{PkAggTrBfvMainTemplate, PkAggTrBfvTemplateParams};
+
+            let num_honest_parties = ciphernodes_config
+                .map(|c| c.num_honest_parties)
+                .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 5 if not provided
+
+            let pk_agg_trbfv_template_params = PkAggTrBfvTemplateParams::new(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                num_honest_parties,
+            );
+
+            let template_generator = PkAggTrBfvMainTemplate;
+            template_generator.generate_main_file(&pk_agg_trbfv_template_params, output_dir)?;
+        }
         "dec-share-trbfv" => {
             use dec_share_trbfv::bounds::DecShareTrBfvBounds;
             use dec_share_trbfv::template::{
@@ -1034,6 +1054,9 @@ fn main() -> anyhow::Result<()> {
                     "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
                 );
                 println!(
+                    "  • pk-agg-trbfv   - Public Key Aggregation TRBFV circuit implementation (supports trbfv)"
+                );
+                println!(
                     "  • dec-share-trbfv   - Decryption Share TRBFV circuit implementation (supports trbfv)"
                 );
                 println!(
@@ -1067,6 +1090,9 @@ fn main() -> anyhow::Result<()> {
                 println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
                 println!(
                     "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
+                );
+                println!(
+                    "  • pk-agg-trbfv   - Public Key Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
                 println!(
                     "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"

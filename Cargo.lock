@@ -286,9 +286,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.19.0"
+version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
+checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 
 [[package]]
 name = "bytes"
@@ -513,7 +513,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fhe"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#f588e090d69488a9cffa2a891bd068a295553348"
+source = "git+https://github.com/gnosisguild/fhe.rs#3824c52cb457c55551ffcdaeeaef9f3c53145a93"
 dependencies = [
  "bincode",
  "doc-comment",
@@ -539,7 +539,7 @@ dependencies = [
 [[package]]
 name = "fhe-math"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#f588e090d69488a9cffa2a891bd068a295553348"
+source = "git+https://github.com/gnosisguild/fhe.rs#3824c52cb457c55551ffcdaeeaef9f3c53145a93"
 dependencies = [
  "ethnum",
  "fhe-traits",
@@ -562,7 +562,7 @@ dependencies = [
 [[package]]
 name = "fhe-traits"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#f588e090d69488a9cffa2a891bd068a295553348"
+source = "git+https://github.com/gnosisguild/fhe.rs#3824c52cb457c55551ffcdaeeaef9f3c53145a93"
 dependencies = [
  "rand",
 ]
@@ -570,7 +570,7 @@ dependencies = [
 [[package]]
 name = "fhe-util"
 version = "0.1.0-beta.7"
-source = "git+https://github.com/gnosisguild/fhe.rs#f588e090d69488a9cffa2a891bd068a295553348"
+source = "git+https://github.com/gnosisguild/fhe.rs#3824c52cb457c55551ffcdaeeaef9f3c53145a93"
 dependencies = [
  "itertools 0.12.1",
  "num-bigint-dig",
@@ -1178,7 +1178,7 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 [[package]]
 name = "safe"
 version = "0.1.7"
-source = "git+https://github.com/gnosisguild/enclave#c9b72d1e42d8e37a19473f423978ef76f92454d6"
+source = "git+https://github.com/gnosisguild/enclave#371379fedeedc537a3b54ec30f88f8e148d79661"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -1713,6 +1713,7 @@ dependencies = [
  "zkfhe-dec-share-agg-trbfv",
  "zkfhe-dec-share-trbfv",
  "zkfhe-greco",
+ "zkfhe-pk-agg-trbfv",
  "zkfhe-pk-trbfv",
  "zkfhe-shared",
  "zkfhe-sk-shares",
@@ -1751,6 +1752,25 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "thiserror",
+]
+
+[[package]]
+name = "zkfhe-pk-agg-trbfv"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bigint-poly",
+ "fhe",
+ "fhe-math",
+ "itertools 0.14.0",
+ "num-bigint",
+ "num-traits",
+ "rand",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "zkfhe-shared",
 ]
 
 [[package]]

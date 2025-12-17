@@ -115,8 +115,8 @@ impl CiphernodesConfig {
     /// Default values for backward compatibility
     ///
     /// These are the default values used when no configuration is provided:
-    /// - num_parties: 3
-    /// - num_honest_parties: 3
+    /// - num_parties: 5
+    /// - num_honest_parties: 5
     /// - threshold: 2
     pub fn defaults() -> Self {
         Self {

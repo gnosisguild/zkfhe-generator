@@ -20,6 +20,7 @@ path = "src/main.rs"
 shared = { package = "zkfhe-shared", path = "../shared" }
 greco = { package = "zkfhe-greco", path = "../circuits/greco" }
 pk_trbfv = { package = "zkfhe-pk-trbfv", path = "../circuits/pk_trbfv" }
+pk_agg_trbfv = { package = "zkfhe-pk-agg-trbfv", path = "../circuits/pk_agg_trbfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "../circuits/dec_share_trbfv" }
 dec_share_agg_trbfv = { package = "zkfhe-dec-share-agg-trbfv", path = "../circuits/dec_share_agg_trbfv" }
 dec_bfv = { package = "zkfhe-dec-bfv", path = "../circuits/dec_bfv" }
