@@ -2,41 +2,40 @@
 //!
 //! This module contains the TOML generation logic specific to the verify-shares-trbfv circuit.
 
-use crate::bounds::{SkSharesBounds, SkSharesCryptographicParameters};
-use crate::vectors::SkSharesVectors;
+use crate::bounds::{VerifySharesTrbfvBounds, VerifySharesTrbfvCryptographicParameters};
+use crate::vectors::VerifySharesTrbfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
 use shared::toml::TomlGenerator;
 use shared::utils::{to_string_1d_vec, to_string_3d_vec};
 
-/// Generator for Secret Key Shares circuit TOML files
-pub struct SkSharesTomlGenerator {
-    vectors: SkSharesVectors,
+/// Generator for Verify Shares TRBFV circuit TOML files
+pub struct VerifySharesTrbfvTomlGenerator {
+    vectors: VerifySharesTrbfvVectors,
 }
 
-impl SkSharesTomlGenerator {
+impl VerifySharesTrbfvTomlGenerator {
     /// Create a new TOML generator with vectors
     /// Note: Constants (N, L, QIS, bounds, etc.) are now in a separate .nr file
     pub fn new(
-        _crypto_params: SkSharesCryptographicParameters,
-        _bounds: SkSharesBounds,
-        vectors: SkSharesVectors,
+        _crypto_params: VerifySharesTrbfvCryptographicParameters,
+        _bounds: VerifySharesTrbfvBounds,
+        vectors: VerifySharesTrbfvVectors,
     ) -> Self {
         Self { vectors }
     }
 }
 
-/// Complete `Prover.toml` format for Secret Key Shares circuit
+/// Complete `Prover.toml` format for Verify Shares TRBFV circuit
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    params: serde_json::Value,
     expected_sk_commitment: String,
     sk: serde_json::Value,
     y: Vec<Vec<Vec<serde_json::Value>>>, // [N][L][N_PARTIES+1]
     h: Vec<Vec<Vec<serde_json::Value>>>, // [L][N_PARTIES-T][N_PARTIES+1]
 }
 
-impl TomlGenerator for SkSharesTomlGenerator {
+impl TomlGenerator for VerifySharesTrbfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
         // Note: Configs (N, L, QIS, bounds, bit parameters, Configs) are now
         // generated in a separate .nr config file, not in the TOML.
@@ -82,7 +81,6 @@ impl TomlGenerator for SkSharesTomlGenerator {
             .collect::<Vec<Vec<Vec<serde_json::Value>>>>();
 
         let toml_data = ProverTomlFormat {
-            params: serde_json::json!({}), // Empty params - constants are in .nr file
             expected_sk_commitment: self.vectors.expected_sk_commitment.to_string(),
             sk: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.sk)
@@ -98,9 +96,9 @@ impl TomlGenerator for SkSharesTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bounds::SkSharesBounds;
+    use crate::bounds::VerifySharesTrbfvBounds;
     use crate::sample::generate_sample_sk_shares;
-    use crate::vectors::SkSharesVectors;
+    use crate::vectors::VerifySharesTrbfvVectors;
     use shared::utils::test_parameters_trbfv;
     use tempfile::TempDir;
 
@@ -109,7 +107,7 @@ mod tests {
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
 
-        let (crypto_params, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
+        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
         let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
         let data = generate_sample_sk_shares(
             &params,
@@ -118,10 +116,11 @@ mod tests {
             shared::DEFAULT_INSECURE_LAMBDA,
         )
         .unwrap();
-        let vectors = SkSharesVectors::compute(&data, &params, bit_sk).unwrap();
+        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_sk).unwrap();
         let vectors_standard = vectors.standard_form();
 
-        let generator = SkSharesTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let generator =
+            VerifySharesTrbfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -147,7 +146,7 @@ mod tests {
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
 
-        let (crypto_params, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
+        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
         let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
         let data = generate_sample_sk_shares(
             &params,
@@ -156,10 +155,11 @@ mod tests {
             shared::DEFAULT_INSECURE_LAMBDA,
         )
         .unwrap();
-        let vectors = SkSharesVectors::compute(&data, &params, bit_sk).unwrap();
+        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_sk).unwrap();
         let vectors_standard = vectors.standard_form();
 
-        let generator = SkSharesTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let generator =
+            VerifySharesTrbfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
         let toml_string = generator.to_toml_string().unwrap();
 
         // Verify the TOML string contains the expected sections

@@ -12,9 +12,9 @@ use rand::rngs::OsRng;
 use shared::circuit::{CiphernodesConfig, SampleType};
 use std::sync::Arc;
 
-/// Data from a sample secret key shares generation
+/// Data from a sample verify shares TRBFV generation
 #[derive(Debug, Clone)]
-pub struct SkSharesData {
+pub struct VerifySharesTrbfvData {
     /// Secret key (trinary coefficients)
     pub sk: SecretKey,
     /// Shamir secret shares: sk_sss[modulus_idx][party_idx][coeff_idx]
@@ -51,13 +51,13 @@ pub struct SkSharesData {
 ///
 /// # Returns
 ///
-/// A `SkSharesData` struct containing the secret key, shares, and parity matrices.
+/// A `VerifySharesTrbfvData` struct containing the secret key, shares, and parity matrices.
 pub fn generate_sample_sk_shares(
     trbfv_params: &Arc<BfvParameters>,
     sample_type: SampleType,
     ciphernodes_config: Option<&CiphernodesConfig>,
     lambda: usize,
-) -> Result<SkSharesData, Box<dyn std::error::Error>> {
+) -> Result<VerifySharesTrbfvData, Box<dyn std::error::Error>> {
     let mut rng = OsRng;
 
     // Use provided config or defaults
@@ -147,7 +147,7 @@ pub fn generate_sample_sk_shares(
         h.push(h_mod_vec);
     }
 
-    Ok(SkSharesData {
+    Ok(VerifySharesTrbfvData {
         sk,
         sk_sss,
         h,

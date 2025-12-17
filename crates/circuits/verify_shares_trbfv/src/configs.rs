@@ -3,15 +3,15 @@
 //! This module generates a .nr config file with all circuit-specific configs
 //! (N, L, QIS, bounds, bit parameters, Configs) that can be imported in the main circuit.
 
-use crate::bounds::{SkSharesBounds, SkSharesCryptographicParameters};
-use crate::template::SkSharesTemplateParams;
+use crate::bounds::{VerifySharesTrbfvBounds, VerifySharesTrbfvCryptographicParameters};
+use crate::template::VerifySharesTrbfvTemplateParams;
 use shared::errors::ZkFheResult;
 use std::path::{Path, PathBuf};
 
-/// Generator for Secret Key Shares circuit config files
-pub struct SkSharesConfigsGenerator;
+/// Generator for Verify Shares TRBFV circuit config files
+pub struct VerifySharesTrbfvConfigsGenerator;
 
-impl SkSharesConfigsGenerator {
+impl VerifySharesTrbfvConfigsGenerator {
     /// Generate the config .nr file content
     ///
     /// # Arguments
@@ -24,9 +24,9 @@ impl SkSharesConfigsGenerator {
     ///
     /// The complete config file content as a string
     pub fn generate_configs(
-        crypto_params: &SkSharesCryptographicParameters,
-        bounds: &SkSharesBounds,
-        template_params: &SkSharesTemplateParams,
+        crypto_params: &VerifySharesTrbfvCryptographicParameters,
+        bounds: &VerifySharesTrbfvBounds,
+        template_params: &VerifySharesTrbfvTemplateParams,
     ) -> ZkFheResult<String> {
         // Format QIS array
         let qis_str = crypto_params
@@ -86,9 +86,9 @@ pub global VERIFY_SHARES_CONFIGS: VerifySharesConfigs<L> =
     ///
     /// Path to the generated config file
     pub fn generate_configs_file(
-        crypto_params: &SkSharesCryptographicParameters,
-        bounds: &SkSharesBounds,
-        template_params: &SkSharesTemplateParams,
+        crypto_params: &VerifySharesTrbfvCryptographicParameters,
+        bounds: &VerifySharesTrbfvBounds,
+        template_params: &VerifySharesTrbfvTemplateParams,
         output_dir: &Path,
         filename: &str,
     ) -> ZkFheResult<PathBuf> {

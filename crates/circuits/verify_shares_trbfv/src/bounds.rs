@@ -8,21 +8,21 @@ use num_bigint::BigUint;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
-/// Cryptographic parameters for Secret Key Shares circuit
+/// Cryptographic parameters for Verify Shares TRBFV circuit
 #[derive(Clone, Debug)]
-pub struct SkSharesCryptographicParameters {
+pub struct VerifySharesTrbfvCryptographicParameters {
     pub moduli: Vec<u64>,
     pub plaintext_modulus: u64,
 }
 
-/// Bounds for Secret Key Shares circuit
+/// Bounds for Verify Shares TRBFV circuit
 #[derive(Clone, Debug)]
-pub struct SkSharesBounds {
+pub struct VerifySharesTrbfvBounds {
     /// Bound for secret key coefficients (trinary: {-1, 0, 1})
     pub sk_bound: BigUint,
 }
 
-impl SkSharesBounds {
+impl VerifySharesTrbfvBounds {
     /// Compute bounds and cryptographic parameters from BFV parameters
     ///
     /// # Arguments
@@ -34,18 +34,18 @@ impl SkSharesBounds {
     pub fn compute(
         params: &Arc<BfvParameters>,
         level: usize,
-    ) -> ZkFheResult<(SkSharesCryptographicParameters, Self)> {
+    ) -> ZkFheResult<(VerifySharesTrbfvCryptographicParameters, Self)> {
         let ctx = params.ctx_at_level(level)?;
 
         // Secret key bound (trinary: {-1, 0, 1})
         let sk_bound = SecretKey::sk_bound() as u128;
 
-        let crypto_params = SkSharesCryptographicParameters {
+        let crypto_params = VerifySharesTrbfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
             plaintext_modulus: params.plaintext(),
         };
 
-        let bounds = SkSharesBounds {
+        let bounds = VerifySharesTrbfvBounds {
             sk_bound: BigUint::from(sk_bound),
         };
 
@@ -61,7 +61,7 @@ mod tests {
     #[test]
     fn test_bounds_computation() {
         let params = test_parameters_bfv();
-        let (crypto_params, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
+        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
 
         assert_eq!(crypto_params.moduli.len(), params.moduli().len());
 

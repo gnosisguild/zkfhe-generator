@@ -6,15 +6,15 @@ use num_traits::ToPrimitive;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
-/// Cryptographic parameters for PkTrBfv circuit
+/// Cryptographic parameters for PkBfv circuit
 #[derive(Clone, Debug)]
-pub struct PkTrBfvCryptographicParameters {
+pub struct PkBfvCryptographicParameters {
     pub moduli: Vec<u64>,
 }
 
-/// Bounds for PkTrBfv circuit polynomial coefficients
+/// Bounds for PkBfv circuit polynomial coefficients
 #[derive(Clone, Debug)]
-pub struct PkTrBfvBounds {
+pub struct PkBfvBounds {
     // Bounds for different polynomial types
     pub eek_bound: BigUint,
     pub sk_bound: BigUint,
@@ -22,12 +22,12 @@ pub struct PkTrBfvBounds {
     pub r2_bounds: Vec<BigUint>,
 }
 
-impl PkTrBfvBounds {
+impl PkBfvBounds {
     /// Compute bounds and cryptographic parameters from BFV parameters
     pub fn compute(
         params: &Arc<BfvParameters>,
         level: usize,
-    ) -> ZkFheResult<(PkTrBfvCryptographicParameters, Self)> {
+    ) -> ZkFheResult<(PkBfvCryptographicParameters, Self)> {
         // Get cyclotomic degree and context at provided level
         let n = BigInt::from(params.degree());
         let ctx = params.ctx_at_level(level)?;
@@ -56,9 +56,9 @@ impl PkTrBfvBounds {
             r1_bounds[i] = ((&n * eek_bound + 2u32) * &qi_bound + eek_bound) / &qi_bigint;
         }
 
-        let crypto_params = PkTrBfvCryptographicParameters { moduli };
+        let crypto_params = PkBfvCryptographicParameters { moduli };
 
-        let bounds = PkTrBfvBounds {
+        let bounds = PkBfvBounds {
             eek_bound: BigUint::from(eek_bound),
             sk_bound: BigUint::from(sk_bound as u128),
             r1_bounds: r1_bounds
@@ -75,7 +75,7 @@ impl PkTrBfvBounds {
     }
 }
 
-impl PkTrBfvCryptographicParameters {
+impl PkBfvCryptographicParameters {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "moduli": self.moduli
@@ -83,7 +83,7 @@ impl PkTrBfvCryptographicParameters {
     }
 }
 
-impl PkTrBfvBounds {
+impl PkBfvBounds {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "eek_bound": self.eek_bound,
@@ -102,7 +102,7 @@ mod tests {
     #[test]
     fn test_bounds_computation() {
         let params = test_parameters_trbfv();
-        let (crypto_params, bounds) = PkTrBfvBounds::compute(&params, 0).unwrap();
+        let (crypto_params, bounds) = PkBfvBounds::compute(&params, 0).unwrap();
 
         assert_eq!(crypto_params.moduli.len(), 2);
         assert_eq!(bounds.r1_bounds.len(), 2);

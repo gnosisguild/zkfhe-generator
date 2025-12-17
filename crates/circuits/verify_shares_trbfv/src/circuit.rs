@@ -3,12 +3,12 @@
 //! This module provides the circuit interface for the verify-shares-trbfv circuit,
 //! which verifies that Shamir secret key shares satisfy the Reed-Solomon parity check.
 
-use crate::bounds::SkSharesBounds;
-use crate::configs::SkSharesConfigsGenerator;
+use crate::bounds::VerifySharesTrbfvBounds;
+use crate::configs::VerifySharesTrbfvConfigsGenerator;
 use crate::sample::generate_sample_sk_shares;
-use crate::template::{SkSharesBoundsData, SkSharesTemplateParams};
-use crate::toml::SkSharesTomlGenerator;
-use crate::vectors::SkSharesVectors;
+use crate::template::{VerifySharesTrbfvBoundsData, VerifySharesTrbfvTemplateParams};
+use crate::toml::VerifySharesTrbfvTomlGenerator;
+use crate::vectors::VerifySharesTrbfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
@@ -16,14 +16,14 @@ use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
 
-/// Secret Key Shares verification circuit implementation
+/// Verify Shares TRBFV circuit implementation
 ///
 /// This circuit verifies that Shamir secret key shares satisfy the Reed-Solomon parity check.
 /// It verifies:
 /// 1. sk consistency: y[i][j][0] == sk[i] for all i, j
 /// 2. Range checks: sk coefficients are trinary {-1, 0, 1}, shares are in [0, q_j)
 /// 3. Parity check: H[j] * y[i][j]^T == 0 mod q_j for all i, j
-pub struct SkSharesCircuit {
+pub struct VerifySharesTrbfvCircuit {
     /// The parameter type this circuit is configured with
     pub parameter_type: ParameterType,
     /// The sample type to use for share generation
@@ -39,8 +39,8 @@ pub struct SkSharesCircuit {
     pub security_parameter: usize,
 }
 
-impl SkSharesCircuit {
-    /// Create a new SkSharesCircuit instance with the specified parameter type, sample type, and security parameter
+impl VerifySharesTrbfvCircuit {
+    /// Create a new VerifySharesTrbfvCircuit instance with the specified parameter type, sample type, and security parameter
     ///
     /// # Arguments
     ///
@@ -48,7 +48,7 @@ impl SkSharesCircuit {
     /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
     /// * `lambda` - The security parameter (λ)
     pub fn new(parameter_type: ParameterType, sample_type: SampleType, lambda: usize) -> Self {
-        SkSharesCircuit {
+        VerifySharesTrbfvCircuit {
             parameter_type,
             sample_type,
             security_parameter: lambda,
@@ -56,13 +56,13 @@ impl SkSharesCircuit {
     }
 }
 
-impl Circuit for SkSharesCircuit {
-    /// Returns the name of the Secret Key Shares verification circuit
+impl Circuit for VerifySharesTrbfvCircuit {
+    /// Returns the name of the Verify Shares TRBFV circuit
     fn name(&self) -> &'static str {
         "verify-shares-trbfv"
     }
 
-    /// Returns a description of the Secret Key Shares verification circuit
+    /// Returns a description of the Verify Shares TRBFV circuit
     fn description(&self) -> &'static str {
         "Zero-knowledge proof circuit for verifying that Shamir secret key shares satisfy the Reed-Solomon parity check"
     }
@@ -88,7 +88,7 @@ impl Circuit for SkSharesCircuit {
         let selected_params = trbfv_params;
 
         // Generate bounds and cryptographic parameters
-        let (crypto_params, bounds) = SkSharesBounds::compute(selected_params, 0)?;
+        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(selected_params, 0)?;
 
         // Calculate bit_sk from bounds for commitment computation
         let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string())?;
@@ -105,7 +105,7 @@ impl Circuit for SkSharesCircuit {
         })?;
 
         // Compute witness vectors from the shares data
-        let vectors = SkSharesVectors::compute(&shares_data, selected_params, bit_sk)?;
+        let vectors = VerifySharesTrbfvVectors::compute(&shares_data, selected_params, bit_sk)?;
 
         // Verify that vectors satisfy circuit constraints
         vectors.verify(
@@ -118,7 +118,7 @@ impl Circuit for SkSharesCircuit {
         let vectors_standard = vectors.standard_form();
 
         // Generate template params for constant file generation
-        let bounds_data = SkSharesBoundsData {
+        let bounds_data = VerifySharesTrbfvBoundsData {
             sk_bound: bounds.sk_bound.to_string(),
             moduli: crypto_params.moduli.clone(),
         };
@@ -134,7 +134,7 @@ impl Circuit for SkSharesCircuit {
             "insecure"
         };
 
-        let template_params = SkSharesTemplateParams::from_bounds(
+        let template_params = VerifySharesTrbfvTemplateParams::from_bounds(
             shared::template::BaseTemplateParams::new(
                 selected_params.degree(),
                 selected_params.moduli().len(),
@@ -149,7 +149,7 @@ impl Circuit for SkSharesCircuit {
 
         // Generate config .nr file (named after parameter set: trbfv.nr or bfv.nr)
         let configs_filename = format!("{}.nr", self.parameter_type().as_str());
-        SkSharesConfigsGenerator::generate_configs_file(
+        VerifySharesTrbfvConfigsGenerator::generate_configs_file(
             &crypto_params,
             &bounds,
             &template_params,
@@ -158,7 +158,8 @@ impl Circuit for SkSharesCircuit {
         )?;
 
         // Create TOML generator and generate file (without params - they're in the config file)
-        let toml_generator = SkSharesTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let toml_generator =
+            VerifySharesTrbfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())
@@ -173,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_circuit_name_and_description() {
-        let circuit = SkSharesCircuit::new(
+        let circuit = VerifySharesTrbfvCircuit::new(
             ParameterType::Trbfv,
             SampleType::SecretKey,
             shared::DEFAULT_INSECURE_LAMBDA,
@@ -185,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_toml_generation() {
-        let circuit = SkSharesCircuit::new(
+        let circuit = VerifySharesTrbfvCircuit::new(
             ParameterType::Trbfv,
             SampleType::SecretKey,
             shared::DEFAULT_INSECURE_LAMBDA,

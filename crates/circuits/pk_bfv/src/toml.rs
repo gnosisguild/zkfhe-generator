@@ -1,35 +1,22 @@
-use crate::bounds::{PkTrBfvBounds, PkTrBfvCryptographicParameters};
-use crate::vectors::PkTrBfvVectors;
+use crate::vectors::PkBfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
 use shared::toml::TomlGenerator;
 use shared::utils::to_string_1d_vec;
 
-pub struct PkTrBfvTomlGenerator {
-    crypto_params: PkTrBfvCryptographicParameters,
-    bounds: PkTrBfvBounds,
-    vectors: PkTrBfvVectors,
+pub struct PkBfvTomlGenerator {
+    vectors: PkBfvVectors,
 }
 
-impl PkTrBfvTomlGenerator {
-    pub fn new(
-        crypto_params: PkTrBfvCryptographicParameters,
-        bounds: PkTrBfvBounds,
-        vectors: PkTrBfvVectors,
-    ) -> Self {
-        Self {
-            crypto_params,
-            bounds,
-            vectors,
-        }
+impl PkBfvTomlGenerator {
+    pub fn new(vectors: PkBfvVectors) -> Self {
+        Self { vectors }
     }
 }
 
 /// Complete `Prover.toml` format
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    #[serde(rename = "params")]
-    params: ParamsSection,
     pk0is: Vec<serde_json::Value>,
     pk1is: Vec<serde_json::Value>,
     r1is: Vec<serde_json::Value>,
@@ -39,27 +26,10 @@ struct ProverTomlFormat {
     eek: serde_json::Value,
 }
 
-#[derive(Serialize)]
-struct ParamsSection {
-    bounds: BoundsSection,
-    crypto: CryptoSection,
-}
-
-#[derive(Serialize)]
-struct BoundsSection {
-    eek_bound: String,
-    sk_bound: String,
-    r1_bounds: Vec<String>,
-    r2_bounds: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct CryptoSection {
-    qis: Vec<String>,
-}
-
-impl TomlGenerator for PkTrBfvTomlGenerator {
+impl TomlGenerator for PkBfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
+        // Note: Configs (N, L, QIS, bounds, bit parameters, Configs) are now
+        // generated in a separate .nr config file, not in the TOML.
         let toml_data = ProverTomlFormat {
             // a: L vectors of polynomials - convert to simple string format
             a: self
@@ -130,33 +100,6 @@ impl TomlGenerator for PkTrBfvTomlGenerator {
             eek: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.eek)
             }),
-
-            params: ParamsSection {
-                bounds: BoundsSection {
-                    eek_bound: self.bounds.eek_bound.to_string(),
-                    sk_bound: self.bounds.sk_bound.to_string(),
-                    r1_bounds: self
-                        .bounds
-                        .r1_bounds
-                        .iter()
-                        .map(|b| b.to_string())
-                        .collect(),
-                    r2_bounds: self
-                        .bounds
-                        .r2_bounds
-                        .iter()
-                        .map(|b| b.to_string())
-                        .collect(),
-                },
-                crypto: CryptoSection {
-                    qis: self
-                        .crypto_params
-                        .moduli
-                        .iter()
-                        .map(|q| q.to_string())
-                        .collect(),
-                },
-            },
         };
 
         Ok(toml::to_string(&toml_data)?)
@@ -166,20 +109,15 @@ impl TomlGenerator for PkTrBfvTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bounds::PkTrBfvBounds;
-    use crate::vectors::PkTrBfvVectors;
-    use shared::utils::test_parameters_trbfv;
+    use crate::vectors::PkBfvVectors;
 
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters_trbfv();
+        let vectors = PkBfvVectors::new(1, 512);
 
-        let (crypto_params, bounds) = PkTrBfvBounds::compute(&params, 0).unwrap();
-        let vectors = PkTrBfvVectors::new(1, 512);
-
-        let generator = PkTrBfvTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = PkBfvTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -193,10 +131,6 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
 
         // Check that the file contains the expected sections
-        assert!(content.contains("params.crypto"));
-        assert!(content.contains("params.bounds"));
-        assert!(content.contains("crypto"));
-        assert!(content.contains("bounds"));
         assert!(content.contains("pk0is"));
         assert!(content.contains("pk1is"));
         assert!(content.contains("r1is"));
@@ -214,7 +148,5 @@ mod tests {
         assert!(toml_string.contains("[[a]]"));
         assert!(toml_string.contains("[sk]"));
         assert!(toml_string.contains("[eek]"));
-        assert!(toml_string.contains("[params.crypto]"));
-        assert!(toml_string.contains("[params.bounds]"));
     }
 }

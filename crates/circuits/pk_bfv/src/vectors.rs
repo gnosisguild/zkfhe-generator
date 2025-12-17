@@ -24,7 +24,7 @@ type ModulusComputationResult = (
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
-pub struct PkTrBfvVectors {
+pub struct PkBfvVectors {
     pub a: Vec<Vec<BigInt>>,
     pub eek: Vec<BigInt>,
     pub sk: Vec<BigInt>,
@@ -34,9 +34,9 @@ pub struct PkTrBfvVectors {
     pub pk1is: Vec<Vec<BigInt>>,
 }
 
-impl PkTrBfvVectors {
+impl PkBfvVectors {
     pub fn new(num_moduli: usize, degree: usize) -> Self {
-        PkTrBfvVectors {
+        PkBfvVectors {
             a: vec![vec![BigInt::zero(); degree]; num_moduli],
             eek: vec![BigInt::zero(); degree],
             sk: vec![BigInt::zero(); degree],
@@ -53,7 +53,7 @@ impl PkTrBfvVectors {
         sk_rns: &Poly,
         pk: &PublicKeyOrPoly,
         params: &Arc<BfvParameters>,
-    ) -> ZkFheResult<PkTrBfvVectors> {
+    ) -> ZkFheResult<PkBfvVectors> {
         let ctx = params.ctx_at_level(0)?;
         let n: u64 = ctx.degree as u64;
 
@@ -119,7 +119,7 @@ impl PkTrBfvVectors {
 
         // Initialize matrices to store results
         let num_moduli = ctx.moduli().len();
-        let mut res = PkTrBfvVectors::new(num_moduli, n as usize);
+        let mut res = PkBfvVectors::new(num_moduli, n as usize);
 
         let pk0_coeffs = pk0.coefficients();
         let pk1_coeffs = pk1.coefficients();
@@ -303,10 +303,10 @@ impl PkTrBfvVectors {
     }
 }
 
-impl PkTrBfvVectors {
+impl PkBfvVectors {
     pub fn standard_form(&self) -> Self {
         let zkp_modulus = &shared::constants::get_zkp_modulus();
-        PkTrBfvVectors {
+        PkBfvVectors {
             a: reduce_coefficients_2d(&self.a, zkp_modulus),
             pk0is: reduce_coefficients_2d(&self.pk0is, zkp_modulus),
             pk1is: reduce_coefficients_2d(&self.pk1is, zkp_modulus),
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_standard_form() {
-        let vecs = PkTrBfvVectors::new(1, 512);
+        let vecs = PkBfvVectors::new(1, 512);
         let std_form = vecs.standard_form();
 
         // Check that all vectors are properly reduced
@@ -364,7 +364,7 @@ mod tests {
         // Compute vectors
         use crate::sample::PublicKeyOrPoly;
         let vecs =
-            PkTrBfvVectors::compute(&a, &eek_rns, &sk_rns, &PublicKeyOrPoly::Full(pk), &params)
+            PkBfvVectors::compute(&a, &eek_rns, &sk_rns, &PublicKeyOrPoly::Full(pk), &params)
                 .unwrap();
 
         let json = vecs.to_json();

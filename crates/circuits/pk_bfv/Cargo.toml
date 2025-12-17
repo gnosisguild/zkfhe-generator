@@ -1,9 +1,9 @@
 [package]
-name = "zkfhe-pk-trbfv"
+name = "zkfhe-pk-bfv"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "(Tr)BFV Public Key circuit parameter generation in Rust"
+description = "BFV Public Key circuit parameter generation in Rust"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

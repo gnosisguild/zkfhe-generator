@@ -8,19 +8,19 @@ use num_bigint::BigUint;
 use shared::errors::ZkFheResult;
 use shared::template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_width};
 
-/// Secret Key Shares bounds data for template parameter calculation
+/// Verify Shares TRBFV bounds data for template parameter calculation
 #[derive(Debug, Clone)]
-pub struct SkSharesBoundsData {
+pub struct VerifySharesTrbfvBoundsData {
     pub sk_bound: String,
     pub moduli: Vec<u64>,
 }
 
-/// Secret Key Shares-specific template parameters
+/// Verify Shares TRBFV-specific template parameters
 ///
-/// This structure contains the parameters specific to the Secret Key Shares circuit,
+/// This structure contains the parameters specific to the Verify Shares TRBFV circuit,
 /// extending the base parameters with circuit-specific bit-widths and bounds.
 #[derive(Debug, Clone)]
-pub struct SkSharesTemplateParams {
+pub struct VerifySharesTrbfvTemplateParams {
     /// Base parameters (N, L, circuit_type)
     pub base: BaseTemplateParams,
     /// Number of parties (N_PARTIES)
@@ -38,12 +38,12 @@ pub struct SkSharesTemplateParams {
     pub security_level: String,
 }
 
-impl SkSharesTemplateParams {
+impl VerifySharesTrbfvTemplateParams {
     pub fn from_bounds(
         base: BaseTemplateParams,
         num_parties: usize,
         threshold: usize,
-        bounds: &SkSharesBoundsData,
+        bounds: &VerifySharesTrbfvBoundsData,
         parameter_set: String,
         security_level: String,
     ) -> ZkFheResult<Self> {
@@ -71,11 +71,11 @@ impl SkSharesTemplateParams {
     }
 }
 
-/// Generator for Secret Key Shares circuit main.nr templates
-pub struct SkSharesMainTemplate;
+/// Generator for Verify Shares TRBFV circuit main.nr templates
+pub struct VerifySharesTrbfvMainTemplate;
 
-impl MainTemplateGenerator<SkSharesTemplateParams> for SkSharesMainTemplate {
-    fn generate_template(&self, params: &SkSharesTemplateParams) -> ZkFheResult<String> {
+impl MainTemplateGenerator<VerifySharesTrbfvTemplateParams> for VerifySharesTrbfvMainTemplate {
+    fn generate_template(&self, params: &VerifySharesTrbfvTemplateParams) -> ZkFheResult<String> {
         let template = format!(
             r#"use lib::configs::{}::{}::{{
     L, N, VERIFY_SHARES_BIT_SHARE, VERIFY_SHARES_BIT_SK, VERIFY_SHARES_CONFIGS,
