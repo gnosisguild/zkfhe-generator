@@ -127,6 +127,13 @@ impl Circuit for SkSharesCircuit {
             .cloned()
             .unwrap_or_else(|| shared::circuit::CiphernodesConfig::new(5, 5, 2));
 
+        // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+        let security_level = if self.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+            "production"
+        } else {
+            "insecure"
+        };
+
         let template_params = SkSharesTemplateParams::from_bounds(
             shared::template::BaseTemplateParams::new(
                 selected_params.degree(),
@@ -137,6 +144,7 @@ impl Circuit for SkSharesCircuit {
             config.threshold,
             &bounds_data,
             self.parameter_type().as_str().to_string(),
+            security_level.to_string(),
         )?;
 
         // Generate config .nr file (named after parameter set: trbfv.nr or bfv.nr)

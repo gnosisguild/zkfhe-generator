@@ -250,8 +250,11 @@ fn get_circuit(
             Ok(Box::new(circuit))
         }
         "verify-shares-trbfv" => {
-            let circuit =
-                verify_shares_trbfv::circuit::SkSharesCircuit::new(parameter_type, sample_type, lambda);
+            let circuit = verify_shares_trbfv::circuit::SkSharesCircuit::new(
+                parameter_type,
+                sample_type,
+                lambda,
+            );
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
@@ -941,8 +944,10 @@ fn generate_main_template(
                 SkSharesBoundsData, SkSharesMainTemplate, SkSharesTemplateParams,
             };
 
-            let (crypto_params, bounds) = SkSharesBounds::compute(trbfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute verify_shares_trbfv bounds: {e:?}"))?;
+            let (crypto_params, bounds) =
+                SkSharesBounds::compute(trbfv_params, 0).map_err(|e| {
+                    anyhow::anyhow!("Failed to compute verify_shares_trbfv bounds: {e:?}")
+                })?;
 
             let bounds_data = SkSharesBoundsData {
                 sk_bound: bounds.sk_bound.to_string(),
@@ -953,12 +958,20 @@ fn generate_main_template(
                 .cloned()
                 .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let sk_shares_template_params = SkSharesTemplateParams::from_bounds(
                 BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
                 config.num_parties,
                 config.threshold,
                 &bounds_data,
                 circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
 
             let template_generator = SkSharesMainTemplate;

@@ -33,6 +33,9 @@ pub struct SkSharesTemplateParams {
     pub bit_share: u32,
     /// Parameter set name (trbfv or bfv) for import path
     pub parameter_set: String,
+    /// Security level (secure or insecure) for import path
+    /// "production" for SET_8192_100_4, "insecure" otherwise
+    pub security_level: String,
 }
 
 impl SkSharesTemplateParams {
@@ -42,6 +45,7 @@ impl SkSharesTemplateParams {
         threshold: usize,
         bounds: &SkSharesBoundsData,
         parameter_set: String,
+        security_level: String,
     ) -> ZkFheResult<Self> {
         // Calculate bit width for secret key bound
         let bit_sk = calculate_bit_width(&bounds.sk_bound)?;
@@ -62,6 +66,7 @@ impl SkSharesTemplateParams {
             bit_sk,
             bit_share,
             parameter_set,
+            security_level,
         })
     }
 }
@@ -72,7 +77,7 @@ pub struct SkSharesMainTemplate;
 impl MainTemplateGenerator<SkSharesTemplateParams> for SkSharesMainTemplate {
     fn generate_template(&self, params: &SkSharesTemplateParams) -> ZkFheResult<String> {
         let template = format!(
-            r#"use lib::configs::insecure::{}::{{
+            r#"use lib::configs::{}::{}::{{
     L, N, VERIFY_SHARES_BIT_SHARE, VERIFY_SHARES_BIT_SK, VERIFY_SHARES_CONFIGS,
 }};
 use lib::core::trbfv_verify_shares::VerifyShares;
@@ -94,7 +99,7 @@ fn main(
 
     sk_shares.verify()
 }}"#,
-            params.parameter_set, params.num_parties, params.threshold,
+            params.security_level, params.parameter_set, params.num_parties, params.threshold,
         );
 
         Ok(template)
