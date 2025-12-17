@@ -28,3 +28,4 @@ chrono = { version = "0.4", features = ["serde"] }
 bigint-poly = { workspace = true }
 ark-bn254 = { workspace = true }
 ark-ff = { workspace = true }
+safe = { workspace = true }

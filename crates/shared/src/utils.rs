@@ -3,11 +3,13 @@
 //! This module contains helper functions for string conversion,
 //! serialization, and other common operations.
 
+use ark_bn254::Fr as Field;
 use fhe::bfv::BfvParameters;
 use fhe::bfv::BfvParametersBuilder;
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_traits::Zero;
+use safe::SafeSponge;
 use std::sync::Arc;
 
 /// Convert a 1D vector of BigInt to a vector of strings
@@ -69,4 +71,17 @@ pub fn test_parameters_bfv() -> Arc<BfvParameters> {
         .set_variance(3)
         .build_arc()
         .unwrap()
+}
+
+pub fn compute_safe(
+    domain_separator: [u8; 64],
+    inputs: Vec<Field>,
+    io_pattern: [u32; 2],
+) -> Vec<Field> {
+    let mut sponge = SafeSponge::start(io_pattern, domain_separator);
+    sponge.absorb(inputs);
+    let digests = sponge.squeeze();
+    sponge.finish();
+
+    digests
 }

@@ -14,7 +14,6 @@ rust-version.workspace = true
 
 [dependencies]
 shared = { package = "zkfhe-shared", path = "../../shared" }
-safe = { workspace = true }
 bigint-poly = { workspace = true }
 blake3 = { workspace = true }
 fhe = { workspace = true }

@@ -21,11 +21,10 @@ use std::sync::Arc;
 
 use ark_bn254::Fr as Field;
 use ark_ff::{BigInteger, PrimeField};
-use safe::SafeSponge;
 
 use shared::errors::ZkFheResult;
 use shared::packing::flatten;
-use shared::utils::{to_string_1d_vec, to_string_2d_vec};
+use shared::utils::{compute_safe, to_string_1d_vec, to_string_2d_vec};
 
 /// Compute a commitment to the public key polynomials by flattening them and hashing.
 /// This matches the Noir `commitment_payload` and `generate_challenge` functions exactly.
@@ -48,10 +47,7 @@ fn compute_pk_commitment(pk0is: &[Vec<BigInt>], pk1is: &[Vec<BigInt>], bit_pk: u
     let input_size = inputs.len() as u32;
     let io_pattern = [0x80000000 | input_size, 1];
 
-    let mut sponge = SafeSponge::start(io_pattern, domain_separator);
-    sponge.absorb(inputs);
-    let commitment = sponge.squeeze();
-    sponge.finish();
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
 
     // Convert Field to BigInt
     let commitment_field = commitment[0];
