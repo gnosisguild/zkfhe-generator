@@ -249,9 +249,9 @@ fn get_circuit(
                 dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new(sample_type, lambda);
             Ok(Box::new(circuit))
         }
-        "sk-shares" => {
+        "verify-shares-trbfv" => {
             let circuit =
-                sk_shares::circuit::SkSharesCircuit::new(parameter_type, sample_type, lambda);
+                verify_shares_trbfv::circuit::SkSharesCircuit::new(parameter_type, sample_type, lambda);
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
@@ -268,7 +268,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
         "dec-bfv-no-hom-add" => vec![ParameterType::Bfv],
-        "sk-shares" => vec![ParameterType::Trbfv],
+        "verify-shares-trbfv" => vec![ParameterType::Trbfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -935,14 +935,14 @@ fn generate_main_template(
             template_generator
                 .generate_main_file(&dec_bfv_no_hom_add_template_params, output_dir)?;
         }
-        "sk-shares" => {
-            use sk_shares::bounds::SkSharesBounds;
-            use sk_shares::template::{
+        "verify-shares-trbfv" => {
+            use verify_shares_trbfv::bounds::SkSharesBounds;
+            use verify_shares_trbfv::template::{
                 SkSharesBoundsData, SkSharesMainTemplate, SkSharesTemplateParams,
             };
 
             let (crypto_params, bounds) = SkSharesBounds::compute(trbfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute sk_shares bounds: {e:?}"))?;
+                .map_err(|e| anyhow::anyhow!("Failed to compute verify_shares_trbfv bounds: {e:?}"))?;
 
             let bounds_data = SkSharesBoundsData {
                 sk_bound: bounds.sk_bound.to_string(),
@@ -958,6 +958,7 @@ fn generate_main_template(
                 config.num_parties,
                 config.threshold,
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
             )?;
 
             let template_generator = SkSharesMainTemplate;
@@ -1024,10 +1025,10 @@ fn main() -> anyhow::Result<()> {
                     );
                 } else if circuit_name != "greco"
                     && circuit_name != "dec-bfv"
-                    && circuit_name != "sk-shares"
+                    && circuit_name != "verify-shares-trbfv"
                 {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to the greco, dec-bfv and sk-shares circuits. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to the greco, dec-bfv and verify-shares-trbfv circuits. This flag will be ignored."
                     );
                 }
                 SampleType::SecretKey
@@ -1067,7 +1068,7 @@ fn main() -> anyhow::Result<()> {
                     "  • dec-bfv-no-hom-add   - BFV Decryption circuit (no homomorphic addition) for insecure params (supports bfv)"
                 );
                 println!(
-                    "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
+                    "  • verify-shares-trbfv   - Secret Key Shares verification circuit (supports trbfv)"
                 );
             }
             if presets {
@@ -1095,7 +1096,7 @@ fn main() -> anyhow::Result<()> {
                     "  • pk-agg-trbfv   - Public Key Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
                 println!(
-                    "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
+                    "  • verify-shares-trbfv   - Secret Key Shares verification circuit (supports trbfv)"
                 );
                 println!("\n⚙️  Available presets:");
                 println!("  • INSECURE_SET_512_10_1   - Development (n=1, z=1000, λ=80, B=20)");

@@ -31,6 +31,8 @@ pub struct SkSharesTemplateParams {
     pub bit_sk: u32,
     /// Bit width for shares (BIT_SHARE)
     pub bit_share: u32,
+    /// Parameter set name (trbfv or bfv) for import path
+    pub parameter_set: String,
 }
 
 impl SkSharesTemplateParams {
@@ -39,6 +41,7 @@ impl SkSharesTemplateParams {
         num_parties: usize,
         threshold: usize,
         bounds: &SkSharesBoundsData,
+        parameter_set: String,
     ) -> ZkFheResult<Self> {
         // Calculate bit width for secret key bound
         let bit_sk = calculate_bit_width(&bounds.sk_bound)?;
@@ -58,6 +61,7 @@ impl SkSharesTemplateParams {
             threshold,
             bit_sk,
             bit_share,
+            parameter_set,
         })
     }
 }
@@ -67,51 +71,30 @@ pub struct SkSharesMainTemplate;
 
 impl MainTemplateGenerator<SkSharesTemplateParams> for SkSharesMainTemplate {
     fn generate_template(&self, params: &SkSharesTemplateParams) -> ZkFheResult<String> {
-        let import_example = "// use sk_shares::{SecretKeySharesVerificationCircuit, Params};
-// use polynomial::Polynomial;";
-
         let template = format!(
-            r#"//! Generated main.nr template for Secret Key Shares verification circuit
-// TODO: Your imports here (example below)
-{}
+            r#"use lib::configs::insecure::{}::{{
+    L, N, VERIFY_SHARES_BIT_SHARE, VERIFY_SHARES_BIT_SK, VERIFY_SHARES_CONFIGS,
+}};
+use lib::core::trbfv_verify_shares::VerifyShares;
+use lib::math::polynomial::Polynomial;
+
+/// Number of parties.
+pub global N_PARTIES: u32 = {};
+/// Threshold.
+pub global T: u32 = {};
 
 fn main(
-    params: Params<{}>,
-    sk: Polynomial<{}>,
-    y: [[[Field; {}]; {}]; {}],
-    h: [[[Field; {}]; {}]; {}],
-) {{
-    // TODO: Your logic here...
+    expected_sk_commitment: Field,
+    sk: Polynomial<N>,
+    y: [[[Field; N_PARTIES + 1]; L]; N],
+    h: [[[Field; N_PARTIES + 1]; T + 1]; L],
+) -> pub [[Field; L]; N_PARTIES] {{
+    let sk_shares: VerifyShares<N, L, N_PARTIES, T, VERIFY_SHARES_BIT_SK, VERIFY_SHARES_BIT_SHARE>
+         = VerifyShares::new(VERIFY_SHARES_CONFIGS, expected_sk_commitment, sk, y, h);
 
-    // Create Secret Key Shares Verification circuit instance
-    let sk_shares: SecretKeySharesVerificationCircuit<{}, {}, {}, {}, {}, {}> = 
-        SecretKeySharesVerificationCircuit::new(
-            params,
-            sk,
-            y,
-            h,
-        );
-
-    // Verify correct secret key shares
-    sk_shares.verify();
-
-    // TODO: Your logic here...
+    sk_shares.verify()
 }}"#,
-            import_example,
-            params.base.l,                         // L (number of moduli)
-            params.base.n,                         // sk N (polynomial degree)
-            params.num_parties + 1,                // y inner array size (N_PARTIES + 1)
-            params.base.l,                         // y middle array size (L)
-            params.base.n,                         // y outer array size (N)
-            params.num_parties + 1,                // h inner array size (N_PARTIES + 1)
-            params.num_parties - params.threshold, // h middle array size (N_PARTIES - T)
-            params.base.l,                         // h outer array size (L)
-            params.base.n,                         // Circuit N
-            params.base.l,                         // Circuit L
-            params.num_parties,                    // Circuit N_PARTIES
-            params.threshold,                      // Circuit T
-            params.bit_sk,                         // Circuit BIT_SK
-            params.bit_share,                      // Circuit BIT_SHARE
+            params.parameter_set, params.num_parties, params.threshold,
         );
 
         Ok(template)

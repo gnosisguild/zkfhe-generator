@@ -7,9 +7,43 @@ use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
 use num_traits::Zero;
 use shared::errors::ZkFheResult;
+use shared::packing::flatten;
+use shared::utils::compute_safe;
 use std::sync::Arc;
 
+use ark_bn254::Fr as Field;
+use ark_ff::{BigInteger, PrimeField};
+
 use crate::sample::SkSharesData;
+
+/// Compute a commitment to the secret key polynomial by flattening it and hashing.
+/// This matches the Noir `compute_sk_commitment` function exactly.
+fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {
+    // Step 1: Flatten sk (matches sk_payload in Noir)
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, &[sk.to_vec()], bit_sk);
+
+    // Step 2: Hash using SafeSponge (matches compute_sk_commitment in Noir)
+    // Domain separator - "PVSS_sk_comm" (must match BFV circuit)
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x6b, 0x5f, 0x63, 0x6f, 0x6d, 0x6d, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
 
 /// Set of vectors for input validation of Secret Key Shares verification
 #[derive(Clone, Debug)]
@@ -23,6 +57,8 @@ pub struct SkSharesVectors {
     /// Parity check matrices: h[mod_idx][row][col]
     /// Size per modulus: (N_PARTIES - T) × (N_PARTIES + 1)
     pub h: Vec<Vec<Vec<BigInt>>>,
+    /// Expected commitment to sk (from BFV public key circuit)
+    pub expected_sk_commitment: BigInt,
 }
 
 impl SkSharesVectors {
@@ -33,6 +69,7 @@ impl SkSharesVectors {
             sk: vec![BigInt::zero(); degree],
             y: vec![vec![vec![BigInt::zero(); num_parties + 1]; num_moduli]; degree],
             h: vec![vec![vec![BigInt::zero(); num_parties + 1]; num_parity_rows]; num_moduli],
+            expected_sk_commitment: BigInt::zero(),
         }
     }
 
@@ -42,12 +79,17 @@ impl SkSharesVectors {
     ///
     /// * `data` - Sample secret key shares data
     /// * `params` - BFV parameters
+    /// * `bit_sk` - Bit width for secret key bounds (used for commitment computation)
     ///
     /// # Returns
     ///
     /// A `SkSharesVectors` struct containing all witness vectors.
     /// y and h are already normalized from sample data, no need to normalize again.
-    pub fn compute(data: &SkSharesData, params: &Arc<BfvParameters>) -> ZkFheResult<Self> {
+    pub fn compute(
+        data: &SkSharesData,
+        params: &Arc<BfvParameters>,
+        bit_sk: u32,
+    ) -> ZkFheResult<Self> {
         let ctx = params.ctx_at_level(0)?;
         let degree = params.degree();
         let num_moduli = ctx.moduli().len();
@@ -108,7 +150,15 @@ impl SkSharesVectors {
             h.push(h_mod);
         }
 
-        Ok(SkSharesVectors { sk, y, h })
+        // Compute expected_sk_commitment (matches BFV circuit's commit_to_sk)
+        let expected_sk_commitment = compute_sk_commitment(&sk, bit_sk);
+
+        Ok(SkSharesVectors {
+            sk,
+            y,
+            h,
+            expected_sk_commitment,
+        })
     }
 
     /// Verify that the vectors satisfy all circuit constraints
@@ -293,7 +343,18 @@ impl SkSharesVectors {
         // Reduce h coefficients (3D array)
         let h = reduce_coefficients_3d(&self.h, &zkp_modulus);
 
-        SkSharesVectors { sk, y, h }
+        // Reduce expected_sk_commitment modulo ZKP modulus
+        let mut expected_sk_commitment = self.expected_sk_commitment % &zkp_modulus;
+        if expected_sk_commitment < BigInt::zero() {
+            expected_sk_commitment += &zkp_modulus;
+        }
+
+        SkSharesVectors {
+            sk,
+            y,
+            h,
+            expected_sk_commitment,
+        }
     }
 }
 
@@ -305,8 +366,12 @@ mod tests {
 
     #[test]
     fn test_vectors_computation() {
+        use crate::bounds::SkSharesBounds;
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
+        let (_, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
+        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
+
         let data = generate_sample_sk_shares(
             &params,
             SampleType::SecretKey,
@@ -315,7 +380,7 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = SkSharesVectors::compute(&data, &params).unwrap();
+        let vectors = SkSharesVectors::compute(&data, &params, bit_sk).unwrap();
         assert_eq!(vectors.sk.len(), params.degree());
         assert_eq!(vectors.y.len(), params.degree());
         assert_eq!(vectors.h.len(), params.moduli().len());
@@ -340,8 +405,12 @@ mod tests {
 
     #[test]
     fn test_standard_form() {
+        use crate::bounds::SkSharesBounds;
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
+        let (_, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
+        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
+
         let data = generate_sample_sk_shares(
             &params,
             SampleType::SecretKey,
@@ -350,7 +419,7 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = SkSharesVectors::compute(&data, &params).unwrap();
+        let vectors = SkSharesVectors::compute(&data, &params, bit_sk).unwrap();
         let vectors_standard = vectors.standard_form();
 
         // Verify all values are within ZKP modulus
@@ -383,8 +452,12 @@ mod tests {
 
     #[test]
     fn test_verify() {
+        use crate::bounds::SkSharesBounds;
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
+        let (_, bounds) = SkSharesBounds::compute(&params, 0).unwrap();
+        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
+
         let data = generate_sample_sk_shares(
             &params,
             SampleType::SecretKey,
@@ -393,7 +466,7 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = SkSharesVectors::compute(&data, &params).unwrap();
+        let vectors = SkSharesVectors::compute(&data, &params, bit_sk).unwrap();
 
         // Verify should pass for valid data
         let result = vectors.verify(&params, data.num_parties, data.threshold);

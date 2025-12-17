@@ -1716,7 +1716,7 @@ dependencies = [
  "zkfhe-pk-agg-trbfv",
  "zkfhe-pk-trbfv",
  "zkfhe-shared",
- "zkfhe-sk-shares",
+ "zkfhe-verify-shares-trbfv",
 ]
 
 [[package]]
@@ -1817,10 +1817,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "zkfhe-sk-shares"
+name = "zkfhe-verify-shares-trbfv"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ark-bn254",
+ "ark-ff",
  "bigint-poly",
  "fhe",
  "fhe-math",

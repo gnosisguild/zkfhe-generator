@@ -1,10 +1,12 @@
-//! Secret Key Shares verification circuit implementation
+//! Verify Shares TRBFV circuit implementation
 //!
-//! This module provides the circuit interface for the sk_shares circuit,
+//! This module provides the circuit interface for the verify-shares-trbfv circuit,
 //! which verifies that Shamir secret key shares satisfy the Reed-Solomon parity check.
 
 use crate::bounds::SkSharesBounds;
+use crate::configs::SkSharesConfigsGenerator;
 use crate::sample::generate_sample_sk_shares;
+use crate::template::{SkSharesBoundsData, SkSharesTemplateParams};
 use crate::toml::SkSharesTomlGenerator;
 use crate::vectors::SkSharesVectors;
 use fhe::bfv::BfvParameters;
@@ -57,7 +59,7 @@ impl SkSharesCircuit {
 impl Circuit for SkSharesCircuit {
     /// Returns the name of the Secret Key Shares verification circuit
     fn name(&self) -> &'static str {
-        "sk-shares"
+        "verify-shares-trbfv"
     }
 
     /// Returns a description of the Secret Key Shares verification circuit
@@ -82,11 +84,14 @@ impl Circuit for SkSharesCircuit {
         output_dir: &Path,
         ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
-        // sk_shares uses TRBFV parameters
+        // verify-shares-trbfv uses TRBFV parameters
         let selected_params = trbfv_params;
 
         // Generate bounds and cryptographic parameters
         let (crypto_params, bounds) = SkSharesBounds::compute(selected_params, 0)?;
+
+        // Calculate bit_sk from bounds for commitment computation
+        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string())?;
 
         // Generate sample secret key shares data
         let shares_data = generate_sample_sk_shares(
@@ -100,7 +105,7 @@ impl Circuit for SkSharesCircuit {
         })?;
 
         // Compute witness vectors from the shares data
-        let vectors = SkSharesVectors::compute(&shares_data, selected_params)?;
+        let vectors = SkSharesVectors::compute(&shares_data, selected_params, bit_sk)?;
 
         // Verify that vectors satisfy circuit constraints
         vectors.verify(
@@ -112,7 +117,39 @@ impl Circuit for SkSharesCircuit {
         // Convert to standard form (reduce modulo ZKP field)
         let vectors_standard = vectors.standard_form();
 
-        // Create TOML generator and generate file
+        // Generate template params for constant file generation
+        let bounds_data = SkSharesBoundsData {
+            sk_bound: bounds.sk_bound.to_string(),
+            moduli: crypto_params.moduli.clone(),
+        };
+
+        let config = ciphernodes_config
+            .cloned()
+            .unwrap_or_else(|| shared::circuit::CiphernodesConfig::new(5, 5, 2));
+
+        let template_params = SkSharesTemplateParams::from_bounds(
+            shared::template::BaseTemplateParams::new(
+                selected_params.degree(),
+                selected_params.moduli().len(),
+                self.name(),
+            ),
+            config.num_parties,
+            config.threshold,
+            &bounds_data,
+            self.parameter_type().as_str().to_string(),
+        )?;
+
+        // Generate config .nr file (named after parameter set: trbfv.nr or bfv.nr)
+        let configs_filename = format!("{}.nr", self.parameter_type().as_str());
+        SkSharesConfigsGenerator::generate_configs_file(
+            &crypto_params,
+            &bounds,
+            &template_params,
+            output_dir,
+            &configs_filename,
+        )?;
+
+        // Create TOML generator and generate file (without params - they're in the config file)
         let toml_generator = SkSharesTomlGenerator::new(crypto_params, bounds, vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
@@ -133,7 +170,7 @@ mod tests {
             SampleType::SecretKey,
             shared::DEFAULT_INSECURE_LAMBDA,
         );
-        assert_eq!(circuit.name(), "sk-shares");
+        assert_eq!(circuit.name(), "verify-shares-trbfv");
         assert!(!circuit.description().is_empty());
         assert_eq!(circuit.parameter_type(), ParameterType::Trbfv);
     }
@@ -161,9 +198,16 @@ mod tests {
 
         // Read and verify basic structure
         let content = std::fs::read_to_string(&toml_path).unwrap();
-        assert!(content.contains("params"));
+        // Note: params are now in a separate .nr constant file
         assert!(content.contains("sk"));
         assert!(content.contains("y"));
         assert!(content.contains("h"));
+
+        // Verify config file was generated (named after parameter set)
+        let configs_path = temp_dir.path().join("trbfv.nr");
+        assert!(
+            configs_path.exists(),
+            "trbfv.nr config file should be created"
+        );
     }
 }
