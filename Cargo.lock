@@ -1608,6 +1608,8 @@ name = "zkfhe-dec-bfv"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ark-bn254",
+ "ark-ff",
  "bigint-poly",
  "blake3",
  "fhe",

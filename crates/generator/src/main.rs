@@ -892,7 +892,7 @@ fn generate_main_template(
             use dec_bfv::bounds::DecBfvBounds;
             use dec_bfv::template::{DecBfvBoundsData, DecBfvMainTemplate, DecBfvTemplateParams};
 
-            let (_, bounds) = DecBfvBounds::compute(bfv_params, 0)
+            let (_, bounds) = DecBfvBounds::compute(bfv_params, trbfv_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute dec_bfv bounds: {e:?}"))?;
 
             let bounds_data = DecBfvBoundsData {
@@ -909,10 +909,19 @@ fn generate_main_template(
                 .map(|c| c.num_honest_parties)
                 .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 3 if not provided
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_bfv_template_params = DecBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
                 num_honest_parties,
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
 
             let template_generator = DecBfvMainTemplate;
