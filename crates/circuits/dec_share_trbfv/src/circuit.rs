@@ -1,10 +1,13 @@
 use crate::bounds::DecShareTrBfvBounds;
+use crate::configs::DecShareTrBfvConfigsGenerator;
 use crate::sample::generate_sample_decryption_share;
+use crate::template::{DecShareTrBfvBoundsData, DecShareTrBfvTemplateParams};
 use crate::toml::DecShareTrBfvTomlGenerator;
 use crate::vectors::DecShareTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType};
+use shared::template::BaseTemplateParams;
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -71,6 +74,51 @@ impl Circuit for DecShareTrBfvCircuit {
         )?;
 
         let vectors_standard = vectors.standard_form();
+
+        // Create bounds data for template
+        let bounds_data = DecShareTrBfvBoundsData {
+            decryption_share_bound: bounds.decryption_share_bound.to_string(),
+            r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+            r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+        };
+
+        // Get num_parties and threshold from config or use defaults
+        let config = ciphernodes_config
+            .cloned()
+            .unwrap_or_else(CiphernodesConfig::defaults);
+        let num_parties = config.num_parties;
+        let threshold = config.threshold;
+
+        // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+        let security_level = if self.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+            "production"
+        } else {
+            "insecure"
+        };
+
+        let template_params = DecShareTrBfvTemplateParams::from_bounds(
+            BaseTemplateParams::new(
+                trbfv_params.degree(),
+                trbfv_params.moduli().len(),
+                self.name(),
+            ),
+            &bounds_data,
+            self.parameter_type().as_str().to_string(),
+            security_level.to_string(),
+            num_parties as u32,
+            threshold as u32,
+        )?;
+
+        // Generate config .nr file (named after parameter set: trbfv.nr)
+        let configs_filename = format!("{}.nr", self.parameter_type().as_str());
+        DecShareTrBfvConfigsGenerator::generate_configs_file(
+            &crypto_params,
+            &bounds,
+            &template_params,
+            output_dir,
+            &configs_filename,
+            self.parameter_type().as_str(),
+        )?;
 
         // Create TOML generator and generate file
         let toml_generator =

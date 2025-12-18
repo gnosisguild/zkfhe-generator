@@ -13,8 +13,11 @@ use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
 use shared::errors::ZkFheResult;
-use shared::utils::to_string_2d_vec;
+use shared::utils::{compute_safe, to_string_2d_vec};
 use std::sync::Arc;
+
+use ark_bn254::Fr as Field;
+use ark_ff::{BigInteger, PrimeField};
 
 /// Set of vectors for input validation of a decryption share
 #[derive(Clone, Debug)]
@@ -33,6 +36,10 @@ pub struct DecShareTrBfvVectors {
     pub r2is: Vec<Vec<BigInt>>,
     /// Computed decryption share d for each CRT basis (public output)
     pub d_is: Vec<Vec<BigInt>>,
+    /// Expected commitment to aggregated shares s (from BFV decryption circuit)
+    pub expected_s_commitment: BigInt,
+    /// Expected commitment to aggregated noise e (from BFV decryption circuit)
+    pub expected_e_commitment: BigInt,
 }
 
 impl DecShareTrBfvVectors {
@@ -55,7 +62,50 @@ impl DecShareTrBfvVectors {
             r1is: vec![vec![BigInt::zero(); 2 * (degree - 1)]; num_moduli],
             r2is: vec![vec![BigInt::zero(); degree - 1]; num_moduli],
             d_is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            expected_s_commitment: BigInt::zero(),
+            expected_e_commitment: BigInt::zero(),
         }
+    }
+
+    /// Compute aggregated commitment for s or e
+    /// This matches the circuit's compute_aggregated_commitment function exactly
+    fn compute_aggregated_commitment(values: &[Vec<BigInt>]) -> BigInt {
+        // Flatten all coefficients from all bases into a single array
+        let mut inputs: Vec<Field> = Vec::new();
+        for basis_idx in 0..values.len() {
+            for coeff_idx in 0..values[basis_idx].len() {
+                let zkp_modulus = shared::constants::get_zkp_modulus();
+                let coeff = &values[basis_idx][coeff_idx];
+                let coeff_reduced = if coeff < &BigInt::zero() {
+                    (coeff % &zkp_modulus) + &zkp_modulus
+                } else {
+                    coeff % &zkp_modulus
+                };
+                let coeff_biguint = coeff_reduced
+                    .to_biguint()
+                    .unwrap_or_else(|| (&zkp_modulus + coeff_reduced).to_biguint().unwrap());
+                let coeff_bytes = coeff_biguint.to_bytes_le();
+                let coeff_field = Field::from_le_bytes_mod_order(&coeff_bytes);
+                inputs.push(coeff_field);
+            }
+        }
+
+        // Domain separator - "PVSS_agg_sh" (must match BFV decryption circuit)
+        let domain_separator: [u8; 64] = [
+            0x50, 0x56, 0x53, 0x53, 0x5f, 0x61, 0x67, 0x67, 0x5f, 0x73, 0x68, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let input_size = inputs.len();
+        let io_pattern = [0x80000000 | input_size as u32, 0x00000001];
+
+        let commitment = compute_safe(domain_separator, inputs, io_pattern);
+        let commitment_field = commitment[0];
+        let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+        BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
     }
 
     /// Create the centered validation vectors necessary for creating a decryption share correctness proof.
@@ -255,6 +305,10 @@ impl DecShareTrBfvVectors {
             res.d_is[i] = d_i;
         }
 
+        // Compute commitments to s and e (matches circuit's compute_aggregated_commitment)
+        res.expected_s_commitment = Self::compute_aggregated_commitment(&res.s_is);
+        res.expected_e_commitment = Self::compute_aggregated_commitment(&res.e_is);
+
         Ok(res)
     }
 }
@@ -270,6 +324,20 @@ impl DecShareTrBfvVectors {
             r1is: reduce_coefficients_2d(&self.r1is, zkp_modulus),
             r2is: reduce_coefficients_2d(&self.r2is, zkp_modulus),
             d_is: reduce_coefficients_2d(&self.d_is, zkp_modulus),
+            expected_s_commitment: {
+                let mut reduced = self.expected_s_commitment.clone() % zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += zkp_modulus;
+                }
+                reduced
+            },
+            expected_e_commitment: {
+                let mut reduced = self.expected_e_commitment.clone() % zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += zkp_modulus;
+                }
+                reduced
+            },
         }
     }
 
@@ -282,6 +350,8 @@ impl DecShareTrBfvVectors {
             "r1is": to_string_2d_vec(&self.r1is),
             "r2is": to_string_2d_vec(&self.r2is),
             "d_is": to_string_2d_vec(&self.d_is),
+            "expected_s_commitment": self.expected_s_commitment.to_string(),
+            "expected_e_commitment": self.expected_e_commitment.to_string(),
         })
     }
 }

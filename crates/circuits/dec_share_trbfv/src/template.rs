@@ -35,12 +35,24 @@ pub struct DecShareTrBfvTemplateParams {
     pub bit_r2: u32,
     /// Bit width for decryption share bounds
     pub bit_d: u32,
+    /// Parameter set (trbfv)
+    pub parameter_set: String,
+    /// Security level (production or insecure)
+    pub security_level: String,
+    /// Number of parties
+    pub num_parties: u32,
+    /// Threshold
+    pub threshold: u32,
 }
 
 impl DecShareTrBfvTemplateParams {
     pub fn from_bounds(
         base: BaseTemplateParams,
         bounds: &DecShareTrBfvBoundsData,
+        parameter_set: String,
+        security_level: String,
+        num_parties: u32,
+        threshold: u32,
     ) -> ZkFheResult<Self> {
         // Calculate bit widths for each bound type
         let bit_d = calculate_bit_width(&bounds.decryption_share_bound)?;
@@ -65,6 +77,10 @@ impl DecShareTrBfvTemplateParams {
             bit_r1,
             bit_r2,
             bit_d,
+            parameter_set,
+            security_level,
+            num_parties,
+            threshold,
         })
     }
 }
@@ -74,30 +90,35 @@ pub struct DecShareTrBfvMainTemplate;
 
 impl MainTemplateGenerator<DecShareTrBfvTemplateParams> for DecShareTrBfvMainTemplate {
     fn generate_template(&self, params: &DecShareTrBfvTemplateParams) -> ZkFheResult<String> {
-        let import_example = "// use dec_share_trbfv::{DecryptionShareCorrectness, Params};
-// use polynomial::Polynomial;";
-
         let template = format!(
-            r#"//! Generated main.nr template for Decryption Share TRBFV circuit
-// TODO: Your imports here (example below)
-{}
+            r#"use lib::configs::{}::{}::{{
+    N, L, DEC_SHARES_BIT_CT, DEC_SHARES_BIT_S, DEC_SHARES_BIT_E,
+    DEC_SHARES_BIT_R1, DEC_SHARES_BIT_R2, DEC_SHARES_BIT_D,
+    DEC_SHARES_CONFIGS,
+}};
+use lib::core::trbfv_dec_share::DecryptionShare;
+use lib::math::polynomial::Polynomial;
+
+/// Number of parties.
+pub global N_PARTIES: u32 = {};
+/// Threshold.
+pub global T: u32 = {};
 
 fn main(
-    params: Params<{}, {}>,
-    c_0: [Polynomial<{}>; {}],
-    c_1: [Polynomial<{}>; {}],
-    s: [Polynomial<{}>; {}],
-    e: [Polynomial<{}>; {}],
-    r_1: [Polynomial<{}>; {}],
-    r_2: [Polynomial<{}>; {}],
-    d: [Polynomial<{}>; {}],
-    // TODO: Other parameters...
+    expected_s_commitment: pub Field,
+    expected_e_commitment: pub Field,
+    c_0: [Polynomial<N>; L],
+    c_1: [Polynomial<N>; L],
+    s: [Polynomial<N>; L],
+    e: [Polynomial<N>; L],
+    r_1: [Polynomial<(2 * N) - 1>; L],
+    r_2: [Polynomial<N - 1>; L],
+    d: [Polynomial<N>; L],
 ) {{
-    // TODO: Your logic here...
-
-    // Create Decryption Share Correctness circuit instance.
-    let dec_share: DecryptionShareCorrectness<{}, {}, {}, {}, {}, {}, {}, {}> = DecryptionShareCorrectness::new(
-        params,
+    let dec_share: DecryptionShare<N, L, DEC_SHARES_BIT_CT, DEC_SHARES_BIT_S, DEC_SHARES_BIT_E, DEC_SHARES_BIT_R1, DEC_SHARES_BIT_R2, DEC_SHARES_BIT_D> = DecryptionShare::new(
+        DEC_SHARES_CONFIGS,
+        expected_s_commitment,
+        expected_e_commitment,
         c_0,
         c_1,
         s,
@@ -107,36 +128,9 @@ fn main(
         d,
     );
 
-    // Verify decryption share correctness
-    dec_share.verify_decryption_share_correctness();
-
-    // TODO: Your logic here...
-    }}"#,
-            import_example,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            2 * params.base.n - 1,
-            params.base.l,
-            params.base.n - 1,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.bit_ct,
-            params.bit_s,
-            params.bit_e,
-            params.bit_r1,
-            params.bit_r2,
-            params.bit_d,
+    dec_share.verify()
+}}"#,
+            params.security_level, params.parameter_set, params.num_parties, params.threshold,
         );
 
         Ok(template)

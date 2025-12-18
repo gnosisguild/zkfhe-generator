@@ -34,7 +34,8 @@ impl DecShareTrBfvTomlGenerator {
 /// Complete `Prover.toml` format
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    params: serde_json::Value,
+    expected_s_commitment: String,
+    expected_e_commitment: String,
     c_0: Vec<serde_json::Value>,
     c_1: Vec<serde_json::Value>,
     s: Vec<serde_json::Value>,
@@ -46,25 +47,9 @@ struct ProverTomlFormat {
 
 impl TomlGenerator for DecShareTrBfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
-        // Create params JSON by combining crypto params and bounds
-        let mut params_json = serde_json::Map::new();
-
-        // Add crypto params
-        let crypto_json = serde_json::json!({
-            "qis": self.crypto_params.moduli.iter().map(|m| m.to_string()).collect::<Vec<_>>(),
-        });
-        params_json.insert("crypto".to_string(), crypto_json);
-
-        // Add bounds
-        let bounds_json = serde_json::json!({
-            "decryption_share_bound": self.bounds.decryption_share_bound.to_string(),
-            "r1_bounds": self.bounds.r1_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "r2_bounds": self.bounds.r2_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-        });
-        params_json.insert("bounds".to_string(), bounds_json);
-
         let toml_data = ProverTomlFormat {
-            params: serde_json::Value::Object(params_json),
+            expected_s_commitment: self.vectors.expected_s_commitment.to_string(),
+            expected_e_commitment: self.vectors.expected_e_commitment.to_string(),
             c_0: self
                 .vectors
                 .c_0is
@@ -170,10 +155,8 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
 
         // Check that the file contains the expected sections
-        assert!(content.contains("params.crypto"));
-        assert!(content.contains("params.bounds"));
-        assert!(content.contains("crypto"));
-        assert!(content.contains("bounds"));
+        assert!(content.contains("expected_s_commitment"));
+        assert!(content.contains("expected_e_commitment"));
         assert!(content.contains("c_0"));
         assert!(content.contains("c_1"));
         assert!(content.contains("s"));
@@ -192,7 +175,7 @@ mod tests {
         assert!(toml_string.contains("[[r_1]]"));
         assert!(toml_string.contains("[[r_2]]"));
         assert!(toml_string.contains("[[d]]"));
-        assert!(toml_string.contains("[params.crypto]"));
-        assert!(toml_string.contains("[params.bounds]"));
+        assert!(toml_string.contains("expected_s_commitment"));
+        assert!(toml_string.contains("expected_e_commitment"));
     }
 }

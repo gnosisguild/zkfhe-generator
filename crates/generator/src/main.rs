@@ -844,12 +844,13 @@ fn generate_main_template(
         }
         "dec-share-trbfv" => {
             use dec_share_trbfv::bounds::DecShareTrBfvBounds;
+            use dec_share_trbfv::configs::DecShareTrBfvConfigsGenerator;
             use dec_share_trbfv::template::{
                 DecShareTrBfvMainTemplate, DecShareTrBfvTemplateParams,
             };
 
-            let (_, bounds) = DecShareTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
+            let (crypto_params, bounds) = DecShareTrBfvBounds::compute(trbfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute dec-share-trbfv bounds: {e:?}"))?;
 
             let bounds_data = dec_share_trbfv::template::DecShareTrBfvBoundsData {
                 decryption_share_bound: bounds.decryption_share_bound.to_string(),
@@ -857,10 +858,42 @@ fn generate_main_template(
                 r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
             };
 
+            // Get num_parties and threshold from config or use defaults
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(CiphernodesConfig::defaults);
+            let num_parties = config.num_parties;
+            let threshold = config.threshold;
+
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_share_trbfv_template_params = DecShareTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
+                num_parties as u32,
+                threshold as u32,
             )?;
+
+            // Generate config .nr file (named after parameter set: trbfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            DecShareTrBfvConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &bounds,
+                &dec_share_trbfv_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to generate dec-share-trbfv configs file: {e:?}")
+            })?;
 
             let template_generator = DecShareTrBfvMainTemplate;
             template_generator.generate_main_file(&dec_share_trbfv_template_params, output_dir)?;
