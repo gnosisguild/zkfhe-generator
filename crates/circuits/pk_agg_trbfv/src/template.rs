@@ -7,13 +7,24 @@ pub struct PkAggTrBfvTemplateParams {
     pub base: BaseTemplateParams,
     /// Number of honest parties (H)
     pub num_honest_parties: usize,
+    /// Parameter set (trbfv)
+    pub parameter_set: String,
+    /// Security level (production or insecure)
+    pub security_level: String,
 }
 
 impl PkAggTrBfvTemplateParams {
-    pub fn new(base: BaseTemplateParams, num_honest_parties: usize) -> Self {
+    pub fn new(
+        base: BaseTemplateParams,
+        num_honest_parties: usize,
+        parameter_set: String,
+        security_level: String,
+    ) -> Self {
         Self {
             base,
             num_honest_parties,
+            parameter_set,
+            security_level,
         }
     }
 }
@@ -23,52 +34,33 @@ pub struct PkAggTrBfvMainTemplate;
 
 impl MainTemplateGenerator<PkAggTrBfvTemplateParams> for PkAggTrBfvMainTemplate {
     fn generate_template(&self, params: &PkAggTrBfvTemplateParams) -> ZkFheResult<String> {
-        let import_example = "// use pk_agg_trbfv::{TrbfvPublicKeyAggregation, Params};
-// use polynomial::Polynomial;";
-
         let template = format!(
-            r#"//! Generated main.nr template for TrBFV Public Key Aggregation circuit
-// TODO: Your imports here (example below)
-{}
+            r#"use lib::configs::{}::{}::{{
+    N, L, PK_AGG_TRBFV_CONFIGS,
+}};
+use lib::core::trbfv_pk_agg::TrbfvPublicKeyAggregation;
+use lib::math::polynomial::Polynomial;
+
+/// Number of honest parties.
+pub global H: u32 = {};
 
 fn main(
-    params: Params<{}>,
-    pk0: [[Polynomial<{}>; {}]; {}],
-    pk1: [[Polynomial<{}>; {}]; {}],
-    pk0_agg: [Polynomial<{}>; {}],
-    pk1_agg: [Polynomial<{}>; {}],
+    pk0: [[Polynomial<N>; L]; H],
+    pk1: [[Polynomial<N>; L]; H],
+    pk0_agg: [Polynomial<N>; L],
+    pk1_agg: [Polynomial<N>; L],
 ) {{
-    // TODO: Your logic here...
-
-    // Create Public Key Aggregation TRBFV circuit instance.
-    let pk_agg_trbfv: TrbfvPublicKeyAggregation<{}, {}, {}> = TrbfvPublicKeyAggregation::new(
-        params,
+    let pk_agg_trbfv: TrbfvPublicKeyAggregation<N, H, L> = TrbfvPublicKeyAggregation::new(
+        PK_AGG_TRBFV_CONFIGS,
         pk0,
         pk1,
         pk0_agg,
-        pk1_agg
+        pk1_agg,
     );
 
-    // Verify aggregation
     pk_agg_trbfv.verify();
-
-    // TODO: Your logic here...
 }}"#,
-            import_example,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.num_honest_parties,
-            params.base.n,
-            params.base.l,
-            params.num_honest_parties,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.num_honest_parties,
-            params.base.l,
+            params.security_level, params.parameter_set, params.num_honest_parties,
         );
 
         Ok(template)

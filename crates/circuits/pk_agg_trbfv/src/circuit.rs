@@ -1,10 +1,13 @@
 use crate::bounds::PkAggTrBfvCryptographicParameters;
+use crate::configs::PkAggTrBfvConfigsGenerator;
 use crate::sample::generate_sample_pk_aggregation;
+use crate::template::PkAggTrBfvTemplateParams;
 use crate::toml::PkAggTrBfvTomlGenerator;
 use crate::vectors::PkAggTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType};
+use shared::template::BaseTemplateParams;
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -68,6 +71,34 @@ impl Circuit for PkAggTrBfvCircuit {
 
         // Convert to standard form (reduce modulo ZKP field)
         let vectors_standard = vectors.standard_form();
+
+        // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+        let security_level = if self.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+            "production"
+        } else {
+            "insecure"
+        };
+
+        let template_params = PkAggTrBfvTemplateParams::new(
+            BaseTemplateParams::new(
+                selected_params.degree(),
+                selected_params.moduli().len(),
+                self.name(),
+            ),
+            aggregation_data.num_honest_parties,
+            self.parameter_type().as_str().to_string(),
+            security_level.to_string(),
+        );
+
+        // Generate config .nr file (named after parameter set: trbfv.nr)
+        let configs_filename = format!("{}.nr", self.parameter_type().as_str());
+        PkAggTrBfvConfigsGenerator::generate_configs_file(
+            &crypto_params,
+            &template_params,
+            output_dir,
+            &configs_filename,
+            self.parameter_type().as_str(),
+        )?;
 
         // Create TOML generator and generate file
         let toml_generator = PkAggTrBfvTomlGenerator::new(crypto_params, vectors_standard);

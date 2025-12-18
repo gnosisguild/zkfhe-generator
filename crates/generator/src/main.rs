@@ -828,16 +828,42 @@ fn generate_main_template(
             template_generator.generate_main_file(&pk_bfv_template_params, output_dir)?;
         }
         "pk-agg-trbfv" => {
+            use pk_agg_trbfv::bounds::PkAggTrBfvCryptographicParameters;
+            use pk_agg_trbfv::configs::PkAggTrBfvConfigsGenerator;
             use pk_agg_trbfv::template::{PkAggTrBfvMainTemplate, PkAggTrBfvTemplateParams};
+
+            let crypto_params = PkAggTrBfvCryptographicParameters {
+                moduli: trbfv_params.moduli().to_vec(),
+            };
 
             let num_honest_parties = ciphernodes_config
                 .map(|c| c.num_honest_parties)
                 .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 5 if not provided
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let pk_agg_trbfv_template_params = PkAggTrBfvTemplateParams::new(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
                 num_honest_parties,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             );
+
+            // Generate config .nr file (named after parameter set: trbfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            PkAggTrBfvConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &pk_agg_trbfv_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to generate pk-agg-trbfv configs file: {e:?}"))?;
 
             let template_generator = PkAggTrBfvMainTemplate;
             template_generator.generate_main_file(&pk_agg_trbfv_template_params, output_dir)?;

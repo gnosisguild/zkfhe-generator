@@ -25,22 +25,10 @@ impl PkAggTrBfvTomlGenerator {
 /// Complete `Prover.toml` format
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    #[serde(rename = "params")]
-    params: ParamsSection,
     pk0: Vec<Vec<serde_json::Value>>,
     pk1: Vec<Vec<serde_json::Value>>,
     pk0_agg: Vec<serde_json::Value>,
     pk1_agg: Vec<serde_json::Value>,
-}
-
-#[derive(Serialize)]
-struct ParamsSection {
-    crypto: CryptoSection,
-}
-
-#[derive(Serialize)]
-struct CryptoSection {
-    qis: Vec<String>,
 }
 
 impl TomlGenerator for PkAggTrBfvTomlGenerator {
@@ -105,16 +93,6 @@ impl TomlGenerator for PkAggTrBfvTomlGenerator {
             pk1: pk1_json,
             pk0_agg: pk0_agg_json,
             pk1_agg: pk1_agg_json,
-            params: ParamsSection {
-                crypto: CryptoSection {
-                    qis: self
-                        .crypto_params
-                        .moduli
-                        .iter()
-                        .map(|q| q.to_string())
-                        .collect(),
-                },
-            },
         };
 
         Ok(toml::to_string(&toml_data)?)
@@ -151,7 +129,6 @@ mod tests {
         assert_eq!(output_path.file_name().unwrap(), "Prover.toml");
 
         let content = std::fs::read_to_string(&output_path).unwrap();
-        assert!(content.contains("params.crypto"));
         assert!(content.contains("pk0"));
         assert!(content.contains("pk1"));
         assert!(content.contains("pk0_agg"));
