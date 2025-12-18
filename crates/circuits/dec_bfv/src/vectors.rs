@@ -131,7 +131,7 @@ impl DecBfvVectors {
         bfv_params: &Arc<BfvParameters>,
         trbfv_params: &Arc<BfvParameters>,
         bit_sk: u32,
-        decrypted_message: &Plaintext,
+        _decrypted_message: &Plaintext,
     ) -> ZkFheResult<DecBfvVectors> {
         let ctx = bfv_params.ctx_at_level(0)?;
         let n: u64 = ctx.degree as u64;
@@ -170,7 +170,7 @@ impl DecBfvVectors {
 
         // Step 1: Extract all honest ciphertexts and aggregate per TRBFV basis
         // For each TRBFV basis, sum all H honest ciphertexts
-        let mut aggregated_polys: Vec<(Poly, Poly)> = Vec::new();
+        let mut aggregated_polys: Vec<(usize, Poly, Poly)> = Vec::new();
 
         for trbfv_idx in 0..num_trbfv_bases {
             // Aggregate all honest ciphertexts for this TRBFV basis
@@ -216,17 +216,30 @@ impl DecBfvVectors {
                 }
             }
 
-            // Store aggregated polynomials for decryption
+            // Store aggregated polynomials for decryption (with actual TRBFV basis index)
             if let (Some(sum_ct0_poly), Some(sum_ct1_poly)) = (sum_ct0, sum_ct1) {
-                aggregated_polys.push((sum_ct0_poly, sum_ct1_poly));
+                aggregated_polys.push((trbfv_idx, sum_ct0_poly, sum_ct1_poly));
             }
         }
 
         // Step 2: Decrypt aggregated ciphertexts per TRBFV basis
+        // Track which TRBFV bases we actually processed (have ciphertexts)
+        let mut processed_trbfv_bases = std::collections::HashSet::new();
+
+        // Validate that we have aggregated ciphertexts for all TRBFV bases
+        if aggregated_polys.len() != num_trbfv_bases {
+            return Err(ZkFheError::Bfv {
+                message: format!(
+                    "Expected {} TRBFV bases but only {} have ciphertexts. All TRBFV bases must have ciphertexts.",
+                    num_trbfv_bases,
+                    aggregated_polys.len()
+                ),
+            });
+        }
+
         // For each TRBFV basis, decrypt the aggregated ciphertext
-        for (trbfv_idx, (sum_ct0_poly, sum_ct1_poly)) in
-            aggregated_polys.iter().enumerate().take(num_trbfv_bases)
-        {
+        for &(trbfv_idx, ref sum_ct0_poly, ref sum_ct1_poly) in aggregated_polys.iter() {
+            processed_trbfv_bases.insert(trbfv_idx);
             // Extract aggregated ciphertext components
             let mut sum_ct0 = sum_ct0_poly.clone();
             let mut sum_ct1 = sum_ct1_poly.clone();
@@ -474,7 +487,18 @@ impl DecBfvVectors {
         };
 
         // For each TRBFV basis, compute message from u_global
+        // All TRBFV bases should have been processed (validated above)
         for trbfv_idx in 0..num_trbfv_bases {
+            // Validate that this TRBFV basis was processed
+            if !processed_trbfv_bases.contains(&trbfv_idx) {
+                return Err(ZkFheError::Bfv {
+                    message: format!(
+                        "TRBFV basis {} was not processed. All bases must have ciphertexts.",
+                        trbfv_idx
+                    ),
+                });
+            }
+
             for coeff_idx in 0..n as usize {
                 let u_global_coeff = &res.u_global[trbfv_idx][coeff_idx];
 
@@ -1195,13 +1219,8 @@ mod tests {
         )
         .unwrap();
 
-        // Convert Vec<Ciphertext> to Vec<Vec<Ciphertext>> format expected by compute
-        // TODO: Update sample.rs to generate data in the correct format (H parties, L TRBFV bases each)
-        let honest_cts: Vec<Vec<Ciphertext>> = data
-            .honest_ciphertexts
-            .iter()
-            .map(|ct| vec![ct.clone()])
-            .collect();
+        // Use the honest_ciphertexts directly (now in correct format: H parties, L TRBFV bases each)
+        let honest_cts: &[Vec<Ciphertext>] = &data.honest_ciphertexts;
 
         // Calculate bit_sk for commitment computation
         let (_, bounds) = DecBfvBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
@@ -1256,12 +1275,8 @@ mod tests {
         )
         .unwrap();
 
-        // Convert Vec<Ciphertext> to Vec<Vec<Ciphertext>> format expected by compute
-        let honest_cts: Vec<Vec<Ciphertext>> = data
-            .honest_ciphertexts
-            .iter()
-            .map(|ct| vec![ct.clone()])
-            .collect();
+        // Use the honest_ciphertexts directly (now in correct format: H parties, L TRBFV bases each)
+        let honest_cts: &[Vec<Ciphertext>] = &data.honest_ciphertexts;
 
         // Calculate bit_sk for commitment computation
         let (_, bounds) = DecBfvBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();

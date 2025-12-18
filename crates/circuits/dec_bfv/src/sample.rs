@@ -14,12 +14,14 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct DecryptionData {
     /// H honest party ciphertexts (multiple encrypted shares from different parties)
-    pub honest_ciphertexts: Vec<Ciphertext>,
-    /// The sum of all honest ciphertexts (what we're actually decrypting)
-    pub sum_ciphertext: Ciphertext,
+    /// Structure: honest_ciphertexts[party_idx][trbfv_basis]
+    pub honest_ciphertexts: Vec<Vec<Ciphertext>>,
+    /// The sum of all honest ciphertexts per TRBFV basis (what we're actually decrypting)
+    /// Structure: sum_ciphertexts[trbfv_basis]
+    pub sum_ciphertexts: Vec<Ciphertext>,
     /// BFV secret key used for decryption (private witness)
     pub secret_key: SecretKey,
-    /// The decrypted message (aggregate share values)
+    /// The decrypted message (aggregate share values) - same for all TRBFV bases
     pub message: Plaintext,
     /// Number of honest parties (H parameter in the circuit)
     pub num_honest_parties: usize,
@@ -78,58 +80,73 @@ pub fn generate_sample_decryption(
 
     let mut share_manager = ShareManager::new(num_honest_parties, threshold, trbfv_params.clone());
 
-    // Generate H honest ciphertexts (one from each party)
-    // In practice: each party encrypts their Shamir share and sends it
-    let mut honest_ciphertexts = Vec::new();
+    // Generate H honest ciphertexts (one per party per TRBFV basis)
+    // In practice: each party encrypts their Shamir share for each TRBFV basis and sends it
+    // Structure: honest_ciphertexts[party_idx][trbfv_basis]
+    let num_trbfv_bases = trbfv_params.moduli().len();
+    let mut honest_ciphertexts: Vec<Vec<Ciphertext>> = Vec::new();
 
     for _ in 0..num_honest_parties {
-        // Generate share based on sample type
-        let share_row = match sample_type {
-            SampleType::SmudgingNoise => {
-                // Generate smudging error and split into shares
-                // This simulates the scenario where parties share noise for smudging
-                let num_ciphertexts = 1; // For simplicity in sample generation
-                let esi_coeffs = trbfv
-                    .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
-                    .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
-                let esi_poly = share_manager.bigints_to_poly(&esi_coeffs)?;
-                let esi_sss = share_manager.generate_secret_shares_from_poly(esi_poly, rng)?;
+        let mut party_ciphertexts = Vec::new();
 
-                // Extract the share that party i sends to the receiver (party 0)
-                esi_sss[0].row(0).to_vec()
-            }
-            SampleType::SecretKey => {
-                // Generate a secret key and split it into shares (simulating party i's shares)
-                // This is the default scenario: parties share their secret key parts
-                let sk = SecretKey::random(trbfv_params, &mut rng);
-                let sk_poly = share_manager.coeffs_to_poly_level0(sk.coeffs.clone().as_ref())?;
-                let sk_sss = trbfv.generate_secret_shares_from_poly(sk_poly, rng)?;
+        // Generate one ciphertext per TRBFV basis
+        for _trbfv_basis_idx in 0..num_trbfv_bases {
+            // Generate share based on sample type
+            let share_row = match sample_type {
+                SampleType::SmudgingNoise => {
+                    // Generate smudging error and split into shares
+                    // This simulates the scenario where parties share noise for smudging
+                    let num_ciphertexts = 1; // For simplicity in sample generation
+                    let esi_coeffs = trbfv
+                        .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
+                        .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
+                    let esi_poly = share_manager.bigints_to_poly(&esi_coeffs)?;
+                    let esi_sss = share_manager.generate_secret_shares_from_poly(esi_poly, rng)?;
 
-                // Extract the share that party i sends to the receiver (party 0)
-                sk_sss[0].row(0).to_vec()
-            }
-        };
+                    // Extract the share that party i sends to the receiver (party 0)
+                    esi_sss[0].row(0).to_vec()
+                }
+                SampleType::SecretKey => {
+                    // Generate a secret key and split it into shares (simulating party i's shares)
+                    // This is the default scenario: parties share their secret key parts
+                    let sk = SecretKey::random(trbfv_params, &mut rng);
+                    let sk_poly =
+                        share_manager.coeffs_to_poly_level0(sk.coeffs.clone().as_ref())?;
+                    let sk_sss = trbfv.generate_secret_shares_from_poly(sk_poly, rng)?;
 
-        // Encrypt this share with BFV using receiver's public key
-        let pt = Plaintext::try_encode(&share_row, Encoding::poly(), bfv_params)?;
-        let ct = pk_bfv.try_encrypt(&pt, &mut rng)?;
+                    // Extract the share that party i sends to the receiver (party 0)
+                    sk_sss[0].row(0).to_vec()
+                }
+            };
 
-        honest_ciphertexts.push(ct);
+            // Encrypt this share with BFV using receiver's public key
+            let pt = Plaintext::try_encode(&share_row, Encoding::poly(), bfv_params)?;
+            let ct = pk_bfv.try_encrypt(&pt, &mut rng)?;
+
+            party_ciphertexts.push(ct);
+        }
+
+        honest_ciphertexts.push(party_ciphertexts);
     }
 
-    // Compute the sum of all honest ciphertexts (homomorphic addition)
-    // sum_ct = ct_1 + ct_2 + ... + ct_H
-    let mut sum_ct = honest_ciphertexts[0].clone();
-    for ct in honest_ciphertexts.iter().skip(1) {
-        sum_ct = &sum_ct + ct;
+    // Compute the sum of all honest ciphertexts per TRBFV basis (homomorphic addition)
+    // For each TRBFV basis: sum_ct[l] = ct_1[l] + ct_2[l] + ... + ct_H[l]
+    let mut sum_ciphertexts: Vec<Ciphertext> = Vec::new();
+    for trbfv_basis_idx in 0..num_trbfv_bases {
+        let mut sum_ct = honest_ciphertexts[0][trbfv_basis_idx].clone();
+        for party_idx in 1..num_honest_parties {
+            sum_ct = &sum_ct + &honest_ciphertexts[party_idx][trbfv_basis_idx];
+        }
+        sum_ciphertexts.push(sum_ct);
     }
 
-    // Decrypt the sum to get the aggregate plaintext
-    let decrypted_pt = sk_bfv.try_decrypt(&sum_ct)?;
+    // Decrypt the sum for the first TRBFV basis to get the aggregate plaintext
+    // (The message should be the same for all TRBFV bases since we're decrypting the same aggregate)
+    let decrypted_pt = sk_bfv.try_decrypt(&sum_ciphertexts[0])?;
 
     Ok(DecryptionData {
         honest_ciphertexts,
-        sum_ciphertext: sum_ct,
+        sum_ciphertexts,
         secret_key: sk_bfv,
         message: decrypted_pt,
         num_honest_parties,
@@ -157,9 +174,13 @@ mod tests {
         assert!(result.is_ok(), "Sample generation should succeed");
 
         let data = result.unwrap();
-        assert_eq!(data.sum_ciphertext.level, 0);
+        assert_eq!(data.sum_ciphertexts[0].level, 0);
         assert_eq!(data.honest_ciphertexts.len(), data.num_honest_parties);
         assert!(data.num_honest_parties > 0);
+        // Each party should have ciphertexts for all TRBFV bases
+        if !data.honest_ciphertexts.is_empty() {
+            assert_eq!(data.honest_ciphertexts[0].len(), data.sum_ciphertexts.len());
+        }
     }
 
     #[test]
@@ -181,8 +202,12 @@ mod tests {
         );
 
         let data = result.unwrap();
-        assert_eq!(data.sum_ciphertext.level, 0);
+        assert_eq!(data.sum_ciphertexts[0].level, 0);
         assert_eq!(data.honest_ciphertexts.len(), data.num_honest_parties);
         assert!(data.num_honest_parties > 0);
+        // Each party should have ciphertexts for all TRBFV bases
+        if !data.honest_ciphertexts.is_empty() {
+            assert_eq!(data.honest_ciphertexts[0].len(), data.sum_ciphertexts.len());
+        }
     }
 }

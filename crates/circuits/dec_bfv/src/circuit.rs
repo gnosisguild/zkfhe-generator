@@ -108,14 +108,8 @@ impl Circuit for DecBfvCircuit {
         // Calculate bit_sk for commitment computation
         let bit_sk = shared::template::calculate_bit_width(&bounds.s_bound.to_string())?;
 
-        // Convert Vec<Ciphertext> to Vec<Vec<Ciphertext>> format expected by compute
-        // TODO: Update sample.rs to generate data in the correct format (H parties, L TRBFV bases each)
-        // For now, wrap each ciphertext in a Vec to match the expected structure
-        let honest_cts: Vec<Vec<Ciphertext>> = decryption_data
-            .honest_ciphertexts
-            .iter()
-            .map(|ct| vec![ct.clone()])
-            .collect();
+        // Use the honest_ciphertexts directly (now in correct format: H parties, L TRBFV bases each)
+        let honest_cts: &[Vec<Ciphertext>] = &decryption_data.honest_ciphertexts;
 
         let vectors = DecBfvVectors::compute(
             &honest_cts,
