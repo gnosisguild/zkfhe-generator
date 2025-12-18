@@ -52,11 +52,20 @@ pub struct GrecoTemplateParams {
     pub bit_p1: u32,
     /// Bit width for p2 bounds
     pub bit_p2: u32,
+    /// Parameter set (trbfv or bfv)
+    pub parameter_set: String,
+    /// Security level (production or insecure)
+    pub security_level: String,
 }
 
 impl GrecoTemplateParams {
     /// Create Greco template parameters from bounds
-    pub fn from_bounds(base: BaseTemplateParams, bounds: &GrecoBoundsData) -> ZkFheResult<Self> {
+    pub fn from_bounds(
+        base: BaseTemplateParams,
+        bounds: &GrecoBoundsData,
+        parameter_set: String,
+        security_level: String,
+    ) -> ZkFheResult<Self> {
         // Calculate bit widths for each bound type
         let bit_pk = calculate_bit_width(&bounds.pk_bounds[0])?;
         let bit_ct = calculate_bit_width(&bounds.ct_bounds[0])?;
@@ -109,6 +118,8 @@ impl GrecoTemplateParams {
             bit_r2,
             bit_p1,
             bit_p2,
+            parameter_set,
+            security_level,
         })
     }
 }
@@ -118,38 +129,35 @@ pub struct GrecoMainTemplate;
 
 impl MainTemplateGenerator<GrecoTemplateParams> for GrecoMainTemplate {
     fn generate_template(&self, params: &GrecoTemplateParams) -> ZkFheResult<String> {
-        let import_example = "// use greco::{Greco, Params};
-// use polynomial::Polynomial;";
-
         let template = format!(
-            r#"//! Generated main.nr template for Greco circuit
-// TODO: Your imports here (example below)
-{}
+            r#"use lib::configs::{}::{}::{{
+    ENC_TRBFV_BIT_CT, ENC_TRBFV_BIT_E0, ENC_TRBFV_BIT_E1, ENC_TRBFV_BIT_K, ENC_TRBFV_BIT_P1,
+    ENC_TRBFV_BIT_P2, ENC_TRBFV_BIT_PK, ENC_TRBFV_BIT_R1, ENC_TRBFV_BIT_R2, ENC_TRBFV_BIT_U,
+    ENC_TRBFV_CONFIGS, L, N,
+}};
+use lib::core::greco::Greco;
+use lib::math::polynomial::Polynomial;
 
 fn main(
-    params: Params<{}, {}>,
     pk_commitment: pub Field,
-    pk0is: [Polynomial<{}>; {}],
-    pk1is: [Polynomial<{}>; {}],
-    ct0is: [Polynomial<{}>; {}],
-    ct1is: [Polynomial<{}>; {}],
-    u: Polynomial<{}>,
-    e0: Polynomial<{}>,
-    e0is: [Polynomial<{}>; {}],
-    e0_quotients: [Polynomial<{}>; {}],
-    e1: Polynomial<{}>,
-    k1: Polynomial<{}>,
-    r1is: [Polynomial<{}>; {}],
-    r2is: [Polynomial<{}>; {}],
-    p1is: [Polynomial<{}>; {}],
-    p2is: [Polynomial<{}>; {}],
-    // TODO: Other parameters...
+    pk0is: [Polynomial<N>; L],
+    pk1is: [Polynomial<N>; L],
+    ct0is: [Polynomial<N>; L],
+    ct1is: [Polynomial<N>; L],
+    u: Polynomial<N>,
+    e0: Polynomial<N>,
+    e1: Polynomial<N>,
+    e0is: [Polynomial<N>; L],
+    e0_quotients: [Polynomial<N>; L],
+    k1: Polynomial<N>,
+    r1is: [Polynomial<(2 * N) - 1>; L],
+    r2is: [Polynomial<N - 1>; L],
+    p1is: [Polynomial<(2 * N) - 1>; L],
+    p2is: [Polynomial<N - 1>; L],
 ) {{
-    // TODO: Your logic here...
-
-    // Create Greco circuit instance.
-    let greco: Greco<{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}> = Greco::new(
-        params,
+    let greco: Greco<N, L, ENC_TRBFV_BIT_PK, ENC_TRBFV_BIT_CT, ENC_TRBFV_BIT_U, ENC_TRBFV_BIT_E0, ENC_TRBFV_BIT_E1, ENC_TRBFV_BIT_K, ENC_TRBFV_BIT_R1, ENC_TRBFV_BIT_R2, ENC_TRBFV_BIT_P1, ENC_TRBFV_BIT_P2> = Greco::new(
+        ENC_TRBFV_CONFIGS,
+        pk_commitment,
         pk0is,
         pk1is,
         ct0is,
@@ -165,48 +173,10 @@ fn main(
         p1is,
         p2is,
     );
-    
-    // TODO: Your logic here...
-    }}"#,
-            import_example,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.n,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.n,
-            2 * params.base.n - 1,
-            params.base.l,
-            params.base.n - 1,
-            params.base.l,
-            2 * params.base.n - 1,
-            params.base.l,
-            params.base.n - 1,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.bit_pk,
-            params.bit_ct,
-            params.bit_u,
-            params.bit_e0,
-            params.bit_e1,
-            params.bit_k,
-            params.bit_r1,
-            params.bit_r2,
-            params.bit_p1,
-            params.bit_p2,
+    let is_greco_valid = greco.verify();
+    assert(is_greco_valid);
+}}"#,
+            params.security_level, params.parameter_set,
         );
 
         Ok(template)

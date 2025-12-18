@@ -728,9 +728,17 @@ fn generate_main_template(
     match circuit_type {
         "greco" => {
             use greco::bounds::GrecoBounds;
+            use greco::configs::GrecoConfigsGenerator;
             use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
 
-            let (_, bounds) = GrecoBounds::compute(bfv_params, 0)
+            // Select the correct params based on circuit's parameter type
+            let selected_params = if circuit.parameter_type() == ParameterType::Trbfv {
+                trbfv_params
+            } else {
+                bfv_params
+            };
+
+            let (crypto_params, bounds) = GrecoBounds::compute(selected_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
 
             let bounds_data = greco::template::GrecoBoundsData {
@@ -748,10 +756,31 @@ fn generate_main_template(
                 p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
             };
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let greco_template_params = GrecoTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                BaseTemplateParams::new(selected_params.degree(), l, circuit_type),
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
+
+            // Generate config .nr file (named after parameter set: trbfv.nr or bfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            GrecoConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &bounds,
+                &greco_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to generate greco configs file: {e:?}"))?;
 
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;

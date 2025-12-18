@@ -34,7 +34,6 @@ impl GrecoTomlGenerator {
 /// Complete `Prover.toml` format
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    params: serde_json::Value,
     ct0is: Vec<serde_json::Value>,
     ct1is: Vec<serde_json::Value>,
     pk0is: Vec<serde_json::Value>,
@@ -54,35 +53,7 @@ struct ProverTomlFormat {
 
 impl TomlGenerator for GrecoTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
-        // Create params JSON by combining crypto params and bounds
-        let mut params_json = serde_json::Map::new();
-
-        // Add crypto params
-        let crypto_json = serde_json::json!({
-            "q_mod_t": self.crypto_params.q_mod_t.to_string(),
-            "qis": self.crypto_params.moduli.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "k0is": self.crypto_params.k0is.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-        });
-        params_json.insert("crypto".to_string(), crypto_json);
-
-        // Add bounds
-        let bounds_json = serde_json::json!({
-            "e0_bound": self.bounds.e0_bound.to_string(),
-            "e1_bound": self.bounds.e1_bound.to_string(),
-            "u_bound": self.bounds.u_bound.to_string(),
-            "k1_low_bound": self.bounds.k1_low_bound.to_string(),
-            "k1_up_bound": self.bounds.k1_up_bound.to_string(),
-            "p1_bounds": self.bounds.p1_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "p2_bounds": self.bounds.p2_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "pk_bounds": self.bounds.pk_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "r1_low_bounds": self.bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "r1_up_bounds": self.bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "r2_bounds": self.bounds.r2_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-        });
-        params_json.insert("bounds".to_string(), bounds_json);
-
         let toml_data = ProverTomlFormat {
-            params: serde_json::Value::Object(params_json),
             ct0is: self
                 .vectors
                 .ct0is
@@ -232,10 +203,6 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
 
         // Check that the file contains the expected sections
-        assert!(content.contains("params.crypto"));
-        assert!(content.contains("params.bounds"));
-        assert!(content.contains("crypto"));
-        assert!(content.contains("bounds"));
         assert!(content.contains("ct0is"));
         assert!(content.contains("ct1is"));
         assert!(content.contains("pk0is"));
@@ -268,8 +235,6 @@ mod tests {
         assert!(toml_string.contains("[e0]"));
         assert!(toml_string.contains("[e1]"));
         assert!(toml_string.contains("[k1]"));
-        assert!(toml_string.contains("[params.crypto]"));
-        assert!(toml_string.contains("[params.bounds]"));
         assert!(toml_string.contains("pk_commitment"));
     }
 }
