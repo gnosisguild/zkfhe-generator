@@ -900,27 +900,32 @@ fn generate_main_template(
         }
         "dec-share-agg-trbfv" => {
             use dec_share_agg_trbfv::bounds::DecShareAggTrBfvBounds;
+            use dec_share_agg_trbfv::configs::DecShareAggTrBfvConfigsGenerator;
             use dec_share_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
             use dec_share_agg_trbfv::template::{
                 DecShareAggTrBfvMainTemplate, DecShareAggTrBfvTemplateParams,
             };
             use dec_share_agg_trbfv::vectors::DecShareAggTrBfvVectors;
 
-            let (_, bounds) = DecShareAggTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute bounds: {e:?}"))?;
+            let (crypto_params, bounds) = DecShareAggTrBfvBounds::compute(trbfv_params, 0)
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to compute dec-share-agg-trbfv bounds: {e:?}")
+                })?;
 
             let bounds_data = dec_share_agg_trbfv::template::DecShareAggTrBfvBoundsData {
                 delta: bounds.delta.to_string(),
                 delta_half: bounds.delta_half.to_string(),
             };
 
-            let threshold = ciphernodes_config
-                .map(|c| c.threshold)
-                .unwrap_or(CiphernodesConfig::defaults().threshold); // Default to 2 if not provided
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(CiphernodesConfig::defaults);
+            let threshold = config.threshold;
+            let num_parties = config.num_parties;
 
             // Generate sample data to determine the trimmed degree
             let decryption_data = generate_sample_decryption_share_aggregation(
-                bfv_params,
+                trbfv_params,
                 ciphernodes_config,
                 circuit.security_parameter(),
             )
@@ -930,7 +935,7 @@ fn generate_main_template(
                 &decryption_data.d_share_polys,
                 &decryption_data.party_ids,
                 &decryption_data.message,
-                bfv_params,
+                trbfv_params,
                 decryption_data.threshold,
                 decryption_data.num_parties,
             )
@@ -940,11 +945,35 @@ fn generate_main_template(
 
             let trimmed_degree = vectors_standard.count_nonzero_message_coefficients();
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(trimmed_degree, l, circuit_type),
                 threshold as u32,
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
+                num_parties as u32,
             )?;
+
+            // Generate config .nr file (named after parameter set: trbfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            DecShareAggTrBfvConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &bounds,
+                &dec_share_agg_trbfv_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to generate dec-share-agg-trbfv configs file: {e:?}")
+            })?;
 
             let template_generator = DecShareAggTrBfvMainTemplate;
             template_generator

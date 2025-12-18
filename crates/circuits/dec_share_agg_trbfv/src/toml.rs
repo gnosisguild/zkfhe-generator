@@ -34,7 +34,6 @@ impl DecShareAggTrBfvTomlGenerator {
 /// Complete `Prover.toml` format
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    params: serde_json::Value,
     decryption_shares: Vec<Vec<serde_json::Value>>, // [party][modulus]
     crt_quotients: Vec<serde_json::Value>,
     message: serde_json::Value,
@@ -44,26 +43,6 @@ struct ProverTomlFormat {
 
 impl TomlGenerator for DecShareAggTrBfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
-        // Create params JSON by combining crypto params and bounds
-        let mut params_json = serde_json::Map::new();
-
-        // Add crypto params
-        let crypto_json = serde_json::json!({
-            "qis": self.crypto_params.moduli.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "plaintext_modulus": self.crypto_params.plaintext_modulus.to_string(),
-            "q_inverse_mod_t": self.crypto_params.q_inverse_mod_t.to_string(),
-            "q_mod_t": self.crypto_params.q_mod_t.to_string(),
-            "t_inv_mod_q": self.crypto_params.t_inv_mod_q.to_string(),
-        });
-        params_json.insert("crypto".to_string(), crypto_json);
-
-        // Add bounds
-        let bounds_json = serde_json::json!({
-            "delta": self.bounds.delta.to_string(),
-            "delta_half": self.bounds.delta_half.to_string(),
-        });
-        params_json.insert("bounds".to_string(), bounds_json);
-
         // Format decryption_shares as [party][modulus] structure
         let decryption_shares: Vec<Vec<serde_json::Value>> = self
             .vectors
@@ -82,7 +61,6 @@ impl TomlGenerator for DecShareAggTrBfvTomlGenerator {
             .collect();
 
         let toml_data = ProverTomlFormat {
-            params: serde_json::Value::Object(params_json),
             decryption_shares,
             message: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.message)
@@ -142,8 +120,6 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
 
         // Check that the file contains the expected sections
-        assert!(content.contains("params.crypto"));
-        assert!(content.contains("params.bounds"));
         assert!(content.contains("decryption_shares"));
         assert!(content.contains("party_ids"));
         assert!(content.contains("message"));
@@ -158,7 +134,5 @@ mod tests {
         assert!(toml_string.contains("[message]"));
         assert!(toml_string.contains("[u_global]"));
         assert!(toml_string.contains("[[crt_quotients]]"));
-        assert!(toml_string.contains("[params.crypto]"));
-        assert!(toml_string.contains("[params.bounds]"));
     }
 }
