@@ -51,6 +51,8 @@ pub struct DecBfvNoHomAddVectors {
     pub decrypted_shares: Vec<Vec<Vec<BigInt>>>,
     /// Aggregated TRBFV shares: [L][N]
     pub expected_aggregated_shares: Vec<Vec<BigInt>>,
+    /// Expected commitment to BFV secret key (from BFV public key circuit)
+    pub expected_sk_commitment: BigInt,
 }
 
 impl DecBfvNoHomAddVectors {
@@ -99,7 +101,41 @@ impl DecBfvNoHomAddVectors {
                 num_honest_parties
             ],
             expected_aggregated_shares: vec![vec![BigInt::zero(); degree]; num_trbfv_bases],
+            expected_sk_commitment: BigInt::zero(),
         }
+    }
+
+    /// Compute a commitment to the secret key polynomial by flattening it and hashing.
+    /// This matches the Noir `compute_sk_commitment` function exactly.
+    fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {
+        use ark_bn254::Fr as Field;
+        use ark_ff::{BigInteger, PrimeField};
+        use shared::packing::flatten;
+
+        // Step 1: Flatten sk (matches sk_payload in Noir)
+        let mut inputs: Vec<Field> = Vec::new();
+        inputs = flatten(inputs, &[sk.to_vec()], bit_sk);
+
+        // Step 2: Hash using SafeSponge (matches compute_sk_commitment in Noir)
+        // Domain separator - "PVSS_sk_comm" (must match BFV public key circuit)
+        let domain_separator: [u8; 64] = [
+            0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x6b, 0x5f, 0x63, 0x6f, 0x6d, 0x6d, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+        let input_size = inputs.len() as u32;
+        let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+        let commitment = shared::utils::compute_safe(domain_separator, inputs, io_pattern);
+
+        // Convert Field to BigInt
+        let commitment_field = commitment[0];
+        let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+        BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
     }
 
     /// Create the validation vectors for BFV decryption (no homomorphic addition) proof.
@@ -114,11 +150,15 @@ impl DecBfvNoHomAddVectors {
     /// * `sk` - BFV secret key used for decryption
     /// * `bfv_params` - BFV parameters
     /// * `trbfv_params` - TRBFV parameters
+    /// * `bit_sk` - Bit width for secret key (for commitment computation)
+    /// * `bfv_q_inverse_mod_t` - Precomputed value: `-Q^(-1) mod t` where Q is product of all BFV moduli
     pub fn compute(
         honest_cts: &[Vec<Ciphertext>],
         sk: &SecretKey,
         bfv_params: &Arc<BfvParameters>,
         trbfv_params: &Arc<BfvParameters>,
+        bit_sk: u32,
+        bfv_q_inverse_mod_t: u64,
     ) -> ZkFheResult<Self> {
         let ctx = bfv_params.ctx_at_level(0)?;
         let n: u64 = ctx.degree as u64;
@@ -158,6 +198,9 @@ impl DecBfvNoHomAddVectors {
                 res.s = si.clone();
             }
         }
+
+        // Compute expected_sk_commitment
+        res.expected_sk_commitment = Self::compute_sk_commitment(&res.s, bit_sk);
 
         // Process each ciphertext
         for (party_idx, party_cts) in honest_cts.iter().enumerate().take(num_honest_parties) {
@@ -318,42 +361,52 @@ impl DecBfvNoHomAddVectors {
                 }
 
                 // Compute decrypted_shares from u_global using BFV decoding formula
-                // This matches the circuit's verify_decoding logic:
-                // computed_message = (t * u_global * q_inverse_mod_t) mod t, with centering
+                // This matches the circuit's verify_decoding logic exactly:
+                // Circuit uses: bfv_q_inverse_mod_t = Q^(-1) mod t (positive)
+                // 1. t_times_u_q = q_mod.mul_mod(t, u_global) = (t * u_global) mod Q
+                // 2. If t_times_u_q > Q/2, center: centered_positive = Q - t_times_u_q
+                //    Then: computed_message = t_mod.mul_mod(bfv_q_inverse_mod_t, centered_positive)
+                //    Which is: (Q^(-1) * centered_positive) mod t
+                // 3. Otherwise: product = t_mod.mul_mod(bfv_q_inverse_mod_t, t_times_u_q)
+                //    Which is: (Q^(-1) * t_times_u_q) mod t
+                //    Then: if product == 0 { 0 } else { t - product }
                 let t = BigInt::from(bfv_params.plaintext());
                 let q = BigInt::from(ctx.modulus().clone());
-                let q_half = &q / BigInt::from(2);
+                let q_half = q.clone() / BigInt::from(2);
 
-                // Compute q_inverse_mod_t
-                use num_integer::Integer;
-                let gcd_result = q.extended_gcd(&t);
-                let q_inv_mod_t = {
-                    let inv = gcd_result.x % &t;
-                    if inv < BigInt::zero() { inv + &t } else { inv }
-                };
+                // bfv_q_inverse_mod_t is Q^(-1) mod t (positive)
+                let bfv_q_inv_mod_t = BigInt::from(bfv_q_inverse_mod_t);
 
                 let mut decoded_shares: Vec<BigInt> = Vec::new();
                 for u_global_coeff in u_global.iter() {
                     // t_times_u_q = (t * u_global) mod Q
+                    // Match ModU128.mul_mod behavior: result is in [0, Q)
                     let t_times_u = &t * u_global_coeff;
-                    let t_times_u_q = &t_times_u % &q;
-                    let t_times_u_q_positive = if t_times_u_q < BigInt::zero() {
-                        &t_times_u_q + &q
-                    } else {
-                        t_times_u_q.clone()
-                    };
+                    let mut t_times_u_q = &t_times_u % &q;
+                    if t_times_u_q < BigInt::zero() {
+                        t_times_u_q += &q;
+                    }
 
-                    // Check if needs centering
-                    let needs_centering = t_times_u_q_positive > q_half;
+                    // Check if needs centering (as u128 comparison in circuit: (t_times_u_q as u128) > q_half)
+                    let needs_centering = &t_times_u_q > &q_half;
 
                     let computed_message = if needs_centering {
                         // centered_positive = Q - t_times_u_q
-                        let centered_positive = &q - &t_times_u_q_positive;
-                        // result = (q_inv_mod_t * centered_positive) mod t
-                        (&q_inv_mod_t * &centered_positive) % &t
+                        let centered_positive = &q - &t_times_u_q;
+                        // result = t_mod.mul_mod(bfv_q_inverse_mod_t, centered_positive)
+                        // = (Q^(-1) * centered_positive) mod t
+                        let mut result = (&bfv_q_inv_mod_t * &centered_positive) % &t;
+                        if result < BigInt::zero() {
+                            result += &t;
+                        }
+                        result
                     } else {
-                        // product = (q_inv_mod_t * t_times_u_q) mod t
-                        let product = (&q_inv_mod_t * &t_times_u_q_positive) % &t;
+                        // product = t_mod.mul_mod(bfv_q_inverse_mod_t, t_times_u_q)
+                        // = (Q^(-1) * t_times_u_q) mod t
+                        let mut product = (&bfv_q_inv_mod_t * &t_times_u_q) % &t;
+                        if product < BigInt::zero() {
+                            product += &t;
+                        }
                         if product == BigInt::zero() {
                             BigInt::zero()
                         } else {
@@ -361,9 +414,11 @@ impl DecBfvNoHomAddVectors {
                         }
                     };
 
-                    // Ensure positive result
+                    // Ensure positive result in [0, t)
                     let msg = if computed_message < BigInt::zero() {
                         &computed_message + &t
+                    } else if &computed_message >= &t {
+                        &computed_message % &t
                     } else {
                         computed_message
                     };
@@ -413,6 +468,13 @@ impl DecBfvNoHomAddVectors {
                 &self.expected_aggregated_shares,
                 zkp_modulus,
             ),
+            expected_sk_commitment: {
+                let mut reduced = self.expected_sk_commitment.clone() % zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += zkp_modulus;
+                }
+                reduced
+            },
         }
     }
 
@@ -428,6 +490,7 @@ impl DecBfvNoHomAddVectors {
             "crt_quotients": to_string_4d_vec(&self.crt_quotients),
             "decrypted_shares": to_string_3d_vec(&self.decrypted_shares),
             "expected_aggregated_shares": to_string_2d_vec(&self.expected_aggregated_shares),
+            "expected_sk_commitment": self.expected_sk_commitment.to_string(),
         })
     }
 
@@ -600,7 +663,7 @@ impl DecBfvNoHomAddVectors {
         let q = BigInt::from(ctx.modulus().clone());
         let q_half = &q / BigInt::from(2);
 
-        // Compute Q^{-1} mod t
+        // Compute Q^{-1} mod t to match the circuit
         use num_integer::Integer;
         let gcd_result = q.extended_gcd(&t);
         let q_inv_mod_t = {
@@ -715,6 +778,7 @@ fn reduce_coefficients_4d(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bounds::DecBfvNoHomAddBounds;
     use crate::sample::generate_sample_decryption_no_hom_add;
     use shared::circuit::SampleType;
     use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
@@ -733,11 +797,16 @@ mod tests {
         )
         .unwrap();
 
+        let (crypto_params, _bounds) =
+            DecBfvNoHomAddBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
+
         let vectors = DecBfvNoHomAddVectors::compute(
             &data.honest_ciphertexts,
             &data.secret_key,
             &bfv_params,
             &trbfv_params,
+            0, // bit_sk (not used in this test)
+            crypto_params.bfv_q_inverse_mod_t,
         )
         .unwrap();
 
@@ -781,11 +850,16 @@ mod tests {
         )
         .unwrap();
 
+        let (crypto_params, _bounds) =
+            DecBfvNoHomAddBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
+
         let vectors = DecBfvNoHomAddVectors::compute(
             &data.honest_ciphertexts,
             &data.secret_key,
             &bfv_params,
             &trbfv_params,
+            0, // bit_sk (not used in this test)
+            crypto_params.bfv_q_inverse_mod_t,
         )
         .unwrap();
 

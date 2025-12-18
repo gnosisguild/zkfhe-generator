@@ -2,7 +2,6 @@
 //!
 //! This module contains the TOML generation logic specific to the dec_bfv_no_hom_add circuit.
 
-use crate::bounds::{DecBfvNoHomAddBounds, DecBfvNoHomAddCryptographicParameters};
 use crate::vectors::DecBfvNoHomAddVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
@@ -11,30 +10,20 @@ use shared::utils::to_string_1d_vec;
 
 /// Generator for BFV decryption circuit (no homomorphic addition) TOML files
 pub struct DecBfvNoHomAddTomlGenerator {
-    crypto_params: DecBfvNoHomAddCryptographicParameters,
-    bounds: DecBfvNoHomAddBounds,
     vectors: DecBfvNoHomAddVectors,
 }
 
 impl DecBfvNoHomAddTomlGenerator {
     /// Create a new TOML generator with bounds and vectors
-    pub fn new(
-        crypto_params: DecBfvNoHomAddCryptographicParameters,
-        bounds: DecBfvNoHomAddBounds,
-        vectors: DecBfvNoHomAddVectors,
-    ) -> Self {
-        Self {
-            crypto_params,
-            bounds,
-            vectors,
-        }
+    pub fn new(vectors: DecBfvNoHomAddVectors) -> Self {
+        Self { vectors }
     }
 }
 
 /// Complete `Prover.toml` format for BFV decryption circuit (no homomorphic addition)
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    params: serde_json::Value,
+    expected_sk_commitment: String,
     honest_c0: Vec<Vec<Vec<serde_json::Value>>>, // [H][L][L']
     honest_c1: Vec<Vec<Vec<serde_json::Value>>>, // [H][L][L']
     s: serde_json::Value,
@@ -49,28 +38,6 @@ struct ProverTomlFormat {
 
 impl TomlGenerator for DecBfvNoHomAddTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
-        // Create params JSON by combining crypto params and bounds
-        let mut params_json = serde_json::Map::new();
-
-        // Add crypto params
-        let crypto_json = serde_json::json!({
-            "bfv_qis": self.crypto_params.bfv_moduli.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "bfv_plaintext_modulus": self.crypto_params.bfv_plaintext_modulus.to_string(),
-            "bfv_q_inverse_mod_t": self.crypto_params.bfv_q_inverse_mod_t.to_string(),
-            "trbfv_qis": self.crypto_params.trbfv_moduli.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-        });
-        params_json.insert("crypto".to_string(), crypto_json);
-
-        // Add bounds
-        let bounds_json = serde_json::json!({
-            "s_bound": self.bounds.s_bound.to_string(),
-            "u_i_bounds": self.bounds.u_i_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "u_global_bound": self.bounds.u_global_bound.to_string(),
-            "r1_bounds": self.bounds.r1_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "r2_bounds": self.bounds.r2_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-        });
-        params_json.insert("bounds".to_string(), bounds_json);
-
         // Convert vectors to TOML format
         // honest_c0[H][L][L'] -> each element is a polynomial with coefficients
         let honest_c0: Vec<Vec<Vec<serde_json::Value>>> = self
@@ -243,7 +210,7 @@ impl TomlGenerator for DecBfvNoHomAddTomlGenerator {
             .collect();
 
         let toml_data = ProverTomlFormat {
-            params: serde_json::Value::Object(params_json),
+            expected_sk_commitment: self.vectors.expected_sk_commitment.to_string(),
             honest_c0,
             honest_c1,
             s: serde_json::json!({
@@ -265,7 +232,6 @@ impl TomlGenerator for DecBfvNoHomAddTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bounds::DecBfvNoHomAddBounds;
     use crate::vectors::DecBfvNoHomAddVectors;
     use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
     use tempfile::TempDir;
@@ -275,8 +241,6 @@ mod tests {
         let bfv_params = test_parameters_bfv();
         let trbfv_params = test_parameters_trbfv();
 
-        let (crypto_params, bounds) =
-            DecBfvNoHomAddBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
         let vectors = DecBfvNoHomAddVectors::new(
             5,                           // H
             trbfv_params.moduli().len(), // L
@@ -284,7 +248,7 @@ mod tests {
             bfv_params.degree(),         // N
         );
 
-        let generator = DecBfvNoHomAddTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = DecBfvNoHomAddTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -298,8 +262,7 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
 
         // Check that the file contains the expected sections
-        assert!(content.contains("params.crypto"));
-        assert!(content.contains("params.bounds"));
+        // Note: crypto and bounds are in a separate config file, not in Prover.toml
         assert!(content.contains("honest_c0"));
         assert!(content.contains("honest_c1"));
         assert!(content.contains("[s]"));

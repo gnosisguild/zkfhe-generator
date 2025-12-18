@@ -12,6 +12,7 @@
 //! - TRBFV share aggregation at the end (sum of decrypted shares mod TRBFV moduli)
 pub mod bounds;
 pub mod circuit;
+pub mod configs;
 pub mod sample;
 pub mod template;
 pub mod toml;

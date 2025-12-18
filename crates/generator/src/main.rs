@@ -960,12 +960,21 @@ fn generate_main_template(
             let num_trbfv_bases = crypto_params.trbfv_moduli.len();
             let num_bfv_bases = crypto_params.bfv_moduli.len();
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_bfv_no_hom_add_template_params = DecBfvNoHomAddTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
                 config.num_honest_parties,
                 num_trbfv_bases, // L (TRBFV bases)
                 num_bfv_bases,   // L' (BFV bases)
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
 
             let template_generator = DecBfvNoHomAddMainTemplate;
