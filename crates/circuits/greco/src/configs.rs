@@ -104,7 +104,7 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-greco (CIRCUIT 0 - GRECO)
+greco (CIRCUIT 6 - ENCRYPTION TRBFV - GRECO)
 -------------------------------------
 ************************************/
 
@@ -136,7 +136,7 @@ pub global ENC_TRBFV_P1_BOUNDS: [Field; L] = [{}];
 pub global ENC_TRBFV_P2_BOUNDS: [Field; L] = [{}];
 
 // greco - configs
-pub global ENC_TRBFV_CONFIGS: GrecoConfigs<L> = GrecoConfigs::new(
+pub global ENC_TRBFV_CONFIGS: GrecoConfigs<N, L> = GrecoConfigs::new(
     ENC_TRBFV_Q_MOD_T,
     QIS,
     ENC_TRBFV_K0IS,
@@ -144,13 +144,13 @@ pub global ENC_TRBFV_CONFIGS: GrecoConfigs<L> = GrecoConfigs::new(
     ENC_TRBFV_E0_BOUND,
     ENC_TRBFV_E1_BOUND,
     ENC_TRBFV_U_BOUND,
-    ENC_TRBFV_K1_LOW_BOUND,
-    ENC_TRBFV_K1_UP_BOUND,
     ENC_TRBFV_R1_LOW_BOUNDS,
     ENC_TRBFV_R1_UP_BOUNDS,
     ENC_TRBFV_R2_BOUNDS,
     ENC_TRBFV_P1_BOUNDS,
     ENC_TRBFV_P2_BOUNDS,
+    ENC_TRBFV_K1_LOW_BOUND,
+    ENC_TRBFV_K1_UP_BOUND
 );
 "#,
             template_params.base.n, // N

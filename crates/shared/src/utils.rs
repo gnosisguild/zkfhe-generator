@@ -4,6 +4,7 @@
 //! serialization, and other common operations.
 
 use ark_bn254::Fr as Field;
+use bigint_poly::reduce_coefficients_3d;
 use fhe::bfv::BfvParameters;
 use fhe::bfv::BfvParametersBuilder;
 use num_bigint::BigInt;
@@ -11,7 +12,6 @@ use num_bigint::BigUint;
 use num_traits::Zero;
 use safe::SafeSponge;
 use std::sync::Arc;
-use bigint_poly::reduce_coefficients_3d;
 
 /// Convert a 1D vector of BigInt to a vector of strings
 pub fn to_string_1d_vec(vec: &[BigInt]) -> Vec<String> {

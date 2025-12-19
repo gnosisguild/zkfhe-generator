@@ -101,10 +101,9 @@ enum Commands {
         #[arg(long)]
         main: bool,
 
-        /// Sample type for share_row generation (Greco and dec-bfv circuits only)
+        /// Sample type for share_row generation (dec-bfv circuits only)
         ///
         /// This option is applicable to:
-        /// - greco circuit with BFV parameter type
         /// - dec-bfv circuit
         ///
         /// Determines what type of share_row to generate:
@@ -112,6 +111,7 @@ enum Commands {
         /// - `smudging-noise`: Generate es_sss share_row
         ///
         /// This affects the type of threshold share that gets encrypted/decrypted.
+        /// Note: greco circuit only works with TRBFV and does not use sample_type.
         #[arg(long, default_value = "secret-key")]
         sample_type: String,
 
@@ -205,7 +205,7 @@ pub struct BfvParams {
 ///
 /// * `circuit_name` - The name of the circuit to load
 /// * `parameter_type` - The parameter type (BFV or trBFV)
-/// * `sample_type` - The sample type (only used for greco circuit)
+/// * `sample_type` - The sample type (only used for dec-bfv circuit)
 /// * `lambda` - The security parameter (λ) to use for this circuit instance
 ///
 /// # Returns
@@ -223,6 +223,10 @@ fn get_circuit(
             Ok(Box::new(circuit))
         }
         "greco" => {
+            // Greco only works with TRBFV
+            if parameter_type != ParameterType::Trbfv {
+                anyhow::bail!("Greco circuit only supports TRBFV parameter type");
+            }
             let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type, lambda);
             Ok(Box::new(circuit))
         }
@@ -268,7 +272,7 @@ fn get_circuit(
 /// Get supported parameter types per circuit.
 pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<ParameterType> {
     match circuit_name.to_lowercase().as_str() {
-        "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "greco" => vec![ParameterType::Trbfv],
         "pk-bfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
         "enc-bfv" => vec![ParameterType::Bfv],
         "pk-agg-trbfv" => vec![ParameterType::Trbfv],
@@ -731,12 +735,8 @@ fn generate_main_template(
             use greco::configs::GrecoConfigsGenerator;
             use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
 
-            // Select the correct params based on circuit's parameter type
-            let selected_params = if circuit.parameter_type() == ParameterType::Trbfv {
-                trbfv_params
-            } else {
-                bfv_params
-            };
+            // Greco only works with TRBFV parameters
+            let selected_params = trbfv_params;
 
             let (crypto_params, bounds) = GrecoBounds::compute(selected_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
@@ -1220,38 +1220,32 @@ fn main() -> anyhow::Result<()> {
             // Parse parameter type
             let param_type = ParameterType::from_str_to_parameter_type(&parameter_type)?;
 
-            // Parse sample type (only used for greco circuit with BFV)
-            let effective_sample_type = if circuit.to_lowercase() == "greco"
-                && param_type == ParameterType::Bfv
-            {
-                let parsed_type = SampleType::from_str_to_sample_type(&sample_type)?;
-                // Print the sample type being used
-                if sample_type == "secret-key" {
-                    println!("📋 Using sample type: secret-key (default)");
-                } else {
-                    println!("📋 Using sample type: {}", parsed_type.as_str());
-                }
-                parsed_type
-            } else {
-                // Default to SecretKey for other circuits or parameter types
-                // Warn if user specified a sample type for circuits that don't support it
+            // Parse sample type (only used for dec-bfv and verify-shares-trbfv circuits)
+            let effective_sample_type = {
                 let circuit_name = circuit.to_lowercase();
-                if (circuit_name == "greco" || circuit_name == "enc-bfv")
-                    && param_type != ParameterType::Bfv
-                {
-                    eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to greco && enc-bfv with BFV parameter type. This flag will be ignored."
-                    );
-                } else if circuit_name != "greco"
-                    && circuit_name != "enc-bfv"
-                    && circuit_name != "dec-bfv"
-                    && circuit_name != "verify-shares-trbfv"
-                {
-                    eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to the greco, enc-bfv, dec-bfv and verify-shares-trbfv circuits. This flag will be ignored."
-                    );
+                if circuit_name == "dec-bfv" || circuit_name == "verify-shares-trbfv" {
+                    let parsed_type = SampleType::from_str_to_sample_type(&sample_type)?;
+                    // Print the sample type being used
+                    if sample_type == "secret-key" {
+                        println!("📋 Using sample type: secret-key (default)");
+                    } else {
+                        println!("📋 Using sample type: {}", parsed_type.as_str());
+                    }
+                    parsed_type
+                } else {
+                    // Default to SecretKey for other circuits
+                    // Warn if user specified a sample type for circuits that don't support it
+                    if circuit_name == "greco" {
+                        eprintln!(
+                            "⚠️  Warning: --sample-type is not applicable to greco circuit (TRBFV only). This flag will be ignored."
+                        );
+                    } else if circuit_name != "enc-bfv" {
+                        eprintln!(
+                            "⚠️  Warning: --sample-type is only applicable to dec-bfv and verify-shares-trbfv circuits. This flag will be ignored."
+                        );
+                    }
+                    SampleType::SecretKey
                 }
-                SampleType::SecretKey
             };
 
             generate_circuit_params(
@@ -1270,7 +1264,7 @@ fn main() -> anyhow::Result<()> {
         Commands::List { circuits, presets } => {
             if circuits {
                 println!("📋 Available circuits:");
-                println!("  • greco   - Greco circuit implementation (supports trbfv)");
+                println!("  • greco   - Greco circuit implementation (TRBFV only)");
                 println!(
                     "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
                 );
@@ -1303,13 +1297,11 @@ fn main() -> anyhow::Result<()> {
                 println!("  • trbfv - Threshold BFV (stricter security, 40-61 bit primes)");
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n🔐 Greco circuit:");
-                println!("  • trBFV parameter type: Encrypts messages/votes (Circuit 6)");
-                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
-                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
+                println!("  • TRBFV parameter type only: Encrypts messages/votes (Circuit 6)");
             }
             if !circuits && !presets {
                 println!("📋 Available circuits:");
-                println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
+                println!("  • greco   - Greco circuit implementation (TRBFV only)");
                 println!(
                     "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
                 );
@@ -1332,10 +1324,8 @@ fn main() -> anyhow::Result<()> {
                 println!("\n💡 Use --parameter-type to choose between trbfv and bfv (required)");
                 println!("   Example: --parameter-type trbfv");
                 println!("\n🔐 Greco circuit usage:");
-                println!("  • --parameter-type bfv: Encrypt threshold shares (Circuit 4)");
-                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
-                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
                 println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 6)");
+                println!("    Note: greco only supports TRBFV parameter type");
             }
         }
     }

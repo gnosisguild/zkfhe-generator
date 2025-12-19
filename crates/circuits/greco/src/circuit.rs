@@ -34,10 +34,16 @@ impl GrecoCircuit {
     ///
     /// # Arguments
     ///
-    /// * `parameter_type` - The parameter type (BFV or trBFV)
+    /// * `parameter_type` - The parameter type (must be TRBFV for Greco)
     /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
     /// * `lambda` - The security parameter (λ)
     pub fn new(parameter_type: ParameterType, sample_type: SampleType, lambda: usize) -> Self {
+        // Greco only works with TRBFV
+        assert_eq!(
+            parameter_type,
+            ParameterType::Trbfv,
+            "Greco circuit only supports TRBFV parameter type"
+        );
         GrecoCircuit {
             parameter_type,
             sample_type,
@@ -60,7 +66,7 @@ impl Circuit for GrecoCircuit {
     /// This description provides information about what the circuit does
     /// and its intended use case.
     fn description(&self) -> &'static str {
-        "Greco zero-knowledge proof circuit for BFV homomorphic encryption"
+        "Greco zero-knowledge proof circuit for TRBFV homomorphic encryption"
     }
 
     fn parameter_type(&self) -> ParameterType {
@@ -74,33 +80,24 @@ impl Circuit for GrecoCircuit {
     fn generate_toml(
         &self,
         trbfv_params: &Arc<BfvParameters>,
-        bfv_params: &Arc<BfvParameters>,
+        _bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
-        ciphernodes_config: Option<&CiphernodesConfig>,
+        _ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
-        let selected_params = if self.parameter_type == ParameterType::Trbfv {
-            trbfv_params
-        } else {
-            bfv_params
-        };
+        // Greco only works with TRBFV parameters
+        let selected_params = trbfv_params;
 
         // Generate bounds and vectors directly
-        let (crypto_params, bounds) = GrecoBounds::compute(selected_params, 0)?;
+        let (_, bounds) = GrecoBounds::compute(selected_params, 0)?;
 
         // Calculate bit_pk from bounds for commitment computation
         let bit_pk = shared::template::calculate_bit_width(&bounds.pk_bounds[0].to_string())?;
 
-        let encryption_data = generate_sample_encryption(
-            trbfv_params,
-            bfv_params,
-            self.parameter_type,
-            self.sample_type,
-            ciphernodes_config,
-            self.security_parameter,
-        )
-        .map_err(|e| shared::errors::ZkFheError::Bfv {
-            message: e.to_string(),
-        })?;
+        let encryption_data =
+            generate_sample_encryption(trbfv_params, self.sample_type, self.security_parameter)
+                .map_err(|e| shared::errors::ZkFheError::Bfv {
+                    message: e.to_string(),
+                })?;
 
         let vectors = GrecoVectors::compute(
             &encryption_data.plaintext,
@@ -116,7 +113,7 @@ impl Circuit for GrecoCircuit {
         let vectors_standard = vectors.standard_form();
 
         // Create TOML generator and generate file
-        let toml_generator = GrecoTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let toml_generator = GrecoTomlGenerator::new(vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())

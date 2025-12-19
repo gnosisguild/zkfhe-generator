@@ -26,7 +26,9 @@ use serde_json::json;
 use std::sync::Arc;
 
 use shared::errors::{ZkFheError, ZkFheResult};
-use shared::utils::{to_string_1d_vec, to_string_2d_vec, to_string_3d_vec, to_string_4d_vec, reduce_coefficients_4d};
+use shared::utils::{
+    reduce_coefficients_4d, to_string_1d_vec, to_string_2d_vec, to_string_3d_vec, to_string_4d_vec,
+};
 
 /// Set of vectors for input validation of BFV decryption (no homomorphic addition)
 #[derive(Clone, Debug)]

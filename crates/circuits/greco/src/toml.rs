@@ -2,7 +2,6 @@
 //!
 //! This module contains the TOML generation logic specific to the Greco circuit.
 
-use crate::bounds::{GrecoBounds, GrecoCryptographicParameters};
 use crate::vectors::GrecoVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
@@ -11,23 +10,13 @@ use shared::utils::to_string_1d_vec;
 
 /// Generator for Greco circuit TOML files
 pub struct GrecoTomlGenerator {
-    crypto_params: GrecoCryptographicParameters,
-    bounds: GrecoBounds,
     vectors: GrecoVectors,
 }
 
 impl GrecoTomlGenerator {
     /// Create a new TOML generator with bounds and vectors
-    pub fn new(
-        crypto_params: GrecoCryptographicParameters,
-        bounds: GrecoBounds,
-        vectors: GrecoVectors,
-    ) -> Self {
-        Self {
-            crypto_params,
-            bounds,
-            vectors,
-        }
+    pub fn new(vectors: GrecoVectors) -> Self {
+        Self { vectors }
     }
 }
 
@@ -176,20 +165,15 @@ impl TomlGenerator for GrecoTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bounds::GrecoBounds;
     use crate::vectors::GrecoVectors;
-    use shared::utils::test_parameters_bfv;
 
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters_bfv();
-
-        let (crypto_params, bounds) = GrecoBounds::compute(&params, 0).unwrap();
         let vectors = GrecoVectors::new(1, 512);
 
-        let generator = GrecoTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = GrecoTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();

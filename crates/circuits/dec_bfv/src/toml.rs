@@ -15,12 +15,8 @@ pub struct DecBfvTomlGenerator {
 
 impl DecBfvTomlGenerator {
     /// Create a new TOML generator with bounds and vectors
-    pub fn new(
-        vectors: DecBfvVectors,
-    ) -> Self {
-        Self {
-            vectors,
-        }
+    pub fn new(vectors: DecBfvVectors) -> Self {
+        Self { vectors }
     }
 }
 
