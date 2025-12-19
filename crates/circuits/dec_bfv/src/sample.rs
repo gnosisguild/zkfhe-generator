@@ -132,8 +132,10 @@ pub fn generate_sample_decryption(
     // Compute the sum of all honest ciphertexts per TRBFV basis (homomorphic addition)
     // For each TRBFV basis: sum_ct[l] = ct_1[l] + ct_2[l] + ... + ct_H[l]
     let mut sum_ciphertexts: Vec<Ciphertext> = Vec::new();
+    #[allow(clippy::needless_range_loop)]
     for trbfv_basis_idx in 0..num_trbfv_bases {
         let mut sum_ct = honest_ciphertexts[0][trbfv_basis_idx].clone();
+        #[allow(clippy::needless_range_loop)]
         for party_idx in 1..num_honest_parties {
             sum_ct = &sum_ct + &honest_ciphertexts[party_idx][trbfv_basis_idx];
         }

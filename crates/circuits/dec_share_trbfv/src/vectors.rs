@@ -72,7 +72,9 @@ impl DecShareTrBfvVectors {
     fn compute_aggregated_commitment(values: &[Vec<BigInt>]) -> BigInt {
         // Flatten all coefficients from all bases into a single array
         let mut inputs: Vec<Field> = Vec::new();
+        #[allow(clippy::needless_range_loop)]
         for basis_idx in 0..values.len() {
+            #[allow(clippy::needless_range_loop)]
             for coeff_idx in 0..values[basis_idx].len() {
                 let zkp_modulus = shared::constants::get_zkp_modulus();
                 let coeff = &values[basis_idx][coeff_idx];

@@ -112,7 +112,7 @@ impl Circuit for DecBfvCircuit {
         let honest_cts: &[Vec<Ciphertext>] = &decryption_data.honest_ciphertexts;
 
         let vectors = DecBfvVectors::compute(
-            &honest_cts,
+            honest_cts,
             &decryption_data.secret_key,
             selected_params,
             trbfv_params,

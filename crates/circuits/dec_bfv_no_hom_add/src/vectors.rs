@@ -390,7 +390,7 @@ impl DecBfvNoHomAddVectors {
                     }
 
                     // Check if needs centering (as u128 comparison in circuit: (t_times_u_q as u128) > q_half)
-                    let needs_centering = &t_times_u_q > &q_half;
+                    let needs_centering = t_times_u_q > q_half;
 
                     let computed_message = if needs_centering {
                         // centered_positive = Q - t_times_u_q
@@ -419,7 +419,7 @@ impl DecBfvNoHomAddVectors {
                     // Ensure positive result in [0, t)
                     let msg = if computed_message < BigInt::zero() {
                         &computed_message + &t
-                    } else if &computed_message >= &t {
+                    } else if computed_message >= t {
                         &computed_message % &t
                     } else {
                         computed_message

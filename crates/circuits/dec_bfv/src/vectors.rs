@@ -177,6 +177,7 @@ impl DecBfvVectors {
             let mut sum_ct0: Option<Poly> = None;
             let mut sum_ct1: Option<Poly> = None;
 
+            #[allow(clippy::needless_range_loop)]
             for party_idx in 0..num_honest_parties {
                 if trbfv_idx < honest_cts[party_idx].len() {
                     let ct = &honest_cts[party_idx][trbfv_idx];
@@ -572,7 +573,7 @@ impl DecBfvVectors {
                 .collect()
         }
 
-        let result = DecBfvVectors {
+        DecBfvVectors {
             honest_c0: reduce_coefficients_4d(&self.honest_c0, zkp_modulus),
             honest_c1: reduce_coefficients_4d(&self.honest_c1, zkp_modulus),
             sum_c0: reduce_coefficients_3d(&self.sum_c0, zkp_modulus),
@@ -591,9 +592,7 @@ impl DecBfvVectors {
                 }
                 reduced
             },
-        };
-
-        result
+        }
     }
 
     pub fn to_json(&self) -> serde_json::Value {
