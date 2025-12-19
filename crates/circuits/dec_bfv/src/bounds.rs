@@ -39,7 +39,11 @@ pub struct DecBfvBounds {
     /// Bounds for r_2 polynomials (cyclotomic quotients, per BFV basis)
     /// Length: L_PRIME (number of BFV CRT moduli)
     pub r2_bounds: Vec<BigUint>,
+    /// Global delta value: delta = floor(Q/t) where Q is the product of all q_i
+    /// Used in the decoding formula to scale the plaintext
     pub delta: BigInt,
+    /// Global half-delta value: delta_half = floor(delta / 2)
+    /// Used to check the noise bound: |u_global - delta * m| < delta/2
     pub delta_half: BigInt,
 }
 

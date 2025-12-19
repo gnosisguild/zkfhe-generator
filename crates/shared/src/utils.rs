@@ -11,6 +11,7 @@ use num_bigint::BigUint;
 use num_traits::Zero;
 use safe::SafeSponge;
 use std::sync::Arc;
+use bigint_poly::reduce_coefficients_3d;
 
 /// Convert a 1D vector of BigInt to a vector of strings
 pub fn to_string_1d_vec(vec: &[BigInt]) -> Vec<String> {
@@ -30,6 +31,17 @@ pub fn to_string_3d_vec(vec: &[Vec<Vec<BigInt>>]) -> Vec<Vec<Vec<String>>> {
 /// Convert a 4D vector of BigInt to a vector of vectors of vectors of vectors of strings
 pub fn to_string_4d_vec(vec: &[Vec<Vec<Vec<BigInt>>>]) -> Vec<Vec<Vec<Vec<String>>>> {
     vec.iter().map(|d1| to_string_3d_vec(d1)).collect()
+}
+
+/// Reduce 4D coefficients modulo zkp_modulus
+pub fn reduce_coefficients_4d(
+    coeffs: &[Vec<Vec<Vec<BigInt>>>],
+    zkp_modulus: &BigInt,
+) -> Vec<Vec<Vec<Vec<BigInt>>>> {
+    coeffs
+        .iter()
+        .map(|d1| reduce_coefficients_3d(d1, zkp_modulus))
+        .collect()
 }
 
 /// Exact variance string for Uniform(-B..B): Var = B(B+1)/3 (exact)

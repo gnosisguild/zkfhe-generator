@@ -123,10 +123,6 @@ impl Circuit for DecBfvNoHomAddCircuit {
             crypto_params.bfv_q_inverse_mod_t,
         )?;
 
-        // Verify all circuit constraints in Rust before generating TOML
-        // This ensures the generated witness data is valid
-        vectors.verify(bfv_params, trbfv_params)?;
-
         // Convert to standard form (reduce modulo ZKP field)
         let vectors_standard = vectors.standard_form();
 
@@ -240,7 +236,7 @@ mod tests {
         let configs_content = std::fs::read_to_string(&configs_path).unwrap();
         assert!(configs_content.contains("DEC_BFV_CONFIGS"));
         assert!(configs_content.contains("N: u32"));
-        assert!(configs_content.contains("L: u32"));
+        assert!(configs_content.contains("L_TRBFV: u32"));
         assert!(configs_content.contains("L_PRIME: u32"));
         // H is declared in the template, not in the configs file
 

@@ -168,7 +168,7 @@ impl Circuit for DecBfvCircuit {
         )?;
 
         // Create TOML generator and generate file (without params - they're in the config file)
-        let toml_generator = DecBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let toml_generator = DecBfvTomlGenerator::new(vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())
@@ -223,7 +223,7 @@ mod tests {
         let configs_content = std::fs::read_to_string(&configs_path).unwrap();
         assert!(configs_content.contains("DEC_BFV_CONFIGS"));
         assert!(configs_content.contains("N: u32"));
-        assert!(configs_content.contains("L: u32"));
+        assert!(configs_content.contains("L_TRBFV: u32"));
         assert!(configs_content.contains("L_PRIME: u32"));
     }
 

@@ -2,7 +2,6 @@
 //!
 //! This module contains the TOML generation logic specific to the dec_bfv circuit.
 
-use crate::bounds::{DecBfvBounds, DecBfvCryptographicParameters};
 use crate::vectors::DecBfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
@@ -11,23 +10,15 @@ use shared::utils::to_string_1d_vec;
 
 /// Generator for BFV decryption circuit TOML files
 pub struct DecBfvTomlGenerator {
-    #[allow(dead_code)]
-    crypto_params: DecBfvCryptographicParameters,
-    #[allow(dead_code)]
-    bounds: DecBfvBounds,
     vectors: DecBfvVectors,
 }
 
 impl DecBfvTomlGenerator {
     /// Create a new TOML generator with bounds and vectors
     pub fn new(
-        crypto_params: DecBfvCryptographicParameters,
-        bounds: DecBfvBounds,
         vectors: DecBfvVectors,
     ) -> Self {
         Self {
-            crypto_params,
-            bounds,
             vectors,
         }
     }
@@ -218,7 +209,6 @@ impl TomlGenerator for DecBfvTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bounds::DecBfvBounds;
     use crate::vectors::DecBfvVectors;
     use shared::utils::test_parameters_bfv;
     use tempfile::TempDir;
@@ -229,7 +219,6 @@ mod tests {
         let bfv_params = test_parameters_bfv();
         let trbfv_params = test_parameters_trbfv();
 
-        let (crypto_params, bounds) = DecBfvBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
         let vectors = DecBfvVectors::new(
             3,
             trbfv_params.moduli().len(),
@@ -237,7 +226,7 @@ mod tests {
             bfv_params.degree(),
         );
 
-        let generator = DecBfvTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = DecBfvTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -266,7 +255,6 @@ mod tests {
         use shared::utils::test_parameters_trbfv;
         let bfv_params = test_parameters_bfv();
         let trbfv_params = test_parameters_trbfv();
-        let (crypto_params, bounds) = DecBfvBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
         let vectors = DecBfvVectors::new(
             3,
             trbfv_params.moduli().len(),
@@ -274,7 +262,7 @@ mod tests {
             bfv_params.degree(),
         );
 
-        let generator = DecBfvTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = DecBfvTomlGenerator::new(vectors);
         let toml_string = generator.to_toml_string().unwrap();
 
         // Verify the TOML string contains the expected sections
