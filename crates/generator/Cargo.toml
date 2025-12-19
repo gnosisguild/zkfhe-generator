@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 shared = { package = "zkfhe-shared", path = "../shared" }
-greco = { package = "zkfhe-greco", path = "../circuits/greco" }
+greco = { package = "zkfhe-greco", path = "../circuits/enc_trbfv" }
 pk_bfv = { package = "zkfhe-pk-bfv", path = "../circuits/pk_bfv" }
 pk_agg_trbfv = { package = "zkfhe-pk-agg-trbfv", path = "../circuits/pk_agg_trbfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "../circuits/dec_share_trbfv" }

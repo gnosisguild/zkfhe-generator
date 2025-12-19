@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/generator",
     "crates/shared",
-    "crates/circuits/greco",
+    "crates/circuits/enc_trbfv",
     "crates/circuits/pk_bfv",
     "crates/circuits/verify_shares_trbfv",
     "crates/circuits/enc_bfv",
@@ -28,7 +28,7 @@ categories = ["mathematics", "cryptography", "science"]
 rust-version = "1.86.0"
 
 [workspace.dependencies]
-greco = { package = "zkfhe-greco", path = "./crates/circuits/greco" }
+greco = { package = "zkfhe-greco", path = "./crates/circuits/enc_trbfv" }
 pk_bfv = { package = "zkfhe-pk-bfv", path = "./crates/circuits/pk_bfv" }
 verify_shares_trbfv = { package = "zkfhe-verify-shares-trbfv", path = "./crates/circuits/verify_shares_trbfv" }
 enc_bfv = { package = "zkfhe-enc-bfv", path = "./crates/circuits/enc_bfv" }
