@@ -64,7 +64,7 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-dec_share_trbfv (CIRCUIT 5 - DECRYPTION SHARE TRBFV)
+dec_share_trbfv (CIRCUIT 7 - DECRYPTION SHARE TRBFV)
 -------------------------------------
 ************************************/
 
