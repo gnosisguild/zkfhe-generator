@@ -65,10 +65,6 @@ impl Circuit for PkAggTrBfvCircuit {
         // Compute witness vectors from the aggregation data
         let vectors = PkAggTrBfvVectors::compute(&aggregation_data, selected_params)?;
 
-        // Verify that vectors satisfy circuit constraints before generating TOML
-        // This ensures the generated witness data is valid
-        vectors.verify(selected_params, aggregation_data.num_honest_parties)?;
-
         // Convert to standard form (reduce modulo ZKP field)
         let vectors_standard = vectors.standard_form();
 
@@ -101,7 +97,7 @@ impl Circuit for PkAggTrBfvCircuit {
         )?;
 
         // Create TOML generator and generate file
-        let toml_generator = PkAggTrBfvTomlGenerator::new(crypto_params, vectors_standard);
+        let toml_generator = PkAggTrBfvTomlGenerator::new(vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())

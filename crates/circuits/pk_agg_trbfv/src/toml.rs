@@ -1,4 +1,3 @@
-use crate::bounds::PkAggTrBfvCryptographicParameters;
 use crate::vectors::PkAggTrBfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
@@ -6,19 +5,12 @@ use shared::toml::TomlGenerator;
 use shared::utils::{to_string_2d_vec, to_string_3d_vec};
 
 pub struct PkAggTrBfvTomlGenerator {
-    crypto_params: PkAggTrBfvCryptographicParameters,
     vectors: PkAggTrBfvVectors,
 }
 
 impl PkAggTrBfvTomlGenerator {
-    pub fn new(
-        crypto_params: PkAggTrBfvCryptographicParameters,
-        vectors: PkAggTrBfvVectors,
-    ) -> Self {
-        Self {
-            crypto_params,
-            vectors,
-        }
+    pub fn new(vectors: PkAggTrBfvVectors) -> Self {
+        Self { vectors }
     }
 }
 
@@ -115,12 +107,7 @@ mod tests {
         let vectors = PkAggTrBfvVectors::compute(&data, &params).unwrap();
         let vectors_standard = vectors.standard_form();
 
-        let generator = PkAggTrBfvTomlGenerator::new(
-            PkAggTrBfvCryptographicParameters {
-                moduli: params.moduli().to_vec(),
-            },
-            vectors_standard,
-        );
+        let generator = PkAggTrBfvTomlGenerator::new(vectors_standard);
 
         let temp_dir = TempDir::new().unwrap();
         let output_path = generator.generate_toml(temp_dir.path()).unwrap();
