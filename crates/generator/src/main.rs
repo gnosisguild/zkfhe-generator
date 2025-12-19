@@ -991,7 +991,6 @@ fn generate_main_template(
             let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
             DecShareAggTrBfvConfigsGenerator::generate_configs_file(
                 &crypto_params,
-                &bounds,
                 &dec_share_agg_trbfv_template_params,
                 output_dir,
                 &configs_filename,

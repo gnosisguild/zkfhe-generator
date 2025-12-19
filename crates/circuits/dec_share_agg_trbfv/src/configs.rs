@@ -3,7 +3,7 @@
 //! This module generates a .nr config file with all circuit-specific configs
 //! (N, L, QIS, bounds, bit parameters, Configs) that can be imported in the main circuit.
 
-use crate::bounds::{DecShareAggTrBfvBounds, DecShareAggTrBfvCryptographicParameters};
+use crate::bounds::DecShareAggTrBfvCryptographicParameters;
 use crate::template::DecShareAggTrBfvTemplateParams;
 use shared::errors::ZkFheResult;
 use std::path::{Path, PathBuf};
@@ -26,7 +26,6 @@ impl DecShareAggTrBfvConfigsGenerator {
     /// The complete config file content as a string
     pub fn generate_configs(
         crypto_params: &DecShareAggTrBfvCryptographicParameters,
-        bounds: &DecShareAggTrBfvBounds,
         template_params: &DecShareAggTrBfvTemplateParams,
         _parameter_type: &str,
     ) -> ZkFheResult<String> {
@@ -89,14 +88,12 @@ pub global DEC_SHARES_AGG_CONFIGS: DecShareAggTrBfvConfigs<L> = DecShareAggTrBfv
     /// Path to the generated config file
     pub fn generate_configs_file(
         crypto_params: &DecShareAggTrBfvCryptographicParameters,
-        bounds: &DecShareAggTrBfvBounds,
         template_params: &DecShareAggTrBfvTemplateParams,
         output_dir: &Path,
         filename: &str,
         parameter_type: &str,
     ) -> ZkFheResult<PathBuf> {
-        let content =
-            Self::generate_configs(crypto_params, bounds, template_params, parameter_type)?;
+        let content = Self::generate_configs(crypto_params, template_params, parameter_type)?;
         let output_path = output_dir.join(filename);
         std::fs::write(&output_path, content)?;
         Ok(output_path)

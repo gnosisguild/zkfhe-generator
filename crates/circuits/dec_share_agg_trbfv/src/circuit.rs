@@ -119,7 +119,6 @@ impl Circuit for DecShareAggTrBfvCircuit {
         let configs_filename = format!("{}.nr", self.parameter_type().as_str());
         DecShareAggTrBfvConfigsGenerator::generate_configs_file(
             &crypto_params,
-            &bounds,
             &template_params,
             output_dir,
             &configs_filename,
@@ -127,8 +126,7 @@ impl Circuit for DecShareAggTrBfvCircuit {
         )?;
 
         // Create TOML generator and generate file
-        let toml_generator =
-            DecShareAggTrBfvTomlGenerator::new(crypto_params, bounds, vectors_trimmed);
+        let toml_generator = DecShareAggTrBfvTomlGenerator::new(vectors_trimmed);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())
