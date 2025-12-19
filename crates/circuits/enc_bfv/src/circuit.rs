@@ -11,7 +11,7 @@ use crate::toml::EncBfvTomlGenerator;
 use crate::vectors::EncBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::{CiphernodesConfig, ParameterType};
+use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -69,10 +69,10 @@ impl Circuit for EncBfvCircuit {
     /// Generate TOML file with sample data and parameters
     fn generate_toml(
         &self,
-        _trbfv_params: &Arc<BfvParameters>,
+        trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
-        _ciphernodes_config: Option<&CiphernodesConfig>,
+        ciphernodes_config: Option<&CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
         // enc-bfv uses BFV parameters only
         let selected_params = bfv_params;
@@ -81,10 +81,18 @@ impl Circuit for EncBfvCircuit {
         let (crypto_params, bounds) = EncBfvBounds::compute(selected_params, 0)?;
 
         // Generate sample encryption data
-        let encryption_data = generate_sample_encryption(selected_params).map_err(|e| {
-            shared::errors::ZkFheError::Bfv {
-                message: e.to_string(),
-            }
+        // enc-bfv only supports BFV and uses SampleType to determine what to encrypt
+        // Default to SecretKey if not specified (though this shouldn't happen as enc-bfv always uses BFV)
+        let sample_type = SampleType::SecretKey; // enc-bfv always uses SecretKey for BFV
+        let encryption_data = generate_sample_encryption(
+            trbfv_params,
+            bfv_params,
+            sample_type,
+            ciphernodes_config,
+            self.security_parameter,
+        )
+        .map_err(|e| shared::errors::ZkFheError::Bfv {
+            message: e.to_string(),
         })?;
 
         // Compute witness vectors from the encryption data
@@ -98,7 +106,6 @@ impl Circuit for EncBfvCircuit {
             selected_params,
         )?;
 
-        // Convert to standard form (reduce modulo ZKP field)
         let vectors_standard = vectors.standard_form();
 
         // Generate template params for config file generation
@@ -110,6 +117,8 @@ impl Circuit for EncBfvCircuit {
             u_bound: bounds.u_bound.to_string(),
             e0_bound: bounds.e0_bound.to_string(),
             e1_bound: bounds.e1_bound.to_string(),
+            k1_low_bound: bounds.k1_low_bound.to_string(),
+            k1_up_bound: bounds.k1_up_bound.to_string(),
             msg_bound: bounds.msg_bound.to_string(),
             pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
             r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),

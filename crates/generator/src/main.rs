@@ -1153,6 +1153,8 @@ fn generate_main_template(
                 u_bound: bounds.u_bound.to_string(),
                 e0_bound: bounds.e0_bound.to_string(),
                 e1_bound: bounds.e1_bound.to_string(),
+                k1_low_bound: bounds.k1_low_bound.to_string(),
+                k1_up_bound: bounds.k1_up_bound.to_string(),
                 msg_bound: bounds.msg_bound.to_string(),
                 pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
                 r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
@@ -1234,16 +1236,19 @@ fn main() -> anyhow::Result<()> {
                 // Default to SecretKey for other circuits or parameter types
                 // Warn if user specified a sample type for circuits that don't support it
                 let circuit_name = circuit.to_lowercase();
-                if circuit_name == "greco" && param_type != ParameterType::Bfv {
+                if (circuit_name == "greco" || circuit_name == "enc-bfv")
+                    && param_type != ParameterType::Bfv
+                {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to greco with BFV parameter type. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to greco && enc-bfv with BFV parameter type. This flag will be ignored."
                     );
                 } else if circuit_name != "greco"
+                    && circuit_name != "enc-bfv"
                     && circuit_name != "dec-bfv"
                     && circuit_name != "verify-shares-trbfv"
                 {
                     eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to the greco, dec-bfv and verify-shares-trbfv circuits. This flag will be ignored."
+                        "⚠️  Warning: --sample-type is only applicable to the greco, enc-bfv, dec-bfv and verify-shares-trbfv circuits. This flag will be ignored."
                     );
                 }
                 SampleType::SecretKey
@@ -1265,10 +1270,11 @@ fn main() -> anyhow::Result<()> {
         Commands::List { circuits, presets } => {
             if circuits {
                 println!("📋 Available circuits:");
-                println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
+                println!("  • greco   - Greco circuit implementation (supports trbfv)");
                 println!(
                     "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
                 );
+                println!("  • enc-bfv     - Encryption BFV circuit implementation (supports bfv)");
                 println!(
                     "  • pk-agg-trbfv   - Public Key Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
@@ -1297,10 +1303,9 @@ fn main() -> anyhow::Result<()> {
                 println!("  • trbfv - Threshold BFV (stricter security, 40-61 bit primes)");
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n🔐 Greco circuit:");
-                println!("  • BFV parameter type: Encrypts threshold shares (Circuit 4)");
+                println!("  • trBFV parameter type: Encrypts messages/votes (Circuit 6)");
                 println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
                 println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
-                println!("  • trBFV parameter type: Encrypts messages/votes (Circuit 6)");
             }
             if !circuits && !presets {
                 println!("📋 Available circuits:");
@@ -1308,6 +1313,7 @@ fn main() -> anyhow::Result<()> {
                 println!(
                     "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
                 );
+                println!("  • enc-bfv     - Encryption BFV circuit implementation (supports bfv)");
                 println!(
                     "  • pk-agg-trbfv   - Public Key Aggregation TRBFV circuit implementation (supports trbfv)"
                 );

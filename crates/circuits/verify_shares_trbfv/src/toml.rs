@@ -2,7 +2,6 @@
 //!
 //! This module contains the TOML generation logic specific to the verify-shares-trbfv circuit.
 
-use crate::bounds::{VerifySharesTrbfvBounds, VerifySharesTrbfvCryptographicParameters};
 use crate::vectors::VerifySharesTrbfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
@@ -17,11 +16,7 @@ pub struct VerifySharesTrbfvTomlGenerator {
 impl VerifySharesTrbfvTomlGenerator {
     /// Create a new TOML generator with vectors
     /// Note: Constants (N, L, QIS, bounds, etc.) are now in a separate .nr file
-    pub fn new(
-        _crypto_params: VerifySharesTrbfvCryptographicParameters,
-        _bounds: VerifySharesTrbfvBounds,
-        vectors: VerifySharesTrbfvVectors,
-    ) -> Self {
+    pub fn new(vectors: VerifySharesTrbfvVectors) -> Self {
         Self { vectors }
     }
 }
@@ -107,7 +102,7 @@ mod tests {
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
 
-        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
+        let (_, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
         let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
         let data = generate_sample_sk_shares(
             &params,
@@ -119,8 +114,7 @@ mod tests {
         let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_sk).unwrap();
         let vectors_standard = vectors.standard_form();
 
-        let generator =
-            VerifySharesTrbfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let generator = VerifySharesTrbfvTomlGenerator::new(vectors_standard);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -146,7 +140,7 @@ mod tests {
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
 
-        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
+        let (_, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
         let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
         let data = generate_sample_sk_shares(
             &params,
@@ -158,8 +152,7 @@ mod tests {
         let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_sk).unwrap();
         let vectors_standard = vectors.standard_form();
 
-        let generator =
-            VerifySharesTrbfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let generator = VerifySharesTrbfvTomlGenerator::new(vectors_standard);
         let toml_string = generator.to_toml_string().unwrap();
 
         // Verify the TOML string contains the expected sections

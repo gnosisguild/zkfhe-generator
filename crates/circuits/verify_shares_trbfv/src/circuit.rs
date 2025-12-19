@@ -158,8 +158,7 @@ impl Circuit for VerifySharesTrbfvCircuit {
         )?;
 
         // Create TOML generator and generate file (without params - they're in the config file)
-        let toml_generator =
-            VerifySharesTrbfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let toml_generator = VerifySharesTrbfvTomlGenerator::new(vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())

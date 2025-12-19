@@ -33,6 +33,7 @@ struct ProverTomlFormat {
     e0_quotients: Vec<serde_json::Value>,
     e1: serde_json::Value,
     message: serde_json::Value,
+    k1: serde_json::Value,
     r1is: Vec<serde_json::Value>,
     r2is: Vec<serde_json::Value>,
     p1is: Vec<serde_json::Value>,
@@ -117,6 +118,9 @@ impl TomlGenerator for EncBfvTomlGenerator {
             }),
             message: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.message)
+            }),
+            k1: serde_json::json!({
+                "coefficients": to_string_1d_vec(&self.vectors.k1)
             }),
             r1is: self
                 .vectors

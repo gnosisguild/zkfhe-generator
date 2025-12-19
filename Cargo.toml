@@ -64,3 +64,4 @@ tempfile = "3.8"
 chrono = { version = "0.4", features = ["serde"] }
 ark-ff = "0.5"
 ark-bn254 = "0.5"
+hex = "0.4"

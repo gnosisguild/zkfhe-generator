@@ -12,7 +12,6 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct VerifySharesTrbfvCryptographicParameters {
     pub moduli: Vec<u64>,
-    pub plaintext_modulus: u64,
 }
 
 /// Bounds for Verify Shares TRBFV circuit
@@ -42,7 +41,6 @@ impl VerifySharesTrbfvBounds {
 
         let crypto_params = VerifySharesTrbfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
-            plaintext_modulus: params.plaintext(),
         };
 
         let bounds = VerifySharesTrbfvBounds {

@@ -29,7 +29,7 @@ impl Circuit for PkBfvCircuit {
     }
 
     fn description(&self) -> &'static str {
-        "Public Key BFV zero-knowledge proof circuit for BFV homomorphic public key"
+        "Public Key (Threshold) BFV zero-knowledge proof circuit for BFV homomorphic public key"
     }
 
     fn parameter_type(&self) -> ParameterType {

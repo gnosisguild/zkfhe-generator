@@ -19,36 +19,33 @@ use serde_json::json;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use ark_bn254::Fr as Field;
+use ark_bn254::Fr as FieldElement;
 use ark_ff::{BigInteger, PrimeField};
 
 use shared::errors::ZkFheResult;
 use shared::utils::{compute_safe, to_string_1d_vec, to_string_2d_vec};
 
-/// Compute a commitment to the message polynomial.
-/// This matches the Noir `compute_message_commitment` function exactly.
-fn compute_message_commitment(message: &[BigInt]) -> BigInt {
-    // Step 1: Convert message coefficients to Field (matches compute_message_commitment in Noir)
-    // In Noir, message.coefficients[i] are Field values, so we convert BigInt to Field
-    let mut inputs: Vec<Field> = Vec::new();
+/// Convert BigInt to Field by reducing modulo ZKP modulus
+/// This is a helper to simplify BigInt to Field conversion
+fn bigint_to_field(value: &BigInt) -> FieldElement {
     let zkp_modulus = shared::constants::get_zkp_modulus();
-    for coeff in message {
-        // Convert BigInt to Field by reducing modulo the field modulus
-        // Handle negative values by adding modulus
-        let coeff_reduced = if coeff < &BigInt::zero() {
-            (coeff % &zkp_modulus) + &zkp_modulus
-        } else {
-            coeff % &zkp_modulus
-        };
-        // Convert to BigUint for bytes conversion
-        let coeff_biguint = coeff_reduced.to_biguint().unwrap_or_else(|| {
-            // Should not happen, but handle negative case
-            (&zkp_modulus + coeff_reduced).to_biguint().unwrap()
-        });
-        let coeff_bytes = coeff_biguint.to_bytes_le();
-        let coeff_field = Field::from_le_bytes_mod_order(&coeff_bytes);
-        inputs.push(coeff_field);
-    }
+    let reduced = if value < &BigInt::zero() {
+        (value % &zkp_modulus) + &zkp_modulus
+    } else {
+        value % &zkp_modulus
+    };
+    let biguint = reduced
+        .to_biguint()
+        .unwrap_or_else(|| (&zkp_modulus + reduced).to_biguint().unwrap());
+    let bytes = biguint.to_bytes_le();
+    FieldElement::from_le_bytes_mod_order(&bytes)
+}
+
+/// Compute a commitment to the message polynomial.
+fn compute_message_commitment(message: &[BigInt]) -> BigInt {
+    // Convert message coefficients to Field (matches compute_message_commitment in Noir)
+    // In Noir, message.coefficients[i] are Field values, so we convert BigInt to Field
+    let inputs: Vec<FieldElement> = message.iter().map(bigint_to_field).collect();
 
     // Step 2: Hash using SafeSponge (matches compute_message_commitment in Noir)
     // Domain separator - "PVSS_sh_pm" (must match SK shares circuit)
@@ -90,6 +87,7 @@ pub struct EncBfvVectors {
     pub e1: Vec<BigInt>,
     pub u: Vec<BigInt>,
     pub message: Vec<BigInt>,
+    pub k1: Vec<BigInt>, // Scaled message: k1 = [q*m]_t (centered form used in witness generation)
     pub expected_message_commitment: BigInt,
 }
 
@@ -121,6 +119,7 @@ impl EncBfvVectors {
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
             message: vec![BigInt::zero(); degree],
+            k1: vec![BigInt::zero(); degree],
             expected_message_commitment: BigInt::zero(),
         }
     }
@@ -165,9 +164,8 @@ impl EncBfvVectors {
         let n: u64 = ctx.degree as u64;
 
         // Calculate k1 (independent of qi), center and reverse
-        // This matches greco's computation exactly
         let q_mod_t = (ctx.modulus() % t.modulus()).to_u64().unwrap(); // [q]_t
-        let mut k1_u64 = pt.value.deref().to_vec(); // m (original order)
+        let mut k1_u64 = pt.value.deref().to_vec(); // m
         t.scalar_mul_vec(&mut k1_u64, q_mod_t); // k1 = [q*m]_t
 
         let mut k1: Vec<BigInt> = k1_u64.iter().map(|&x| BigInt::from(x)).rev().collect();
@@ -178,10 +176,14 @@ impl EncBfvVectors {
         let message: Vec<BigInt> = pt
             .value
             .deref()
+            .to_vec()
             .iter()
             .map(|&x| BigInt::from(x))
             .rev()
             .collect();
+
+        // NOTE: Verification is now done after all vectors are computed
+        // See verify_circuit_evaluation_at_gamma call at the end of compute()
 
         // Extract single vectors of u, e1, and e2 as Vec<BigInt>, center and reverse
         let mut u_rns_copy = u_rns.clone();
@@ -566,6 +568,7 @@ impl EncBfvVectors {
         // Set final result vectors
         res.u = u;
         res.message = message;
+        res.k1 = k1; // Store the centered k1 used in witness generation
         res.e0 = e0_vec;
         res.e1 = e1;
 
@@ -592,10 +595,17 @@ impl EncBfvVectors {
             e0_quotients: reduce_coefficients_2d(&self.e0_quotients, zkp_modulus),
             e0: reduce_coefficients(&self.e0, zkp_modulus),
             e1: reduce_coefficients(&self.e1, zkp_modulus),
-            k0is: self.k0is.clone(),
+            k0is: reduce_coefficients(&self.k0is, zkp_modulus),
             u: reduce_coefficients(&self.u, zkp_modulus),
             message: reduce_coefficients(&self.message, zkp_modulus),
-            expected_message_commitment: self.expected_message_commitment.clone() % zkp_modulus,
+            k1: reduce_coefficients(&self.k1, zkp_modulus),
+            expected_message_commitment: {
+                let mut reduced = self.expected_message_commitment.clone() % zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += zkp_modulus;
+                }
+                reduced
+            },
         }
     }
 
@@ -609,6 +619,7 @@ impl EncBfvVectors {
             "e0": to_string_1d_vec(&self.e0),
             "e1": to_string_1d_vec(&self.e1),
             "message": to_string_1d_vec(&self.message),
+            "k1": to_string_1d_vec(&self.k1),
             "r2is": to_string_2d_vec(&self.r2is),
             "r1is": to_string_2d_vec(&self.r1is),
             "p2is": to_string_2d_vec(&self.p2is),
