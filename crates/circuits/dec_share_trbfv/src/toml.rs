@@ -2,7 +2,6 @@
 //!
 //! This module contains the TOML generation logic specific to the Decryption Share TRBFV circuit.
 
-use crate::bounds::{DecShareTrBfvBounds, DecShareTrBfvCryptographicParameters};
 use crate::vectors::DecShareTrBfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
@@ -11,23 +10,13 @@ use shared::utils::to_string_1d_vec;
 
 /// Generator for Decryption Share TRBFV circuit TOML files
 pub struct DecShareTrBfvTomlGenerator {
-    crypto_params: DecShareTrBfvCryptographicParameters,
-    bounds: DecShareTrBfvBounds,
     vectors: DecShareTrBfvVectors,
 }
 
 impl DecShareTrBfvTomlGenerator {
     /// Create a new TOML generator with bounds and vectors
-    pub fn new(
-        crypto_params: DecShareTrBfvCryptographicParameters,
-        bounds: DecShareTrBfvBounds,
-        vectors: DecShareTrBfvVectors,
-    ) -> Self {
-        Self {
-            crypto_params,
-            bounds,
-            vectors,
-        }
+    pub fn new(vectors: DecShareTrBfvVectors) -> Self {
+        Self { vectors }
     }
 }
 
@@ -129,19 +118,15 @@ impl TomlGenerator for DecShareTrBfvTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bounds::DecShareTrBfvBounds;
     use crate::vectors::DecShareTrBfvVectors;
 
-    use shared::utils::test_parameters_trbfv;
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters_trbfv();
-        let (crypto_params, bounds) = DecShareTrBfvBounds::compute(&params, 0).unwrap();
         let vectors = DecShareTrBfvVectors::new(1, 512);
 
-        let generator = DecShareTrBfvTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = DecShareTrBfvTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();

@@ -121,8 +121,7 @@ impl Circuit for DecShareTrBfvCircuit {
         )?;
 
         // Create TOML generator and generate file
-        let toml_generator =
-            DecShareTrBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        let toml_generator = DecShareTrBfvTomlGenerator::new(vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())
