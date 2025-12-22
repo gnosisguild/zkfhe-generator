@@ -133,7 +133,7 @@ impl MainTemplateGenerator<EncBfvTemplateParams> for EncBfvMainTemplate {
     fn generate_template(&self, params: &EncBfvTemplateParams) -> ZkFheResult<String> {
         let template = format!(
             r#"use lib::configs::{}::{}::{{
-    L, N, ENC_BFV_BIT_CT, ENC_BFV_BIT_E0, ENC_BFV_BIT_E1, ENC_BFV_BIT_MSG, ENC_BFV_BIT_P1, ENC_BFV_BIT_K,
+    L, N, ENC_BFV_BIT_CT, ENC_BFV_BIT_E0, ENC_BFV_BIT_E1, ENC_BFV_BIT_MSG, ENC_BFV_BIT_P1,
     ENC_BFV_BIT_P2, ENC_BFV_BIT_PK, ENC_BFV_BIT_R1, ENC_BFV_BIT_R2, ENC_BFV_BIT_U, ENC_BFV_CONFIGS,
 }};
 use lib::core::bfv_enc::EncryptionBfv;
