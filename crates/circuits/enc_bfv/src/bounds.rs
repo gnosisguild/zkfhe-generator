@@ -32,8 +32,6 @@ pub struct EncBfvBounds {
     pub e1_bound: BigUint,
     pub msg_bound: BigUint,
     pub pk_bounds: Vec<BigUint>,
-    pub k1_low_bound: BigUint,
-    pub k1_up_bound: BigUint,
     pub r1_low_bounds: Vec<BigUint>,
     pub r1_up_bounds: Vec<BigUint>,
     pub r2_bounds: Vec<BigUint>,
@@ -91,9 +89,6 @@ impl EncBfvBounds {
         } else {
             -1 * ptxt_up_bound.clone() - BigInt::from(1)
         };
-
-        let k1_low_bound: BigInt = BigInt::from(-1) * ptxt_low_bound.clone();
-        let k1_up_bound: BigInt = ptxt_up_bound.clone();
 
         // Calculate bounds for each CRT basis
         let _num_moduli = ctx.moduli().len();
@@ -154,8 +149,6 @@ impl EncBfvBounds {
             u_bound: BigUint::from(u_bound as u64),
             e0_bound: BigUint::from(e0_bound),
             e1_bound: BigUint::from(e1_bound),
-            k1_low_bound: BigUint::from(k1_low_bound.to_u128().unwrap()),
-            k1_up_bound: BigUint::from(k1_up_bound.to_u128().unwrap()),
             msg_bound: BigUint::from(msg_bound.to_u128().unwrap()),
             pk_bounds: pk_bounds
                 .iter()

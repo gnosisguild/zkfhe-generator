@@ -13,7 +13,7 @@ use itertools::izip;
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_bigint::ToBigInt;
-use num_traits::{ToPrimitive, Zero};
+use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
 use std::ops::Deref;
@@ -87,7 +87,6 @@ pub struct EncBfvVectors {
     pub e1: Vec<BigInt>,
     pub u: Vec<BigInt>,
     pub message: Vec<BigInt>,
-    pub k1: Vec<BigInt>, // Scaled message: k1 = [q*m]_t (centered form used in witness generation)
     pub expected_message_commitment: BigInt,
 }
 
@@ -119,7 +118,6 @@ impl EncBfvVectors {
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
             message: vec![BigInt::zero(); degree],
-            k1: vec![BigInt::zero(); degree],
             expected_message_commitment: BigInt::zero(),
         }
     }
@@ -163,14 +161,6 @@ impl EncBfvVectors {
         let t = Modulus::new(params.plaintext())?;
         let n: u64 = ctx.degree as u64;
 
-        // Calculate k1 (independent of qi), center and reverse
-        let q_mod_t = (ctx.modulus() % t.modulus()).to_u64().unwrap(); // [q]_t
-        let mut k1_u64 = pt.value.deref().to_vec(); // m
-        t.scalar_mul_vec(&mut k1_u64, q_mod_t); // k1 = [q*m]_t
-
-        let mut k1: Vec<BigInt> = k1_u64.iter().map(|&x| BigInt::from(x)).rev().collect();
-        reduce_and_center_coefficients_mut(&mut k1, &BigInt::from(t.modulus()));
-
         // Calculate message (plaintext coefficients), reverse
         // Message is in [0, t), so we just extract and reverse the coefficients
         let message: Vec<BigInt> = pt
@@ -180,6 +170,33 @@ impl EncBfvVectors {
             .iter()
             .map(|&x| BigInt::from(x))
             .rev()
+            .collect();
+
+        // Compute k1 (scaled message) from message, matching Noir's compute_scaled_message
+        // k1[i] = (q_mod_t * message[i]) mod t, centered to [-t/2, t/2)
+        let q_mod_t_biguint = ctx.modulus() % t.modulus(); // [q]_t
+        let t_biguint = BigUint::from(t.modulus());
+        let t_half = &t_biguint / 2u32;
+        let t_bigint = BigInt::from(t.modulus());
+
+        let k1: Vec<BigInt> = message
+            .iter()
+            .map(|msg_i| {
+                // Convert msg_i to BigUint (message is in [0, t))
+                let msg_i_biguint = msg_i.to_biguint().unwrap();
+
+                // Compute (q_mod_t * message[i]) mod t
+                let q_times_m_mod_t = (&q_mod_t_biguint * &msg_i_biguint) % &t_biguint;
+
+                // Center to [-t/2, t/2)
+                if q_times_m_mod_t > t_half {
+                    // Value is in (t/2, t), negative in centered form
+                    BigInt::from(q_times_m_mod_t) - &t_bigint
+                } else {
+                    // Value is in [0, t/2], stays positive
+                    BigInt::from(q_times_m_mod_t)
+                }
+            })
             .collect();
 
         // NOTE: Verification is now done after all vectors are computed
@@ -351,9 +368,10 @@ impl EncBfvVectors {
 
                 // k0qi = -t^{-1} mod qi
                 let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
-                let k0qi = BigInt::from(koqi_u64); // Do not need to center this
+                let k0qi = BigInt::from(koqi_u64);
 
-                // ki = k1 * k0qi
+                // Compute ki from k1: ki = k1 * k0qi (scalar multiplication)
+                // Note: We don't reduce ki mod qi here - it's used directly in polynomial arithmetic
                 let ki_poly = Polynomial::new(k1.clone()).scalar_mul(&k0qi);
                 let ki = ki_poly.coefficients().to_vec();
 
@@ -568,7 +586,6 @@ impl EncBfvVectors {
         // Set final result vectors
         res.u = u;
         res.message = message;
-        res.k1 = k1; // Store the centered k1 used in witness generation
         res.e0 = e0_vec;
         res.e1 = e1;
 
@@ -598,7 +615,6 @@ impl EncBfvVectors {
             k0is: reduce_coefficients(&self.k0is, zkp_modulus),
             u: reduce_coefficients(&self.u, zkp_modulus),
             message: reduce_coefficients(&self.message, zkp_modulus),
-            k1: reduce_coefficients(&self.k1, zkp_modulus),
             expected_message_commitment: {
                 let mut reduced = self.expected_message_commitment.clone() % zkp_modulus;
                 if reduced < BigInt::zero() {
@@ -619,7 +635,6 @@ impl EncBfvVectors {
             "e0": to_string_1d_vec(&self.e0),
             "e1": to_string_1d_vec(&self.e1),
             "message": to_string_1d_vec(&self.message),
-            "k1": to_string_1d_vec(&self.k1),
             "r2is": to_string_2d_vec(&self.r2is),
             "r1is": to_string_2d_vec(&self.r1is),
             "p2is": to_string_2d_vec(&self.p2is),

@@ -46,12 +46,6 @@ impl EncBfvConfigsGenerator {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // Format K1_LOW_BOUND array
-        let k1_low_bound_str = bounds.k1_low_bound.to_string();
-
-        // Format K1_UP_BOUND array
-        let k1_up_bound_str = bounds.k1_up_bound.to_string();
-
         // Format PK_BOUNDS array
         let pk_bounds_str = bounds
             .pk_bounds
@@ -121,7 +115,6 @@ pub global ENC_BFV_BIT_U: u32 = {};
 pub global ENC_BFV_BIT_E0: u32 = {};
 pub global ENC_BFV_BIT_E1: u32 = {};
 pub global ENC_BFV_BIT_MSG: u32 = {};
-pub global ENC_BFV_BIT_K: u32 = {};
 pub global ENC_BFV_BIT_R1: u32 = {};
 pub global ENC_BFV_BIT_R2: u32 = {};
 pub global ENC_BFV_BIT_P1: u32 = {};
@@ -135,8 +128,6 @@ pub global ENC_BFV_PK_BOUNDS: [Field; L] = [{}];
 pub global ENC_BFV_E0_BOUND: Field = {};
 pub global ENC_BFV_E1_BOUND: Field = {};
 pub global ENC_BFV_U_BOUND: Field = {};
-pub global ENC_BFV_K1_LOW_BOUND: Field = {};
-pub global ENC_BFV_K1_UP_BOUND: Field = {};
 pub global ENC_BFV_R1_LOW_BOUNDS: [Field; L] = [{}];
 pub global ENC_BFV_R1_UP_BOUNDS: [Field; L] = [{}];
 pub global ENC_BFV_R2_BOUNDS: [Field; L] = [{}];
@@ -154,8 +145,6 @@ pub global ENC_BFV_CONFIGS: BfvEncConfigs<L> = BfvEncConfigs::new(
     ENC_BFV_E0_BOUND,
     ENC_BFV_E1_BOUND,
     ENC_BFV_U_BOUND,
-    ENC_BFV_K1_LOW_BOUND,
-    ENC_BFV_K1_UP_BOUND,
     ENC_BFV_R1_LOW_BOUNDS,
     ENC_BFV_R1_UP_BOUNDS,
     ENC_BFV_R2_BOUNDS,
@@ -174,7 +163,6 @@ pub global ENC_BFV_CONFIGS: BfvEncConfigs<L> = BfvEncConfigs::new(
             template_params.bit_e0,  // BIT_E0
             template_params.bit_e1,  // BIT_E1
             template_params.bit_msg, // BIT_MSG
-            template_params.bit_k,   // BIT_K
             template_params.bit_r1,  // BIT_R1
             template_params.bit_r2,  // BIT_R2
             template_params.bit_p1,  // BIT_P1
@@ -186,8 +174,6 @@ pub global ENC_BFV_CONFIGS: BfvEncConfigs<L> = BfvEncConfigs::new(
             bounds.e0_bound,         // E0_BOUND
             bounds.e1_bound,         // E1_BOUND
             bounds.u_bound,          // U_BOUND
-            k1_low_bound_str,        // K1_LOW_BOUND
-            k1_up_bound_str,         // K1_UP_BOUND
             r1_low_bounds_str,       // R1_LOW_BOUNDS array
             r1_up_bounds_str,        // R1_UP_BOUNDS array
             r2_bounds_str,           // R2_BOUNDS array

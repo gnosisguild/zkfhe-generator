@@ -19,8 +19,6 @@ pub struct EncBfvBoundsData {
     pub e1_bound: String,
     pub msg_bound: String,
     pub pk_bounds: Vec<String>,
-    pub k1_low_bound: String,
-    pub k1_up_bound: String,
     pub r1_low_bounds: Vec<String>,
     pub r1_up_bounds: Vec<String>,
     pub r2_bounds: Vec<String>,
@@ -48,8 +46,6 @@ pub struct EncBfvTemplateParams {
     pub bit_e1: u32,
     /// Bit width for message (BIT_MSG)
     pub bit_msg: u32,
-    /// Bit width for k1 bounds
-    pub bit_k: u32,
     /// Bit width for r1 (BIT_R1)
     pub bit_r1: u32,
     /// Bit width for r2 (BIT_R2)
@@ -77,11 +73,6 @@ impl EncBfvTemplateParams {
         let bit_e0 = calculate_bit_width(&bounds.e0_bound)?;
         let bit_e1 = calculate_bit_width(&bounds.e1_bound)?;
         let bit_msg = calculate_bit_width(&bounds.msg_bound)?;
-
-        // For k1, use the maximum of low and up bounds
-        let k1_low = calculate_bit_width(&bounds.k1_low_bound)?;
-        let k1_up = calculate_bit_width(&bounds.k1_up_bound)?;
-        let bit_k = k1_low.max(k1_up);
 
         // For pk, use the maximum of all bounds
         let mut bit_pk = 0;
@@ -125,7 +116,6 @@ impl EncBfvTemplateParams {
             bit_e0,
             bit_e1,
             bit_msg,
-            bit_k,
             bit_r1,
             bit_r2,
             bit_p1,
@@ -161,7 +151,6 @@ fn main(
     e0_quotients: [Polynomial<N>; L],
     e1: Polynomial<N>,
     message: Polynomial<N>,
-    k1: Polynomial<N>,
     r1is: [Polynomial<(2 * N) - 1>; L],
     r2is: [Polynomial<N - 1>; L],
     p1is: [Polynomial<(2 * N) - 1>; L],
@@ -176,7 +165,6 @@ fn main(
         ENC_BFV_BIT_E0,
         ENC_BFV_BIT_E1,
         ENC_BFV_BIT_MSG,
-        ENC_BFV_BIT_K,
         ENC_BFV_BIT_R1,
         ENC_BFV_BIT_R2,
         ENC_BFV_BIT_P1,
@@ -194,7 +182,6 @@ fn main(
         e0_quotients,
         e1,
         message,
-        k1,
         r1is,
         r2is,
         p1is,

@@ -1152,8 +1152,6 @@ fn generate_main_template(
                 u_bound: bounds.u_bound.to_string(),
                 e0_bound: bounds.e0_bound.to_string(),
                 e1_bound: bounds.e1_bound.to_string(),
-                k1_low_bound: bounds.k1_low_bound.to_string(),
-                k1_up_bound: bounds.k1_up_bound.to_string(),
                 msg_bound: bounds.msg_bound.to_string(),
                 pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
                 r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
