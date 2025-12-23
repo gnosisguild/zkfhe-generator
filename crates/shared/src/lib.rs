@@ -13,6 +13,7 @@
 
 // Core modules
 pub mod circuit;
+pub mod commitments;
 pub mod constants;
 pub mod errors;
 pub mod packing;

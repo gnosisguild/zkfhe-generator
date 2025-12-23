@@ -16,58 +16,11 @@ use num_bigint::ToBigInt;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
+use shared::commitments::compute_message_commitment;
+use shared::errors::ZkFheResult;
+use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 use std::ops::Deref;
 use std::sync::Arc;
-
-use ark_bn254::Fr as FieldElement;
-use ark_ff::{BigInteger, PrimeField};
-
-use shared::errors::ZkFheResult;
-use shared::utils::{compute_safe, to_string_1d_vec, to_string_2d_vec};
-
-/// Convert BigInt to Field by reducing modulo ZKP modulus
-/// This is a helper to simplify BigInt to Field conversion
-fn bigint_to_field(value: &BigInt) -> FieldElement {
-    let zkp_modulus = shared::constants::get_zkp_modulus();
-    let reduced = if value < &BigInt::zero() {
-        (value % &zkp_modulus) + &zkp_modulus
-    } else {
-        value % &zkp_modulus
-    };
-    let biguint = reduced
-        .to_biguint()
-        .unwrap_or_else(|| (&zkp_modulus + reduced).to_biguint().unwrap());
-    let bytes = biguint.to_bytes_le();
-    FieldElement::from_le_bytes_mod_order(&bytes)
-}
-
-/// Compute a commitment to the message polynomial.
-fn compute_message_commitment(message: &[BigInt]) -> BigInt {
-    // Convert message coefficients to Field (matches compute_message_commitment in Noir)
-    // In Noir, message.coefficients[i] are Field values, so we convert BigInt to Field
-    let inputs: Vec<FieldElement> = message.iter().map(bigint_to_field).collect();
-
-    // Step 2: Hash using SafeSponge (matches compute_message_commitment in Noir)
-    // Domain separator - "PVSS_sh_pm" (must match SK shares circuit)
-    let domain_separator: [u8; 64] = [
-        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x68, 0x5f, 0x70, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-    ];
-
-    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
-    let input_size = inputs.len() as u32;
-    let io_pattern = [0x80000000 | input_size, 0x00000001];
-
-    let commitment = compute_safe(domain_separator, inputs, io_pattern);
-
-    // Convert Field to BigInt
-    let commitment_field = commitment[0];
-    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
-    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
-}
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]

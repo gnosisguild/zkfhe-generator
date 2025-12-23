@@ -4,6 +4,8 @@
 //! serialization, and other common operations.
 
 use ark_bn254::Fr as Field;
+use ark_bn254::Fr as FieldElement;
+use ark_ff::PrimeField;
 use bigint_poly::reduce_coefficients_3d;
 use fhe::bfv::BfvParameters;
 use fhe::bfv::BfvParametersBuilder;
@@ -96,4 +98,20 @@ pub fn compute_safe(
     sponge.finish();
 
     digests
+}
+
+/// Convert BigInt to Field by reducing modulo ZKP modulus
+/// This is a helper to simplify BigInt to Field conversion
+pub fn bigint_to_field(value: &BigInt) -> FieldElement {
+    let zkp_modulus = crate::constants::get_zkp_modulus();
+    let reduced = if value < &BigInt::zero() {
+        (value % &zkp_modulus) + &zkp_modulus
+    } else {
+        value % &zkp_modulus
+    };
+    let biguint = reduced
+        .to_biguint()
+        .unwrap_or_else(|| (&zkp_modulus + reduced).to_biguint().unwrap());
+    let bytes = biguint.to_bytes_le();
+    FieldElement::from_le_bytes_mod_order(&bytes)
 }

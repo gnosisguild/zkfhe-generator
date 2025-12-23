@@ -16,44 +16,11 @@ use num_bigint::ToBigInt;
 use num_traits::{ToPrimitive, Zero};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
+use shared::commitments::compute_pk_commitment;
+use shared::errors::ZkFheResult;
+use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 use std::ops::Deref;
 use std::sync::Arc;
-
-use ark_bn254::Fr as Field;
-use ark_ff::{BigInteger, PrimeField};
-
-use shared::errors::ZkFheResult;
-use shared::packing::flatten;
-use shared::utils::{compute_safe, to_string_1d_vec, to_string_2d_vec};
-
-/// Compute a commitment to the public key polynomials by flattening them and hashing.
-/// This matches the Noir `commitment_payload` and `generate_challenge` functions exactly.
-fn compute_pk_commitment(pk0is: &[Vec<BigInt>], pk1is: &[Vec<BigInt>], bit_pk: u32) -> BigInt {
-    // Step 1: Flatten pk0is and pk1is (matches commitment_payload in Noir)
-    let mut inputs: Vec<Field> = Vec::new();
-    inputs = flatten(inputs, pk0is, bit_pk);
-    inputs = flatten(inputs, pk1is, bit_pk);
-
-    // Step 2: Hash using SafeSponge (matches generate_challenge in Noir)
-    let domain_separator: [u8; 64] = [
-        0x47, 0x72, 0x65, 0x63, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-    ];
-
-    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
-    let input_size = inputs.len() as u32;
-    let io_pattern = [0x80000000 | input_size, 1];
-
-    let commitment = compute_safe(domain_separator, inputs, io_pattern);
-
-    // Convert Field to BigInt
-    let commitment_field = commitment[0];
-    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
-    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
-}
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
