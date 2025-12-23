@@ -19,6 +19,7 @@ use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
 use crypto_params::utils::approx_bits_from_log2;
 use crypto_params::utils::fmt_big_summary;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
+use num_bigint::BigInt;
 use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
 use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
@@ -847,12 +848,17 @@ fn generate_main_template(
                 "insecure"
             };
 
+            let ctx = trbfv_params.ctx_at_level(0)?;
+            let pk_bound = (&BigInt::from(ctx.moduli_operators()[0].modulus()) - BigInt::from(1))
+                / BigInt::from(2);
+
             let pk_agg_trbfv_template_params = PkAggTrBfvTemplateParams::new(
                 BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
                 num_honest_parties,
+                pk_bound.to_string(),
                 circuit.parameter_type().as_str().to_string(),
                 security_level.to_string(),
-            );
+            )?;
 
             // Generate config .nr file (named after parameter set: trbfv.nr)
             let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());

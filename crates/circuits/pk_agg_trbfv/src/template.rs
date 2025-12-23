@@ -1,10 +1,12 @@
 use shared::errors::ZkFheResult;
-use shared::template::{BaseTemplateParams, MainTemplateGenerator};
+use shared::template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_width};
 
 #[derive(Debug, Clone)]
 pub struct PkAggTrBfvTemplateParams {
     /// Base parameters (N, L, circuit_type)
     pub base: BaseTemplateParams,
+    /// Bit width for public key bounds
+    pub bit_pk: u32,
     /// Number of honest parties (H)
     pub num_honest_parties: usize,
     /// Parameter set (trbfv)
@@ -14,18 +16,24 @@ pub struct PkAggTrBfvTemplateParams {
 }
 
 impl PkAggTrBfvTemplateParams {
+    /// Create PkAggTrBfv template parameters from bounds
     pub fn new(
         base: BaseTemplateParams,
         num_honest_parties: usize,
+        pk_bound: String,
         parameter_set: String,
         security_level: String,
-    ) -> Self {
-        Self {
+    ) -> ZkFheResult<Self> {
+        // Calculate bit widths for each bound type
+        let bit_pk = calculate_bit_width(&pk_bound)?;
+
+        Ok(Self {
             base,
+            bit_pk,
             num_honest_parties,
             parameter_set,
             security_level,
-        }
+        })
     }
 }
 
@@ -36,7 +44,7 @@ impl MainTemplateGenerator<PkAggTrBfvTemplateParams> for PkAggTrBfvMainTemplate 
     fn generate_template(&self, params: &PkAggTrBfvTemplateParams) -> ZkFheResult<String> {
         let template = format!(
             r#"use lib::configs::{}::{}::{{
-    N, L, PK_AGG_TRBFV_CONFIGS,
+    N, L, PK_AGG_TRBFV_CONFIGS, PK_AGG_TRBFV_BIT_PK,
 }};
 use lib::core::trbfv_pk_agg::TrbfvPublicKeyAggregation;
 use lib::math::polynomial::Polynomial;
@@ -49,8 +57,8 @@ fn main(
     pk1: [[Polynomial<N>; L]; H],
     pk0_agg: [Polynomial<N>; L],
     pk1_agg: [Polynomial<N>; L],
-) {{
-    let pk_agg_trbfv: TrbfvPublicKeyAggregation<N, H, L> = TrbfvPublicKeyAggregation::new(
+) -> pub Field {{
+    let pk_agg_trbfv: TrbfvPublicKeyAggregation<N, H, L, PK_AGG_TRBFV_BIT_PK> = TrbfvPublicKeyAggregation::new(
         PK_AGG_TRBFV_CONFIGS,
         pk0,
         pk1,
@@ -58,7 +66,7 @@ fn main(
         pk1_agg,
     );
 
-    pk_agg_trbfv.verify();
+    pk_agg_trbfv.verify()
 }}"#,
             params.security_level, params.parameter_set, params.num_honest_parties,
         );

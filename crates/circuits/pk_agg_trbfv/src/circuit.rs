@@ -5,6 +5,7 @@ use crate::template::PkAggTrBfvTemplateParams;
 use crate::toml::PkAggTrBfvTomlGenerator;
 use crate::vectors::PkAggTrBfvVectors;
 use fhe::bfv::BfvParameters;
+use num_bigint::BigInt;
 use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType};
 use shared::template::BaseTemplateParams;
@@ -75,6 +76,10 @@ impl Circuit for PkAggTrBfvCircuit {
             "insecure"
         };
 
+        let ctx = selected_params.ctx_at_level(0)?;
+        let pk_bound = (&BigInt::from(ctx.moduli_operators()[0].modulus()) - BigInt::from(1))
+            / BigInt::from(2);
+
         let template_params = PkAggTrBfvTemplateParams::new(
             BaseTemplateParams::new(
                 selected_params.degree(),
@@ -82,9 +87,10 @@ impl Circuit for PkAggTrBfvCircuit {
                 self.name(),
             ),
             aggregation_data.num_honest_parties,
+            pk_bound.to_string(),
             self.parameter_type().as_str().to_string(),
             security_level.to_string(),
-        );
+        )?;
 
         // Generate config .nr file (named after parameter set: trbfv.nr)
         let configs_filename = format!("{}.nr", self.parameter_type().as_str());
