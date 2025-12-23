@@ -3,47 +3,13 @@
 //! This module contains the core data structure and computation logic for generating
 //! input validation vectors required for proving correct secret key shares in zero-knowledge.
 
+use crate::sample::VerifySharesTrbfvData;
 use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
 use num_traits::Zero;
+use shared::commitments::compute_sk_commitment;
 use shared::errors::ZkFheResult;
-use shared::packing::flatten;
-use shared::utils::compute_safe;
 use std::sync::Arc;
-
-use ark_bn254::Fr as Field;
-use ark_ff::{BigInteger, PrimeField};
-
-use crate::sample::VerifySharesTrbfvData;
-
-/// Compute a commitment to the secret key polynomial by flattening it and hashing.
-/// This matches the Noir `compute_sk_commitment` function exactly.
-fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {
-    // Step 1: Flatten sk (matches sk_payload in Noir)
-    let mut inputs: Vec<Field> = Vec::new();
-    inputs = flatten(inputs, &[sk.to_vec()], bit_sk);
-
-    // Step 2: Hash using SafeSponge (matches compute_sk_commitment in Noir)
-    // Domain separator - "PVSS_sk_comm" (must match BFV circuit)
-    let domain_separator: [u8; 64] = [
-        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x6b, 0x5f, 0x63, 0x6f, 0x6d, 0x6d, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-    ];
-
-    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
-    let input_size = inputs.len() as u32;
-    let io_pattern = [0x80000000 | input_size, 0x00000001];
-
-    let commitment = compute_safe(domain_separator, inputs, io_pattern);
-
-    // Convert Field to BigInt
-    let commitment_field = commitment[0];
-    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
-    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
-}
 
 /// Set of vectors for input validation of Verify Shares TRBFV
 #[derive(Clone, Debug)]

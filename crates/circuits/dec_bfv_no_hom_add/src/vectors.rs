@@ -23,12 +23,12 @@ use num_bigint::{BigInt, BigUint};
 use num_traits::{ToPrimitive, Zero};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
-use std::sync::Arc;
-
+use shared::commitments::compute_sk_commitment;
 use shared::errors::{ZkFheError, ZkFheResult};
 use shared::utils::{
     reduce_coefficients_4d, to_string_1d_vec, to_string_2d_vec, to_string_3d_vec, to_string_4d_vec,
 };
+use std::sync::Arc;
 
 /// Set of vectors for input validation of BFV decryption (no homomorphic addition)
 #[derive(Clone, Debug)]
@@ -107,39 +107,6 @@ impl DecBfvNoHomAddVectors {
         }
     }
 
-    /// Compute a commitment to the secret key polynomial by flattening it and hashing.
-    /// This matches the Noir `compute_sk_commitment` function exactly.
-    fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {
-        use ark_bn254::Fr as Field;
-        use ark_ff::{BigInteger, PrimeField};
-        use shared::packing::flatten;
-
-        // Step 1: Flatten sk (matches sk_payload in Noir)
-        let mut inputs: Vec<Field> = Vec::new();
-        inputs = flatten(inputs, &[sk.to_vec()], bit_sk);
-
-        // Step 2: Hash using SafeSponge (matches compute_sk_commitment in Noir)
-        // Domain separator - "PVSS_sk_comm" (must match BFV public key circuit)
-        let domain_separator: [u8; 64] = [
-            0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x6b, 0x5f, 0x63, 0x6f, 0x6d, 0x6d, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-
-        // IO Pattern: ABSORB(input_size), SQUEEZE(1)
-        let input_size = inputs.len() as u32;
-        let io_pattern = [0x80000000 | input_size, 0x00000001];
-
-        let commitment = shared::utils::compute_safe(domain_separator, inputs, io_pattern);
-
-        // Convert Field to BigInt
-        let commitment_field = commitment[0];
-        let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
-        BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
-    }
-
     /// Create the validation vectors for BFV decryption (no homomorphic addition) proof.
     ///
     /// This computes all witness polynomials needed to prove:
@@ -202,7 +169,7 @@ impl DecBfvNoHomAddVectors {
         }
 
         // Compute expected_sk_commitment
-        res.expected_sk_commitment = Self::compute_sk_commitment(&res.s, bit_sk);
+        res.expected_sk_commitment = compute_sk_commitment(&res.s, bit_sk);
 
         // Process each ciphertext
         for (party_idx, party_cts) in honest_cts.iter().enumerate().take(num_honest_parties) {
