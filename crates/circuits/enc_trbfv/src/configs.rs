@@ -104,7 +104,7 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-greco (CIRCUIT 6 - ENCRYPTION TRBFV - GRECO)
+greco (CIRCUIT 7 - ENCRYPTION TRBFV x PVSS (enc_trbfv))
 -------------------------------------
 ************************************/
 

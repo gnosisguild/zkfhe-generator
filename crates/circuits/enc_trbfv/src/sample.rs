@@ -30,7 +30,7 @@ pub struct EncryptionData {
 ///
 /// # Notes
 ///
-/// * Greco (Circuit 6) - Encrypt messages/votes using TRBFV
+/// * greco (circuit 7) - Encrypt messages/votes using TRBFV
 /// * The `sample_type` and `lambda` parameters are kept for API compatibility but not used
 pub fn generate_sample_encryption(
     trbfv_params: &Arc<BfvParameters>,
@@ -43,7 +43,7 @@ pub fn generate_sample_encryption(
     let sk = SecretKey::random(trbfv_params, &mut rng);
     let pk = PublicKey::new(&sk, &mut rng);
 
-    // TRBFV: Encrypt a message/vote (Circuit 6)
+    // TRBFV: Encrypt a message/vote (Circuit 7)
     // Create a sample plaintext with some random values, in here we are assigning 3 to all the
     // coefficients
     let mut message_data = vec![3u64; trbfv_params.degree()];

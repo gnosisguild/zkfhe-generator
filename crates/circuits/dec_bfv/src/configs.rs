@@ -82,7 +82,7 @@ pub global TRBFV_QIS: [Field; L_TRBFV] = [{}];
 
 /************************************
 -------------------------------------
-dec_bfv (CIRCUIT {} - BFV DECRYPTION)
+dec_bfv (CIRCUIT 5 - BFV DECRYPTION)
 -------------------------------------
 ************************************/
 
@@ -125,7 +125,6 @@ pub global DEC_BFV_CONFIGS: BfvDecConfigs<L_TRBFV, L_PRIME> = BfvDecConfigs::new
             crypto_params.bfv_moduli.len(),      // L_PRIME
             bfv_qis_str,                         // BFV_QIS array
             trbfv_qis_str,                       // TRBFV_QIS array
-            "5",                                 // Circuit number
             template_params.bit_ct,              // BIT_CT
             template_params.bit_s,               // BIT_S
             template_params.bit_u,               // BIT_U

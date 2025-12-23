@@ -46,7 +46,7 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-pk_agg_trbfv (CIRCUIT 9 - PUBLIC KEY AGGREGATION TRBFV)
+pk_agg_trbfv (CIRCUIT 6 - PUBLIC KEY AGGREGATION TRBFV)
 -------------------------------------
 ************************************/
 

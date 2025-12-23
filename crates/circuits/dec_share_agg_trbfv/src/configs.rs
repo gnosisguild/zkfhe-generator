@@ -48,7 +48,7 @@ pub global Q_INVERSE_MOD_T: Field = {};
 
 /************************************
 -------------------------------------
-dec_share_agg_trbfv (CIRCUIT 8 - DECRYPTION SHARE AGGREGATION TRBFV)
+dec_share_agg_trbfv (CIRCUIT 9 - DECRYPTION SHARE AGGREGATION TRBFV)
 -------------------------------------
 ************************************/
 

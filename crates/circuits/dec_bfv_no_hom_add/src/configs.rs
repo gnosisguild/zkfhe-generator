@@ -82,7 +82,7 @@ pub global TRBFV_QIS: [Field; L_TRBFV] = [{}];
 
 /************************************
 -------------------------------------
-dec_bfv_no_hom_add (CIRCUIT {} - BFV DECRYPTION NO HOM ADD)
+dec_bfv_no_hom_add (CIRCUIT 5 - BFV DECRYPTION NO HOM ADD)
 -------------------------------------
 ************************************/
 
@@ -125,7 +125,6 @@ pub global DEC_BFV_CONFIGS: BfvDecNoHomAddConfig<L_TRBFV, L_PRIME> = BfvDecNoHom
             template_params.num_bfv_bases,       // L_PRIME
             bfv_qis_str,                         // BFV_QIS array
             trbfv_qis_str,                       // TRBFV_QIS array
-            "4",                                 // Circuit number
             template_params.bit_ct,              // BIT_CT
             template_params.bit_s,               // BIT_S
             template_params.bit_u,               // BIT_U

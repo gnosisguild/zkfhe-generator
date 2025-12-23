@@ -1294,7 +1294,7 @@ fn main() -> anyhow::Result<()> {
                 println!("  • trbfv - Threshold BFV (stricter security, 40-61 bit primes)");
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n🔐 enc-trbfv circuit (Greco):");
-                println!("  • TRBFV parameter type only: Encrypts messages/votes (Circuit 6)");
+                println!("  • TRBFV parameter type only: Encrypts messages/votes (Circuit 7)");
             }
             if !circuits && !presets {
                 println!("📋 Available circuits:");
@@ -1321,7 +1321,7 @@ fn main() -> anyhow::Result<()> {
                 println!("\n💡 Use --parameter-type to choose between trbfv and bfv (required)");
                 println!("   Example: --parameter-type trbfv");
                 println!("\n🔐 enc-trbfv circuit (Greco) usage:");
-                println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 6)");
+                println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 7)");
                 println!("    Note: enc-trbfv only supports TRBFV parameter type");
             }
         }
