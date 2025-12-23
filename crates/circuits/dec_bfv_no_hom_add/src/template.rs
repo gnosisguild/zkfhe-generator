@@ -45,6 +45,11 @@ pub struct DecBfvNoHomAddTemplateParams {
     pub bit_r2: u32,
     /// Bit width for message coefficients
     pub bit_msg: u32,
+    /// Parameter set name (bfv) for import path
+    pub parameter_set: String,
+    /// Security level (production or insecure) for import path
+    /// "production" if lambda >= 80, "insecure" otherwise
+    pub security_level: String,
 }
 
 impl DecBfvNoHomAddTemplateParams {
@@ -54,6 +59,8 @@ impl DecBfvNoHomAddTemplateParams {
         num_trbfv_bases: usize,
         num_bfv_bases: usize,
         bounds: &DecBfvNoHomAddBoundsData,
+        parameter_set: String,
+        security_level: String,
     ) -> ZkFheResult<Self> {
         // Calculate bit widths for each bound type
         let bit_s = calculate_bit_width(&bounds.s_bound)?;
@@ -95,6 +102,8 @@ impl DecBfvNoHomAddTemplateParams {
             bit_r1,
             bit_r2,
             bit_msg,
+            parameter_set,
+            security_level,
         })
     }
 }
@@ -104,115 +113,60 @@ pub struct DecBfvNoHomAddMainTemplate;
 
 impl MainTemplateGenerator<DecBfvNoHomAddTemplateParams> for DecBfvNoHomAddMainTemplate {
     fn generate_template(&self, params: &DecBfvNoHomAddTemplateParams) -> ZkFheResult<String> {
-        let import_example =
-            "// use dec_bfv_no_hom_add::{HonestCiphertextAggregationDecryptionNoHomAdd, Params};
-// use polynomial::Polynomial;";
-
-        // Array dimensions from Noir circuit:
-        // honest_c0: [[[Polynomial<N>; L_PRIME]; L]; H] - 3D: [H][L][L_PRIME]
-        // u_global: [[Polynomial<N>; L]; H] - 2D: [H][L]
-        // expected_aggregated_shares: [Polynomial<N>; L] - 1D: [L]
         let template = format!(
-            r#"//! Generated main.nr template for BFV Decryption circuit (no homomorphic addition)
-// TODO: Your imports here (example below)
-{}
+            r#"use lib::configs::{}::{}::{{
+    L_PRIME, L_TRBFV, N, DEC_BFV_BIT_CT, DEC_BFV_BIT_MSG,
+    DEC_BFV_BIT_R1, DEC_BFV_BIT_R2, DEC_BFV_BIT_S,
+    DEC_BFV_BIT_U, DEC_BFV_CONFIGS,
+}};
+use lib::core::bfv_dec_no_hom_add::BfvDecNoHomAdd;
+use lib::math::polynomial::Polynomial;
+
+/// Number of honest parties.
+pub global H: u32 = {};
 
 fn main(
-    params: Params<{}, {}, {}, {}>,
-    honest_c0: [[[Polynomial<{}>; {}]; {}]; {}],
-    honest_c1: [[[Polynomial<{}>; {}]; {}]; {}],
-    s: Polynomial<{}>,
-    u_i: [[[Polynomial<{}>; {}]; {}]; {}],
-    r_1: [[[Polynomial<{}>; {}]; {}]; {}],
-    r_2: [[[Polynomial<{}>; {}]; {}]; {}],
-    u_global: [[Polynomial<{}>; {}]; {}],
-    crt_quotients: [[[Polynomial<{}>; {}]; {}]; {}],
-    decrypted_shares: [[Polynomial<{}>; {}]; {}],
-    expected_aggregated_shares: [Polynomial<{}>; {}],
-) {{
-    // TODO: Your logic here...
+    expected_sk_commitment: Field,
+    honest_c0: [[[Polynomial<N>; L_PRIME]; L_TRBFV]; H],
+    honest_c1: [[[Polynomial<N>; L_PRIME]; L_TRBFV]; H],
+    s: Polynomial<N>,
+    u_i: [[[Polynomial<N>; L_PRIME]; L_TRBFV]; H],
+    r_1: [[[Polynomial<(2 * N) - 1>; L_PRIME]; L_TRBFV]; H],
+    r_2: [[[Polynomial<N - 1>; L_PRIME]; L_TRBFV]; H],
+    u_global: [[Polynomial<N>; L_TRBFV]; H],
+    crt_quotients: [[[Polynomial<N>; L_PRIME]; L_TRBFV]; H],
+    decrypted_shares: [[Polynomial<N>; L_TRBFV]; H],
+    expected_aggregated_shares: [Polynomial<N>; L_TRBFV],
+) -> pub Field {{
+    let dec_bfv_no_hom_add: BfvDecNoHomAdd<
+        N,
+        H,
+        L_TRBFV,
+        L_PRIME,
+        DEC_BFV_BIT_CT,
+        DEC_BFV_BIT_S,
+        DEC_BFV_BIT_U,
+        DEC_BFV_BIT_R1,
+        DEC_BFV_BIT_R2,
+        DEC_BFV_BIT_MSG,
+    > = BfvDecNoHomAdd::new(
+        DEC_BFV_CONFIGS,
+        expected_sk_commitment,
+        honest_c0,
+        honest_c1,
+        s,
+        u_i,
+        r_1,
+        r_2,
+        u_global,
+        crt_quotients,
+        decrypted_shares,
+        expected_aggregated_shares,
+    );
 
-    // Create circuit instance
-    let circuit: HonestCiphertextAggregationDecryptionNoHomAdd<{}, {}, {}, {}, {}, {}, {}, {}, {}, {}> = 
-        HonestCiphertextAggregationDecryptionNoHomAdd::new(
-            params,
-            honest_c0,
-            honest_c1,
-            s,
-            u_i,
-            r_1,
-            r_2,
-            u_global,
-            crt_quotients,
-            decrypted_shares,
-            expected_aggregated_shares,
-        );
-
-    // Verify correct decryption and aggregation
-    circuit.verify();
-
-    // TODO: Your logic here...
+    dec_bfv_no_hom_add.verify()
 }}"#,
-            import_example,
-            // Params<N, H, L, L_PRIME>
-            params.base.n,
-            params.num_honest_parties,
-            params.num_trbfv_bases,
-            params.num_bfv_bases,
-            // honest_c0: [[[Polynomial<N>; L_PRIME]; L]; H] - 3D: [H][L][L_PRIME]
-            params.base.n,
-            params.num_bfv_bases,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // honest_c1: [[[Polynomial<N>; L_PRIME]; L]; H] - 3D: [H][L][L_PRIME]
-            params.base.n,
-            params.num_bfv_bases,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // s: Polynomial<N>
-            params.base.n,
-            // u_i: [[[Polynomial<N>; L_PRIME]; L]; H] - 3D: [H][L][L_PRIME]
-            params.base.n,
-            params.num_bfv_bases,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // r_1: [[[Polynomial<2N-1>; L_PRIME]; L]; H] - 3D: [H][L][L_PRIME]
-            2 * params.base.n - 1,
-            params.num_bfv_bases,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // r_2: [[[Polynomial<N-1>; L_PRIME]; L]; H] - 3D: [H][L][L_PRIME]
-            params.base.n - 1,
-            params.num_bfv_bases,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // u_global: [[Polynomial<N>; L]; H] - 2D: [H][L]
-            params.base.n,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // crt_quotients: [[[Polynomial<N>; L_PRIME]; L]; H] - 3D: [H][L][L_PRIME]
-            params.base.n,
-            params.num_bfv_bases,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // decrypted_shares: [[Polynomial<N>; L]; H] - 2D: [H][L]
-            params.base.n,
-            params.num_trbfv_bases,
-            params.num_honest_parties,
-            // expected_aggregated_shares: [Polynomial<N>; L] - 1D: [L]
-            params.base.n,
-            params.num_trbfv_bases,
-            // Circuit generic parameters: N, H, L, L_PRIME, BIT_CT, BIT_S, BIT_U, BIT_R1, BIT_R2, BIT_MSG
-            params.base.n,
-            params.num_honest_parties,
-            params.num_trbfv_bases,
-            params.num_bfv_bases,
-            params.bit_ct,
-            params.bit_s,
-            params.bit_u,
-            params.bit_r1,
-            params.bit_r2,
-            params.bit_msg,
+            params.security_level, params.parameter_set, params.num_honest_parties,
         );
 
         Ok(template)

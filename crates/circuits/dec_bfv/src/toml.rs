@@ -2,7 +2,6 @@
 //!
 //! This module contains the TOML generation logic specific to the dec_bfv circuit.
 
-use crate::bounds::{DecBfvBounds, DecBfvCryptographicParameters};
 use crate::vectors::DecBfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
@@ -11,72 +10,39 @@ use shared::utils::to_string_1d_vec;
 
 /// Generator for BFV decryption circuit TOML files
 pub struct DecBfvTomlGenerator {
-    crypto_params: DecBfvCryptographicParameters,
-    bounds: DecBfvBounds,
     vectors: DecBfvVectors,
 }
 
 impl DecBfvTomlGenerator {
     /// Create a new TOML generator with bounds and vectors
-    pub fn new(
-        crypto_params: DecBfvCryptographicParameters,
-        bounds: DecBfvBounds,
-        vectors: DecBfvVectors,
-    ) -> Self {
-        Self {
-            crypto_params,
-            bounds,
-            vectors,
-        }
+    pub fn new(vectors: DecBfvVectors) -> Self {
+        Self { vectors }
     }
 }
 
 /// Complete `Prover.toml` format for BFV decryption circuit
 #[derive(Serialize)]
 struct ProverTomlFormat {
-    params: serde_json::Value,
-    honest_c0: Vec<Vec<serde_json::Value>>, // [H][L]
-    honest_c1: Vec<Vec<serde_json::Value>>, // [H][L]
-    sum_c0: Vec<serde_json::Value>,
-    sum_c1: Vec<serde_json::Value>,
-    s: Vec<serde_json::Value>,
-    u_i: Vec<serde_json::Value>,
-    r_1: Vec<serde_json::Value>,
-    r_2: Vec<serde_json::Value>,
-    u_global: serde_json::Value,
-    crt_quotients: Vec<serde_json::Value>,
-    message: serde_json::Value,
+    expected_sk_commitment: String,
+    honest_c0: Vec<Vec<Vec<serde_json::Value>>>, // [H][L][L_PRIME]
+    honest_c1: Vec<Vec<Vec<serde_json::Value>>>, // [H][L][L_PRIME]
+    sum_c0: Vec<Vec<serde_json::Value>>,         // [L][L_PRIME]
+    sum_c1: Vec<Vec<serde_json::Value>>,         // [L][L_PRIME]
+    s: serde_json::Value,                        // [N] - single polynomial
+    u_i: Vec<Vec<serde_json::Value>>,            // [L][L_PRIME]
+    r_1: Vec<Vec<serde_json::Value>>,            // [L][L_PRIME]
+    r_2: Vec<Vec<serde_json::Value>>,            // [L][L_PRIME]
+    u_global: Vec<serde_json::Value>,            // [L]
+    crt_quotients: Vec<Vec<serde_json::Value>>,  // [L][L_PRIME]
+    message: Vec<serde_json::Value>,             // [L]
 }
 
 impl TomlGenerator for DecBfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
-        // Create params JSON by combining crypto params and bounds
-        let mut params_json = serde_json::Map::new();
-
-        // Add crypto params
-        let crypto_json = serde_json::json!({
-            "qis": self.crypto_params.moduli.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "plaintext_modulus": self.crypto_params.plaintext_modulus.to_string(),
-            "q_inverse_mod_t": self.crypto_params.q_inverse_mod_t.to_string(),
-            "q_mod_t": self.crypto_params.q_mod_t.to_string(),
-            "t_inv_mod_q": self.crypto_params.t_inv_mod_q.to_string(),
-        });
-        params_json.insert("crypto".to_string(), crypto_json);
-
-        // Add bounds
-        let bounds_json = serde_json::json!({
-            "s_bound": self.bounds.s_bound.to_string(),
-            "u_i_bounds": self.bounds.u_i_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "u_global_bound": self.bounds.u_global_bound.to_string(),
-            "r1_bounds": self.bounds.r1_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "r2_bounds": self.bounds.r2_bounds.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "delta": self.bounds.delta.to_string(),
-            "delta_half": self.bounds.delta_half.to_string(),
-        });
-        params_json.insert("bounds".to_string(), bounds_json);
+        // Note: params section removed - cryptographic parameters and bounds are now in separate config file
 
         let toml_data = ProverTomlFormat {
-            params: serde_json::Value::Object(params_json),
+            expected_sk_commitment: self.vectors.expected_sk_commitment.to_string(),
             honest_c0: self
                 .vectors
                 .honest_c0
@@ -84,10 +50,15 @@ impl TomlGenerator for DecBfvTomlGenerator {
                 .map(|party_c0| {
                     party_c0
                         .iter()
-                        .map(|v| {
-                            serde_json::json!({
-                                "coefficients": to_string_1d_vec(v)
-                            })
+                        .map(|trbfv_c0| {
+                            trbfv_c0
+                                .iter()
+                                .map(|bfv_c0| {
+                                    serde_json::json!({
+                                        "coefficients": to_string_1d_vec(bfv_c0)
+                                    })
+                                })
+                                .collect()
                         })
                         .collect()
                 })
@@ -99,10 +70,15 @@ impl TomlGenerator for DecBfvTomlGenerator {
                 .map(|party_c1| {
                     party_c1
                         .iter()
-                        .map(|v| {
-                            serde_json::json!({
-                                "coefficients": to_string_1d_vec(v)
-                            })
+                        .map(|trbfv_c1| {
+                            trbfv_c1
+                                .iter()
+                                .map(|bfv_c1| {
+                                    serde_json::json!({
+                                        "coefficients": to_string_1d_vec(bfv_c1)
+                                    })
+                                })
+                                .collect()
                         })
                         .collect()
                 })
@@ -111,78 +87,115 @@ impl TomlGenerator for DecBfvTomlGenerator {
                 .vectors
                 .sum_c0
                 .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
+                .map(|trbfv_c0| {
+                    trbfv_c0
+                        .iter()
+                        .map(|bfv_c0| {
+                            serde_json::json!({
+                                "coefficients": to_string_1d_vec(bfv_c0)
+                            })
+                        })
+                        .collect()
                 })
                 .collect(),
             sum_c1: self
                 .vectors
                 .sum_c1
                 .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
+                .map(|trbfv_c1| {
+                    trbfv_c1
+                        .iter()
+                        .map(|bfv_c1| {
+                            serde_json::json!({
+                                "coefficients": to_string_1d_vec(bfv_c1)
+                            })
+                        })
+                        .collect()
                 })
                 .collect(),
-            s: self
-                .vectors
-                .s
-                .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
-                })
-                .collect(),
+            s: serde_json::json!({
+                "coefficients": to_string_1d_vec(&self.vectors.s)
+            }),
             u_i: self
                 .vectors
                 .u_i
                 .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
+                .map(|trbfv_u_i| {
+                    trbfv_u_i
+                        .iter()
+                        .map(|bfv_u_i| {
+                            serde_json::json!({
+                                "coefficients": to_string_1d_vec(bfv_u_i)
+                            })
+                        })
+                        .collect()
                 })
                 .collect(),
             r_1: self
                 .vectors
                 .r_1
                 .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
+                .map(|trbfv_r1| {
+                    trbfv_r1
+                        .iter()
+                        .map(|bfv_r1| {
+                            serde_json::json!({
+                                "coefficients": to_string_1d_vec(bfv_r1)
+                            })
+                        })
+                        .collect()
                 })
                 .collect(),
             r_2: self
                 .vectors
                 .r_2
                 .iter()
-                .map(|v| {
+                .map(|trbfv_r2| {
+                    trbfv_r2
+                        .iter()
+                        .map(|bfv_r2| {
+                            serde_json::json!({
+                                "coefficients": to_string_1d_vec(bfv_r2)
+                            })
+                        })
+                        .collect()
+                })
+                .collect(),
+            u_global: self
+                .vectors
+                .u_global
+                .iter()
+                .map(|trbfv_u_global| {
                     serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
+                        "coefficients": to_string_1d_vec(trbfv_u_global)
                     })
                 })
                 .collect(),
-            u_global: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.u_global)
-            }),
             crt_quotients: self
                 .vectors
                 .crt_quotients
                 .iter()
-                .map(|v| {
+                .map(|trbfv_crt| {
+                    trbfv_crt
+                        .iter()
+                        .map(|bfv_crt| {
+                            serde_json::json!({
+                                "coefficients": to_string_1d_vec(bfv_crt)
+                            })
+                        })
+                        .collect()
+                })
+                .collect(),
+            message: self
+                .vectors
+                .message
+                .iter()
+                .map(|trbfv_msg| {
                     serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
+                        "coefficients": to_string_1d_vec(trbfv_msg)
                     })
                 })
                 .collect(),
-            message: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.message)
-            }),
         };
 
         Ok(toml::to_string(&toml_data)?)
@@ -192,19 +205,24 @@ impl TomlGenerator for DecBfvTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bounds::DecBfvBounds;
     use crate::vectors::DecBfvVectors;
     use shared::utils::test_parameters_bfv;
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters_bfv();
+        use shared::utils::test_parameters_trbfv;
+        let bfv_params = test_parameters_bfv();
+        let trbfv_params = test_parameters_trbfv();
 
-        let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
-        let vectors = DecBfvVectors::new(3, params.moduli().len(), params.degree());
+        let vectors = DecBfvVectors::new(
+            3,
+            trbfv_params.moduli().len(),
+            bfv_params.moduli().len(),
+            bfv_params.degree(),
+        );
 
-        let generator = DecBfvTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = DecBfvTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -218,40 +236,39 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
 
         // Check that the file contains the expected sections
-        assert!(content.contains("params.crypto"));
-        assert!(content.contains("params.bounds"));
+        assert!(content.contains("expected_sk_commitment"));
         assert!(content.contains("honest_c0"));
         assert!(content.contains("honest_c1"));
         assert!(content.contains("sum_c0"));
         assert!(content.contains("sum_c1"));
-        assert!(content.contains("[[s]]"));
-        assert!(content.contains("[[u_i]]"));
-        assert!(content.contains("[[r_1]]"));
-        assert!(content.contains("[[r_2]]"));
-        assert!(content.contains("[u_global]"));
-        assert!(content.contains("[[crt_quotients]]"));
-        assert!(content.contains("[message]"));
+        assert!(content.contains("[s]"));
+        assert!(content.contains("[[u_global]]"));
+        assert!(content.contains("[[message]]"));
     }
 
     #[test]
     fn test_toml_string_format() {
-        let params = test_parameters_bfv();
-        let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
-        let vectors = DecBfvVectors::new(3, params.moduli().len(), params.degree());
+        use shared::utils::test_parameters_trbfv;
+        let bfv_params = test_parameters_bfv();
+        let trbfv_params = test_parameters_trbfv();
+        let vectors = DecBfvVectors::new(
+            3,
+            trbfv_params.moduli().len(),
+            bfv_params.moduli().len(),
+            bfv_params.degree(),
+        );
 
-        let generator = DecBfvTomlGenerator::new(crypto_params, bounds, vectors);
+        let generator = DecBfvTomlGenerator::new(vectors);
         let toml_string = generator.to_toml_string().unwrap();
 
         // Verify the TOML string contains the expected sections
         assert!(toml_string.contains("honest_c0"));
         assert!(toml_string.contains("honest_c1"));
-        assert!(toml_string.contains("[[sum_c0]]"));
-        assert!(toml_string.contains("[[sum_c1]]"));
-        assert!(toml_string.contains("[[s]]"));
-        assert!(toml_string.contains("[[u_i]]"));
-        assert!(toml_string.contains("[u_global]"));
-        assert!(toml_string.contains("[message]"));
-        assert!(toml_string.contains("[params.crypto]"));
-        assert!(toml_string.contains("[params.bounds]"));
+        assert!(toml_string.contains("sum_c0"));
+        assert!(toml_string.contains("sum_c1"));
+        assert!(toml_string.contains("s"));
+        assert!(toml_string.contains("u_global"));
+        assert!(toml_string.contains("message"));
+        assert!(toml_string.contains("expected_sk_commitment"));
     }
 }

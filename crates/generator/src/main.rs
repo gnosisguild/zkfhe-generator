@@ -19,6 +19,7 @@ use crypto_params::bfv::{BfvSearchConfig, bfv_search, bfv_search_second_param};
 use crypto_params::utils::approx_bits_from_log2;
 use crypto_params::utils::fmt_big_summary;
 use fhe::bfv::{BfvParameters, BfvParametersBuilder};
+use num_bigint::BigInt;
 use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::utils::{variance_uniform_sym_str_big, variance_uniform_sym_str_u128};
 use shared::{BaseTemplateParams, Circuit, MainTemplateGenerator};
@@ -101,10 +102,9 @@ enum Commands {
         #[arg(long)]
         main: bool,
 
-        /// Sample type for share_row generation (Greco and dec-bfv circuits only)
+        /// Sample type for share_row generation (dec-bfv circuits only)
         ///
         /// This option is applicable to:
-        /// - greco circuit with BFV parameter type
         /// - dec-bfv circuit
         ///
         /// Determines what type of share_row to generate:
@@ -112,6 +112,7 @@ enum Commands {
         /// - `smudging-noise`: Generate es_sss share_row
         ///
         /// This affects the type of threshold share that gets encrypted/decrypted.
+        /// Note: enc-trbfv circuit (Greco) only works with TRBFV and does not use sample_type.
         #[arg(long, default_value = "secret-key")]
         sample_type: String,
 
@@ -205,7 +206,7 @@ pub struct BfvParams {
 ///
 /// * `circuit_name` - The name of the circuit to load
 /// * `parameter_type` - The parameter type (BFV or trBFV)
-/// * `sample_type` - The sample type (only used for greco circuit)
+/// * `sample_type` - The sample type (only used for dec-bfv circuit)
 /// * `lambda` - The security parameter (λ) to use for this circuit instance
 ///
 /// # Returns
@@ -218,12 +219,24 @@ fn get_circuit(
     lambda: usize,
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
-        "greco" => {
+        "enc-bfv" => {
+            let circuit = enc_bfv::circuit::EncBfvCircuit::new(lambda);
+            Ok(Box::new(circuit))
+        }
+        "enc-trbfv" => {
+            // Greco only works with TRBFV
+            if parameter_type != ParameterType::Trbfv {
+                anyhow::bail!("Greco circuit only supports TRBFV parameter type");
+            }
             let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type, lambda);
             Ok(Box::new(circuit))
         }
-        "pk-trbfv" => {
-            let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type, lambda);
+        "pk-bfv" => {
+            let circuit = pk_bfv::circuit::PkBfvCircuit::new(parameter_type, lambda);
+            Ok(Box::new(circuit))
+        }
+        "pk-agg-trbfv" => {
+            let circuit = pk_agg_trbfv::circuit::PkAggTrBfvCircuit::new(parameter_type, lambda);
             Ok(Box::new(circuit))
         }
         "dec-share-trbfv" => {
@@ -245,9 +258,12 @@ fn get_circuit(
                 dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new(sample_type, lambda);
             Ok(Box::new(circuit))
         }
-        "sk-shares" => {
-            let circuit =
-                sk_shares::circuit::SkSharesCircuit::new(parameter_type, sample_type, lambda);
+        "verify-shares-trbfv" => {
+            let circuit = verify_shares_trbfv::circuit::VerifySharesTrbfvCircuit::new(
+                parameter_type,
+                sample_type,
+                lambda,
+            );
             Ok(Box::new(circuit))
         }
         _ => anyhow::bail!("Unknown circuit: {circuit_name}"),
@@ -257,13 +273,15 @@ fn get_circuit(
 /// Get supported parameter types per circuit.
 pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<ParameterType> {
     match circuit_name.to_lowercase().as_str() {
-        "greco" => vec![ParameterType::Trbfv, ParameterType::Bfv],
-        "pk-trbfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "enc-trbfv" => vec![ParameterType::Trbfv],
+        "pk-bfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "enc-bfv" => vec![ParameterType::Bfv],
+        "pk-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
         "dec-bfv-no-hom-add" => vec![ParameterType::Bfv],
-        "sk-shares" => vec![ParameterType::Trbfv],
+        "verify-shares-trbfv" => vec![ParameterType::Trbfv],
         // Future circuits can support different parameter types
         _ => vec![],
     }
@@ -713,11 +731,15 @@ fn generate_main_template(
 
     // Generate circuit-specific template based on circuit type
     match circuit_type {
-        "greco" => {
+        "greco" | "enc-trbfv" => {
             use greco::bounds::GrecoBounds;
+            use greco::configs::GrecoConfigsGenerator;
             use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
 
-            let (_, bounds) = GrecoBounds::compute(bfv_params, 0)
+            // Greco only works with TRBFV parameters
+            let selected_params = trbfv_params;
+
+            let (crypto_params, bounds) = GrecoBounds::compute(selected_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
 
             let bounds_data = greco::template::GrecoBoundsData {
@@ -735,44 +757,132 @@ fn generate_main_template(
                 p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
             };
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let greco_template_params = GrecoTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                BaseTemplateParams::new(selected_params.degree(), l, circuit_type),
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
+
+            // Generate config .nr file (named after parameter set: trbfv.nr or bfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            GrecoConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &bounds,
+                &greco_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to generate greco configs file: {e:?}"))?;
 
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;
         }
-        "pk-trbfv" => {
-            use pk_trbfv::bounds::PkTrBfvBounds;
-            use pk_trbfv::template::{PkTrBfvMainTemplate, PkTrBfvTemplateParams};
+        "pk-bfv" => {
+            use pk_bfv::bounds::PkBfvBounds;
+            use pk_bfv::template::{PkBfvBoundsData, PkBfvMainTemplate, PkBfvTemplateParams};
 
-            let (_, bounds) = PkTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute PkTrBfv bounds: {e:?}"))?;
+            // Select the correct params based on circuit's parameter type
+            let selected_params = if circuit.parameter_type() == ParameterType::Trbfv {
+                trbfv_params
+            } else {
+                bfv_params
+            };
 
-            let bounds_data = pk_trbfv::template::PkTrBfvBoundsData {
+            let (_, bounds) = PkBfvBounds::compute(selected_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute PkBfv bounds: {e:?}"))?;
+
+            let bounds_data = PkBfvBoundsData {
                 eek_bound: bounds.eek_bound.to_string(),
                 sk_bound: bounds.sk_bound.to_string(),
                 r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
                 r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
             };
 
-            let pk_trbfv_template_params = PkTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
+            let pk_bfv_template_params = PkBfvTemplateParams::from_bounds(
+                BaseTemplateParams::new(
+                    selected_params.degree(),
+                    selected_params.moduli().len(),
+                    circuit_type,
+                ),
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
 
-            let template_generator = PkTrBfvMainTemplate;
-            template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
+            let template_generator = PkBfvMainTemplate;
+            template_generator.generate_main_file(&pk_bfv_template_params, output_dir)?;
+        }
+        "pk-agg-trbfv" => {
+            use pk_agg_trbfv::bounds::PkAggTrBfvCryptographicParameters;
+            use pk_agg_trbfv::configs::PkAggTrBfvConfigsGenerator;
+            use pk_agg_trbfv::template::{PkAggTrBfvMainTemplate, PkAggTrBfvTemplateParams};
+
+            let crypto_params = PkAggTrBfvCryptographicParameters {
+                moduli: trbfv_params.moduli().to_vec(),
+            };
+
+            let num_honest_parties = ciphernodes_config
+                .map(|c| c.num_honest_parties)
+                .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 5 if not provided
+
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
+            let ctx = trbfv_params.ctx_at_level(0)?;
+            let pk_bound = (&BigInt::from(ctx.moduli_operators()[0].modulus()) - BigInt::from(1))
+                / BigInt::from(2);
+
+            let pk_agg_trbfv_template_params = PkAggTrBfvTemplateParams::new(
+                BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
+                num_honest_parties,
+                pk_bound.to_string(),
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
+            )?;
+
+            // Generate config .nr file (named after parameter set: trbfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            PkAggTrBfvConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &pk_agg_trbfv_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to generate pk-agg-trbfv configs file: {e:?}"))?;
+
+            let template_generator = PkAggTrBfvMainTemplate;
+            template_generator.generate_main_file(&pk_agg_trbfv_template_params, output_dir)?;
         }
         "dec-share-trbfv" => {
             use dec_share_trbfv::bounds::DecShareTrBfvBounds;
+            use dec_share_trbfv::configs::DecShareTrBfvConfigsGenerator;
             use dec_share_trbfv::template::{
                 DecShareTrBfvMainTemplate, DecShareTrBfvTemplateParams,
             };
 
-            let (_, bounds) = DecShareTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute Greco bounds: {e:?}"))?;
+            let (crypto_params, bounds) = DecShareTrBfvBounds::compute(trbfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute dec-share-trbfv bounds: {e:?}"))?;
 
             let bounds_data = dec_share_trbfv::template::DecShareTrBfvBoundsData {
                 decryption_share_bound: bounds.decryption_share_bound.to_string(),
@@ -780,37 +890,74 @@ fn generate_main_template(
                 r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
             };
 
+            // Get num_parties and threshold from config or use defaults
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(CiphernodesConfig::defaults);
+            let num_parties = config.num_parties;
+            let threshold = config.threshold;
+
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_share_trbfv_template_params = DecShareTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
+                num_parties as u32,
+                threshold as u32,
             )?;
+
+            // Generate config .nr file (named after parameter set: trbfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            DecShareTrBfvConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &bounds,
+                &dec_share_trbfv_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to generate dec-share-trbfv configs file: {e:?}")
+            })?;
 
             let template_generator = DecShareTrBfvMainTemplate;
             template_generator.generate_main_file(&dec_share_trbfv_template_params, output_dir)?;
         }
         "dec-share-agg-trbfv" => {
             use dec_share_agg_trbfv::bounds::DecShareAggTrBfvBounds;
+            use dec_share_agg_trbfv::configs::DecShareAggTrBfvConfigsGenerator;
             use dec_share_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
             use dec_share_agg_trbfv::template::{
                 DecShareAggTrBfvMainTemplate, DecShareAggTrBfvTemplateParams,
             };
             use dec_share_agg_trbfv::vectors::DecShareAggTrBfvVectors;
 
-            let (_, bounds) = DecShareAggTrBfvBounds::compute(bfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute bounds: {e:?}"))?;
+            let (crypto_params, bounds) = DecShareAggTrBfvBounds::compute(trbfv_params, 0)
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to compute dec-share-agg-trbfv bounds: {e:?}")
+                })?;
 
             let bounds_data = dec_share_agg_trbfv::template::DecShareAggTrBfvBoundsData {
                 delta: bounds.delta.to_string(),
                 delta_half: bounds.delta_half.to_string(),
             };
 
-            let threshold = ciphernodes_config
-                .map(|c| c.threshold)
-                .unwrap_or(CiphernodesConfig::defaults().threshold); // Default to 2 if not provided
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(CiphernodesConfig::defaults);
+            let threshold = config.threshold;
+            let num_parties = config.num_parties;
 
             // Generate sample data to determine the trimmed degree
             let decryption_data = generate_sample_decryption_share_aggregation(
-                bfv_params,
+                trbfv_params,
                 ciphernodes_config,
                 circuit.security_parameter(),
             )
@@ -820,7 +967,7 @@ fn generate_main_template(
                 &decryption_data.d_share_polys,
                 &decryption_data.party_ids,
                 &decryption_data.message,
-                bfv_params,
+                trbfv_params,
                 decryption_data.threshold,
                 decryption_data.num_parties,
             )
@@ -830,11 +977,34 @@ fn generate_main_template(
 
             let trimmed_degree = vectors_standard.count_nonzero_message_coefficients();
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(trimmed_degree, l, circuit_type),
                 threshold as u32,
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
+                num_parties as u32,
             )?;
+
+            // Generate config .nr file (named after parameter set: trbfv.nr)
+            let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
+            DecShareAggTrBfvConfigsGenerator::generate_configs_file(
+                &crypto_params,
+                &dec_share_agg_trbfv_template_params,
+                output_dir,
+                &configs_filename,
+                circuit.parameter_type().as_str(),
+            )
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to generate dec-share-agg-trbfv configs file: {e:?}")
+            })?;
 
             let template_generator = DecShareAggTrBfvMainTemplate;
             template_generator
@@ -844,7 +1014,7 @@ fn generate_main_template(
             use dec_bfv::bounds::DecBfvBounds;
             use dec_bfv::template::{DecBfvBoundsData, DecBfvMainTemplate, DecBfvTemplateParams};
 
-            let (_, bounds) = DecBfvBounds::compute(bfv_params, 0)
+            let (_, bounds) = DecBfvBounds::compute(bfv_params, trbfv_params, 0)
                 .map_err(|e| anyhow::anyhow!("Failed to compute dec_bfv bounds: {e:?}"))?;
 
             let bounds_data = DecBfvBoundsData {
@@ -861,10 +1031,19 @@ fn generate_main_template(
                 .map(|c| c.num_honest_parties)
                 .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 3 if not provided
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_bfv_template_params = DecBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
                 num_honest_parties,
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
 
             let template_generator = DecBfvMainTemplate;
@@ -903,28 +1082,40 @@ fn generate_main_template(
             let num_trbfv_bases = crypto_params.trbfv_moduli.len();
             let num_bfv_bases = crypto_params.bfv_moduli.len();
 
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
             let dec_bfv_no_hom_add_template_params = DecBfvNoHomAddTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
                 config.num_honest_parties,
                 num_trbfv_bases, // L (TRBFV bases)
                 num_bfv_bases,   // L' (BFV bases)
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
 
             let template_generator = DecBfvNoHomAddMainTemplate;
             template_generator
                 .generate_main_file(&dec_bfv_no_hom_add_template_params, output_dir)?;
         }
-        "sk-shares" => {
-            use sk_shares::bounds::SkSharesBounds;
-            use sk_shares::template::{
-                SkSharesBoundsData, SkSharesMainTemplate, SkSharesTemplateParams,
+        "verify-shares-trbfv" => {
+            use verify_shares_trbfv::bounds::VerifySharesTrbfvBounds;
+            use verify_shares_trbfv::template::{
+                VerifySharesTrbfvBoundsData, VerifySharesTrbfvMainTemplate,
+                VerifySharesTrbfvTemplateParams,
             };
 
-            let (crypto_params, bounds) = SkSharesBounds::compute(trbfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute sk_shares bounds: {e:?}"))?;
+            let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(trbfv_params, 0)
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to compute verify_shares_trbfv bounds: {e:?}")
+                })?;
 
-            let bounds_data = SkSharesBoundsData {
+            let bounds_data = VerifySharesTrbfvBoundsData {
                 sk_bound: bounds.sk_bound.to_string(),
                 moduli: crypto_params.moduli,
             };
@@ -933,15 +1124,65 @@ fn generate_main_template(
                 .cloned()
                 .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
 
-            let sk_shares_template_params = SkSharesTemplateParams::from_bounds(
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
+            let sk_shares_template_params = VerifySharesTrbfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
                 config.num_parties,
                 config.threshold,
                 &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
             )?;
 
-            let template_generator = SkSharesMainTemplate;
+            let template_generator = VerifySharesTrbfvMainTemplate;
             template_generator.generate_main_file(&sk_shares_template_params, output_dir)?;
+        }
+        "enc-bfv" => {
+            use enc_bfv::bounds::EncBfvBounds;
+            use enc_bfv::template::{EncBfvBoundsData, EncBfvMainTemplate, EncBfvTemplateParams};
+
+            let (crypto_params, bounds) = EncBfvBounds::compute(bfv_params, 0)
+                .map_err(|e| anyhow::anyhow!("Failed to compute enc_bfv bounds: {e:?}"))?;
+
+            let bounds_data = EncBfvBoundsData {
+                t: crypto_params.t.to_string(),
+                q_mod_t: crypto_params.q_mod_t.to_string(),
+                moduli: crypto_params.moduli,
+                k0is: crypto_params.k0is,
+                u_bound: bounds.u_bound.to_string(),
+                e0_bound: bounds.e0_bound.to_string(),
+                e1_bound: bounds.e1_bound.to_string(),
+                msg_bound: bounds.msg_bound.to_string(),
+                pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
+                r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
+                r1_up_bounds: bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                p1_bounds: bounds.p1_bounds.iter().map(|b| b.to_string()).collect(),
+                p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
+            };
+
+            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+                "production"
+            } else {
+                "insecure"
+            };
+
+            let enc_bfv_template_params = EncBfvTemplateParams::from_bounds(
+                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                &bounds_data,
+                circuit.parameter_type().as_str().to_string(),
+                security_level.to_string(),
+            )?;
+
+            let template_generator = EncBfvMainTemplate;
+            template_generator.generate_main_file(&enc_bfv_template_params, output_dir)?;
         }
         _ => {
             anyhow::bail!("No main template generator available for circuit: {circuit_type}");
@@ -982,35 +1223,32 @@ fn main() -> anyhow::Result<()> {
             // Parse parameter type
             let param_type = ParameterType::from_str_to_parameter_type(&parameter_type)?;
 
-            // Parse sample type (only used for greco circuit with BFV)
-            let effective_sample_type = if circuit.to_lowercase() == "greco"
-                && param_type == ParameterType::Bfv
-            {
-                let parsed_type = SampleType::from_str_to_sample_type(&sample_type)?;
-                // Print the sample type being used
-                if sample_type == "secret-key" {
-                    println!("📋 Using sample type: secret-key (default)");
-                } else {
-                    println!("📋 Using sample type: {}", parsed_type.as_str());
-                }
-                parsed_type
-            } else {
-                // Default to SecretKey for other circuits or parameter types
-                // Warn if user specified a sample type for circuits that don't support it
+            // Parse sample type (only used for dec-bfv and verify-shares-trbfv circuits)
+            let effective_sample_type = {
                 let circuit_name = circuit.to_lowercase();
-                if circuit_name == "greco" && param_type != ParameterType::Bfv {
-                    eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to greco with BFV parameter type. This flag will be ignored."
-                    );
-                } else if circuit_name != "greco"
-                    && circuit_name != "dec-bfv"
-                    && circuit_name != "sk-shares"
-                {
-                    eprintln!(
-                        "⚠️  Warning: --sample-type is only applicable to the greco, dec-bfv and sk-shares circuits. This flag will be ignored."
-                    );
+                if circuit_name == "dec-bfv" || circuit_name == "verify-shares-trbfv" {
+                    let parsed_type = SampleType::from_str_to_sample_type(&sample_type)?;
+                    // Print the sample type being used
+                    if sample_type == "secret-key" {
+                        println!("📋 Using sample type: secret-key (default)");
+                    } else {
+                        println!("📋 Using sample type: {}", parsed_type.as_str());
+                    }
+                    parsed_type
+                } else {
+                    // Default to SecretKey for other circuits
+                    // Warn if user specified a sample type for circuits that don't support it
+                    if circuit_name == "enc-trbfv" {
+                        eprintln!(
+                            "⚠️  Warning: --sample-type is not applicable to enc-trbfv circuit (TRBFV only). This flag will be ignored."
+                        );
+                    } else if circuit_name != "enc-bfv" {
+                        eprintln!(
+                            "⚠️  Warning: --sample-type is only applicable to dec-bfv and verify-shares-trbfv circuits. This flag will be ignored."
+                        );
+                    }
+                    SampleType::SecretKey
                 }
-                SampleType::SecretKey
             };
 
             generate_circuit_params(
@@ -1029,9 +1267,13 @@ fn main() -> anyhow::Result<()> {
         Commands::List { circuits, presets } => {
             if circuits {
                 println!("📋 Available circuits:");
-                println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
+                println!("  • enc-trbfv   - Greco circuit implementation (TRBFV only)");
                 println!(
-                    "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
+                    "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
+                );
+                println!("  • enc-bfv     - Encryption BFV circuit implementation (supports bfv)");
+                println!(
+                    "  • pk-agg-trbfv   - Public Key Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
                 println!(
                     "  • dec-share-trbfv   - Decryption Share TRBFV circuit implementation (supports trbfv)"
@@ -1044,8 +1286,9 @@ fn main() -> anyhow::Result<()> {
                     "  • dec-bfv-no-hom-add   - BFV Decryption circuit (no homomorphic addition) for insecure params (supports bfv)"
                 );
                 println!(
-                    "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
+                    "  • verify-shares-trbfv   - Secret Key Shares verification circuit (supports trbfv)"
                 );
+                println!("  • enc-bfv       - BFV Encryption circuit (supports bfv)");
             }
             if presets {
                 println!("\n⚙️  Available presets:");
@@ -1056,21 +1299,23 @@ fn main() -> anyhow::Result<()> {
                 println!("\n🔧 Available parameter types:");
                 println!("  • trbfv - Threshold BFV (stricter security, 40-61 bit primes)");
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
-                println!("\n🔐 Greco circuit:");
-                println!("  • BFV parameter type: Encrypts threshold shares (Circuit 4)");
-                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
-                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
-                println!("  • trBFV parameter type: Encrypts messages/votes (Circuit 6)");
+                println!("\n🔐 enc-trbfv circuit (Greco):");
+                println!("  • TRBFV parameter type only: Encrypts messages/votes (Circuit 7)");
             }
             if !circuits && !presets {
                 println!("📋 Available circuits:");
-                println!("  • greco   - Greco circuit implementation (supports trbfv, bfv)");
+                println!("  • enc-trbfv   - Greco circuit implementation (TRBFV only)");
                 println!(
-                    "  • pk-trbfv   - Public Key TRBFV circuit implementation (supports trbfv, bfv)"
+                    "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
+                );
+                println!("  • enc-bfv     - Encryption BFV circuit implementation (supports bfv)");
+                println!(
+                    "  • pk-agg-trbfv   - Public Key Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
                 println!(
-                    "  • sk-shares   - Secret Key Shares verification circuit (supports trbfv)"
+                    "  • verify-shares-trbfv   - Secret Key Shares verification circuit (supports trbfv)"
                 );
+                println!("  • enc-bfv       - BFV Encryption circuit (supports bfv)");
                 println!("\n⚙️  Available presets:");
                 println!("  • INSECURE_SET_512_10_1   - Development (n=1, z=1000, λ=80, B=20)");
                 println!("  • SET_8192_1000_4   - Development (n=1, z=1000, λ=80, B=20)");
@@ -1081,11 +1326,9 @@ fn main() -> anyhow::Result<()> {
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n💡 Use --parameter-type to choose between trbfv and bfv (required)");
                 println!("   Example: --parameter-type trbfv");
-                println!("\n🔐 Greco circuit usage:");
-                println!("  • --parameter-type bfv: Encrypt threshold shares (Circuit 4)");
-                println!("    - Default (--sample-type secret-key): Uses sk_sss share_row");
-                println!("    - With --sample-type smudging-noise: Uses es_sss share_row");
-                println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 6)");
+                println!("\n🔐 enc-trbfv circuit (Greco) usage:");
+                println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 7)");
+                println!("    Note: enc-trbfv only supports TRBFV parameter type");
             }
         }
     }

@@ -30,3 +30,5 @@ toml = { workspace = true }
 anyhow = { workspace = true }
 tempfile = { workspace = true }
 ndarray = { workspace = true }
+ark-ff = { workspace = true }
+ark-bn254 = { workspace = true }

@@ -4,10 +4,12 @@
 //! which proves correct BFV decryption of encrypted Shamir shares.
 
 use crate::bounds::DecBfvBounds;
+use crate::configs::DecBfvConfigsGenerator;
 use crate::sample::generate_sample_decryption;
+use crate::template::{DecBfvBoundsData, DecBfvTemplateParams};
 use crate::toml::DecBfvTomlGenerator;
 use crate::vectors::DecBfvVectors;
-use fhe::bfv::BfvParameters;
+use fhe::bfv::{BfvParameters, Ciphertext};
 use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
 use shared::toml::TomlGenerator;
@@ -88,7 +90,7 @@ impl Circuit for DecBfvCircuit {
         let selected_params = bfv_params;
 
         // Generate bounds and cryptographic parameters
-        let (crypto_params, bounds) = DecBfvBounds::compute(selected_params, 0)?;
+        let (crypto_params, bounds) = DecBfvBounds::compute(selected_params, trbfv_params, 0)?;
 
         // Generate sample decryption data
         let decryption_data = generate_sample_decryption(
@@ -103,19 +105,70 @@ impl Circuit for DecBfvCircuit {
         })?;
 
         // Compute witness vectors from the decryption data
+        // Calculate bit_sk for commitment computation
+        let bit_sk = shared::template::calculate_bit_width(&bounds.s_bound.to_string())?;
+
+        // Use the honest_ciphertexts directly (now in correct format: H parties, L TRBFV bases each)
+        let honest_cts: &[Vec<Ciphertext>] = &decryption_data.honest_ciphertexts;
+
         let vectors = DecBfvVectors::compute(
-            &decryption_data.honest_ciphertexts,
-            &decryption_data.sum_ciphertext,
-            &decryption_data.message,
+            honest_cts,
             &decryption_data.secret_key,
             selected_params,
+            trbfv_params,
+            bit_sk,
+            &decryption_data.message,
         )?;
 
         // Convert to standard form (reduce modulo ZKP field)
         let vectors_standard = vectors.standard_form();
 
-        // Create TOML generator and generate file
-        let toml_generator = DecBfvTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        // Generate template params for config file generation
+        let bounds_data = DecBfvBoundsData {
+            s_bound: bounds.s_bound.to_string(),
+            u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
+            u_global_bound: bounds.u_global_bound.to_string(),
+            r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+            r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+            delta: bounds.delta.to_string(),
+            delta_half: bounds.delta_half.to_string(),
+        };
+
+        // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+        let security_level = if self.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+            "production"
+        } else {
+            "insecure"
+        };
+
+        // Get number of honest parties from vectors
+        let num_honest_parties = vectors_standard.honest_c0.len();
+
+        let template_params = DecBfvTemplateParams::from_bounds(
+            shared::template::BaseTemplateParams::new(
+                selected_params.degree(),
+                trbfv_params.moduli().len(), // L is number of TRBFV moduli
+                self.name(),
+            ),
+            num_honest_parties,
+            &bounds_data,
+            self.parameter_type().as_str().to_string(),
+            security_level.to_string(),
+        )?;
+
+        // Generate config .nr file (named after parameter set: bfv.nr)
+        let configs_filename = format!("{}.nr", self.parameter_type().as_str());
+        DecBfvConfigsGenerator::generate_configs_file(
+            &crypto_params,
+            &bounds,
+            &template_params,
+            output_dir,
+            &configs_filename,
+            self.parameter_type().as_str(),
+        )?;
+
+        // Create TOML generator and generate file (without params - they're in the config file)
+        let toml_generator = DecBfvTomlGenerator::new(vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())
@@ -154,11 +207,24 @@ mod tests {
         assert!(toml_path.exists(), "Prover.toml should be created");
 
         // Read and verify basic structure
+        // Note: crypto and bounds are in a separate config file, not in Prover.toml
         let content = std::fs::read_to_string(&toml_path).unwrap();
-        assert!(content.contains("params"));
         assert!(content.contains("honest_c0"));
         assert!(content.contains("sum_c0"));
         assert!(content.contains("message"));
+        assert!(content.contains("expected_sk_commitment"));
+
+        // Verify config file was generated (named after parameter set)
+        let configs_path = temp_dir.path().join("bfv.nr");
+        assert!(
+            configs_path.exists(),
+            "Config file bfv.nr should be created"
+        );
+        let configs_content = std::fs::read_to_string(&configs_path).unwrap();
+        assert!(configs_content.contains("DEC_BFV_CONFIGS"));
+        assert!(configs_content.contains("N: u32"));
+        assert!(configs_content.contains("L_TRBFV: u32"));
+        assert!(configs_content.contains("L_PRIME: u32"));
     }
 
     #[test]

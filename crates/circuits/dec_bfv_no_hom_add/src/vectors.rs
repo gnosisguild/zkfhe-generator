@@ -26,7 +26,9 @@ use serde_json::json;
 use std::sync::Arc;
 
 use shared::errors::{ZkFheError, ZkFheResult};
-use shared::utils::{to_string_1d_vec, to_string_2d_vec, to_string_3d_vec, to_string_4d_vec};
+use shared::utils::{
+    reduce_coefficients_4d, to_string_1d_vec, to_string_2d_vec, to_string_3d_vec, to_string_4d_vec,
+};
 
 /// Set of vectors for input validation of BFV decryption (no homomorphic addition)
 #[derive(Clone, Debug)]
@@ -51,6 +53,8 @@ pub struct DecBfvNoHomAddVectors {
     pub decrypted_shares: Vec<Vec<Vec<BigInt>>>,
     /// Aggregated TRBFV shares: [L][N]
     pub expected_aggregated_shares: Vec<Vec<BigInt>>,
+    /// Expected commitment to BFV secret key (from BFV public key circuit)
+    pub expected_sk_commitment: BigInt,
 }
 
 impl DecBfvNoHomAddVectors {
@@ -99,7 +103,41 @@ impl DecBfvNoHomAddVectors {
                 num_honest_parties
             ],
             expected_aggregated_shares: vec![vec![BigInt::zero(); degree]; num_trbfv_bases],
+            expected_sk_commitment: BigInt::zero(),
         }
+    }
+
+    /// Compute a commitment to the secret key polynomial by flattening it and hashing.
+    /// This matches the Noir `compute_sk_commitment` function exactly.
+    fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {
+        use ark_bn254::Fr as Field;
+        use ark_ff::{BigInteger, PrimeField};
+        use shared::packing::flatten;
+
+        // Step 1: Flatten sk (matches sk_payload in Noir)
+        let mut inputs: Vec<Field> = Vec::new();
+        inputs = flatten(inputs, &[sk.to_vec()], bit_sk);
+
+        // Step 2: Hash using SafeSponge (matches compute_sk_commitment in Noir)
+        // Domain separator - "PVSS_sk_comm" (must match BFV public key circuit)
+        let domain_separator: [u8; 64] = [
+            0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x6b, 0x5f, 0x63, 0x6f, 0x6d, 0x6d, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+        let input_size = inputs.len() as u32;
+        let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+        let commitment = shared::utils::compute_safe(domain_separator, inputs, io_pattern);
+
+        // Convert Field to BigInt
+        let commitment_field = commitment[0];
+        let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+        BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
     }
 
     /// Create the validation vectors for BFV decryption (no homomorphic addition) proof.
@@ -114,11 +152,15 @@ impl DecBfvNoHomAddVectors {
     /// * `sk` - BFV secret key used for decryption
     /// * `bfv_params` - BFV parameters
     /// * `trbfv_params` - TRBFV parameters
+    /// * `bit_sk` - Bit width for secret key (for commitment computation)
+    /// * `bfv_q_inverse_mod_t` - Precomputed value: `-Q^(-1) mod t` where Q is product of all BFV moduli
     pub fn compute(
         honest_cts: &[Vec<Ciphertext>],
         sk: &SecretKey,
         bfv_params: &Arc<BfvParameters>,
         trbfv_params: &Arc<BfvParameters>,
+        bit_sk: u32,
+        bfv_q_inverse_mod_t: u64,
     ) -> ZkFheResult<Self> {
         let ctx = bfv_params.ctx_at_level(0)?;
         let n: u64 = ctx.degree as u64;
@@ -158,6 +200,9 @@ impl DecBfvNoHomAddVectors {
                 res.s = si.clone();
             }
         }
+
+        // Compute expected_sk_commitment
+        res.expected_sk_commitment = Self::compute_sk_commitment(&res.s, bit_sk);
 
         // Process each ciphertext
         for (party_idx, party_cts) in honest_cts.iter().enumerate().take(num_honest_parties) {
@@ -318,42 +363,52 @@ impl DecBfvNoHomAddVectors {
                 }
 
                 // Compute decrypted_shares from u_global using BFV decoding formula
-                // This matches the circuit's verify_decoding logic:
-                // computed_message = (t * u_global * q_inverse_mod_t) mod t, with centering
+                // This matches the circuit's verify_decoding logic exactly:
+                // Circuit uses: bfv_q_inverse_mod_t = Q^(-1) mod t (positive)
+                // 1. t_times_u_q = q_mod.mul_mod(t, u_global) = (t * u_global) mod Q
+                // 2. If t_times_u_q > Q/2, center: centered_positive = Q - t_times_u_q
+                //    Then: computed_message = t_mod.mul_mod(bfv_q_inverse_mod_t, centered_positive)
+                //    Which is: (Q^(-1) * centered_positive) mod t
+                // 3. Otherwise: product = t_mod.mul_mod(bfv_q_inverse_mod_t, t_times_u_q)
+                //    Which is: (Q^(-1) * t_times_u_q) mod t
+                //    Then: if product == 0 { 0 } else { t - product }
                 let t = BigInt::from(bfv_params.plaintext());
                 let q = BigInt::from(ctx.modulus().clone());
-                let q_half = &q / BigInt::from(2);
+                let q_half = q.clone() / BigInt::from(2);
 
-                // Compute q_inverse_mod_t
-                use num_integer::Integer;
-                let gcd_result = q.extended_gcd(&t);
-                let q_inv_mod_t = {
-                    let inv = gcd_result.x % &t;
-                    if inv < BigInt::zero() { inv + &t } else { inv }
-                };
+                // bfv_q_inverse_mod_t is Q^(-1) mod t (positive)
+                let bfv_q_inv_mod_t = BigInt::from(bfv_q_inverse_mod_t);
 
                 let mut decoded_shares: Vec<BigInt> = Vec::new();
                 for u_global_coeff in u_global.iter() {
                     // t_times_u_q = (t * u_global) mod Q
+                    // Match ModU128.mul_mod behavior: result is in [0, Q)
                     let t_times_u = &t * u_global_coeff;
-                    let t_times_u_q = &t_times_u % &q;
-                    let t_times_u_q_positive = if t_times_u_q < BigInt::zero() {
-                        &t_times_u_q + &q
-                    } else {
-                        t_times_u_q.clone()
-                    };
+                    let mut t_times_u_q = &t_times_u % &q;
+                    if t_times_u_q < BigInt::zero() {
+                        t_times_u_q += &q;
+                    }
 
-                    // Check if needs centering
-                    let needs_centering = t_times_u_q_positive > q_half;
+                    // Check if needs centering (as u128 comparison in circuit: (t_times_u_q as u128) > q_half)
+                    let needs_centering = t_times_u_q > q_half;
 
                     let computed_message = if needs_centering {
                         // centered_positive = Q - t_times_u_q
-                        let centered_positive = &q - &t_times_u_q_positive;
-                        // result = (q_inv_mod_t * centered_positive) mod t
-                        (&q_inv_mod_t * &centered_positive) % &t
+                        let centered_positive = &q - &t_times_u_q;
+                        // result = t_mod.mul_mod(bfv_q_inverse_mod_t, centered_positive)
+                        // = (Q^(-1) * centered_positive) mod t
+                        let mut result = (&bfv_q_inv_mod_t * &centered_positive) % &t;
+                        if result < BigInt::zero() {
+                            result += &t;
+                        }
+                        result
                     } else {
-                        // product = (q_inv_mod_t * t_times_u_q) mod t
-                        let product = (&q_inv_mod_t * &t_times_u_q_positive) % &t;
+                        // product = t_mod.mul_mod(bfv_q_inverse_mod_t, t_times_u_q)
+                        // = (Q^(-1) * t_times_u_q) mod t
+                        let mut product = (&bfv_q_inv_mod_t * &t_times_u_q) % &t;
+                        if product < BigInt::zero() {
+                            product += &t;
+                        }
                         if product == BigInt::zero() {
                             BigInt::zero()
                         } else {
@@ -361,9 +416,11 @@ impl DecBfvNoHomAddVectors {
                         }
                     };
 
-                    // Ensure positive result
+                    // Ensure positive result in [0, t)
                     let msg = if computed_message < BigInt::zero() {
                         &computed_message + &t
+                    } else if computed_message >= t {
+                        &computed_message % &t
                     } else {
                         computed_message
                     };
@@ -413,6 +470,13 @@ impl DecBfvNoHomAddVectors {
                 &self.expected_aggregated_shares,
                 zkp_modulus,
             ),
+            expected_sk_commitment: {
+                let mut reduced = self.expected_sk_commitment.clone() % zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += zkp_modulus;
+                }
+                reduced
+            },
         }
     }
 
@@ -428,293 +492,15 @@ impl DecBfvNoHomAddVectors {
             "crt_quotients": to_string_4d_vec(&self.crt_quotients),
             "decrypted_shares": to_string_3d_vec(&self.decrypted_shares),
             "expected_aggregated_shares": to_string_2d_vec(&self.expected_aggregated_shares),
+            "expected_sk_commitment": self.expected_sk_commitment.to_string(),
         })
     }
-
-    /// Verify all circuit constraints in Rust (mirrors Noir circuit logic)
-    ///
-    /// This function reproduces the verification steps from the Noir circuit:
-    /// 1. Verify BFV decryption formula for each ciphertext
-    /// 2. Verify CRT reconstruction
-    /// 3. Verify decoding from u_global to decrypted_shares
-    /// 4. Verify TRBFV share aggregation
-    pub fn verify(
-        &self,
-        bfv_params: &Arc<BfvParameters>,
-        trbfv_params: &Arc<BfvParameters>,
-    ) -> ZkFheResult<()> {
-        let ctx = bfv_params.ctx_at_level(0)?;
-        let n = ctx.degree;
-        let num_honest_parties = self.honest_c0.len();
-        let num_trbfv_bases = trbfv_params.moduli().len();
-        let num_bfv_bases = bfv_params.moduli().len();
-
-        // Create cyclotomic polynomial x^N + 1
-        let mut cyclo = vec![BigInt::from(0u64); n + 1];
-        cyclo[0] = BigInt::from(1u64);
-        cyclo[n] = BigInt::from(1u64);
-        let cyclo_poly = Polynomial::new(cyclo);
-
-        // Step 1: Verify BFV decryption formula for each ciphertext
-        for party_idx in 0..num_honest_parties {
-            for trbfv_idx in 0..num_trbfv_bases {
-                for bfv_idx in 0..num_bfv_bases {
-                    self.verify_decryption_formula(
-                        party_idx,
-                        trbfv_idx,
-                        bfv_idx,
-                        ctx,
-                        &cyclo_poly,
-                    )?;
-                }
-
-                // Step 2: Verify CRT reconstruction for this ciphertext
-                self.verify_crt_reconstruction(party_idx, trbfv_idx, ctx)?;
-
-                // Step 3: Verify decoding for this ciphertext
-                self.verify_decoding(party_idx, trbfv_idx, bfv_params)?;
-            }
-        }
-
-        // Step 4: Verify TRBFV share aggregation
-        self.verify_trbfv_aggregation(trbfv_params)?;
-
-        Ok(())
-    }
-
-    /// Verify BFV decryption formula for one ciphertext at one BFV basis
-    ///
-    /// Checks: u_i(γ) = c_0(γ) + c_1(γ) * s(γ) + r_2(γ) * (γ^N + 1) + r_1(γ) * q'_i
-    /// using polynomial evaluation at a random point (Schwartz-Zippel)
-    fn verify_decryption_formula(
-        &self,
-        party_idx: usize,
-        trbfv_idx: usize,
-        bfv_idx: usize,
-        ctx: &Arc<fhe_math::rq::Context>,
-        _cyclo_poly: &Polynomial,
-    ) -> ZkFheResult<()> {
-        let n = ctx.degree;
-        let qi = ctx.moduli()[bfv_idx];
-        let qi_bigint = BigInt::from(qi);
-
-        // Use a deterministic "random" evaluation point for testing
-        // In the real circuit, this comes from Fiat-Shamir
-        let gamma = BigInt::from(12345u64);
-
-        // Evaluate polynomials at gamma
-        let c0_poly = Polynomial::new(self.honest_c0[party_idx][trbfv_idx][bfv_idx].clone());
-        let c1_poly = Polynomial::new(self.honest_c1[party_idx][trbfv_idx][bfv_idx].clone());
-        let s_poly = Polynomial::new(self.s.clone());
-        let u_i_poly = Polynomial::new(self.u_i[party_idx][trbfv_idx][bfv_idx].clone());
-        let r1_poly = Polynomial::new(self.r_1[party_idx][trbfv_idx][bfv_idx].clone());
-        let r2_poly = Polynomial::new(self.r_2[party_idx][trbfv_idx][bfv_idx].clone());
-
-        let c0_at_gamma = c0_poly.evaluate(&gamma);
-        let c1_at_gamma = c1_poly.evaluate(&gamma);
-        let s_at_gamma = s_poly.evaluate(&gamma);
-        let u_i_at_gamma = u_i_poly.evaluate(&gamma);
-        let r1_at_gamma = r1_poly.evaluate(&gamma);
-        let r2_at_gamma = r2_poly.evaluate(&gamma);
-
-        // Cyclotomic polynomial X^N + 1 at gamma
-        let gamma_pow_n = gamma.pow(n as u32);
-        let cyclo_at_gamma = &gamma_pow_n + BigInt::from(1);
-
-        // Expected: u_i(γ) = c_0(γ) + c_1(γ) * s(γ) + r_2(γ) * (γ^N + 1) + r_1(γ) * q'_i
-        let expected_u_at_gamma = &c0_at_gamma
-            + &c1_at_gamma * &s_at_gamma
-            + &r2_at_gamma * &cyclo_at_gamma
-            + &r1_at_gamma * &qi_bigint;
-
-        if expected_u_at_gamma != u_i_at_gamma {
-            return Err(ZkFheError::Bfv {
-                message: format!(
-                    "Decryption formula verification failed at party={}, trbfv={}, bfv={}: \
-                    expected u_i(γ)={}, computed={}",
-                    party_idx, trbfv_idx, bfv_idx, expected_u_at_gamma, u_i_at_gamma
-                ),
-            });
-        }
-
-        Ok(())
-    }
-
-    /// Verify CRT reconstruction for one ciphertext
-    /// u_i[l'] + quotient[l'] * q'_l' = u_global (for all l')
-    fn verify_crt_reconstruction(
-        &self,
-        party_idx: usize,
-        trbfv_idx: usize,
-        ctx: &Arc<fhe_math::rq::Context>,
-    ) -> ZkFheResult<()> {
-        let n = ctx.degree;
-        let num_bfv_bases = ctx.moduli().len();
-
-        for bfv_idx in 0..num_bfv_bases {
-            let q_l = BigInt::from(ctx.moduli()[bfv_idx]);
-
-            for coeff_idx in 0..n {
-                let u_i_coeff = &self.u_i[party_idx][trbfv_idx][bfv_idx][coeff_idx];
-                let quotient_coeff = &self.crt_quotients[party_idx][trbfv_idx][bfv_idx][coeff_idx];
-                let u_global_coeff = &self.u_global[party_idx][trbfv_idx][coeff_idx];
-
-                // Verify: u_i + quotient * q'_l = u_global
-                let reconstructed = u_i_coeff + quotient_coeff * &q_l;
-
-                if reconstructed != *u_global_coeff {
-                    return Err(ZkFheError::Bfv {
-                        message: format!(
-                            "CRT reconstruction verification failed at party={}, trbfv={}, bfv={}, coeff={}: \
-                            u_i={}, quotient={}, q_l={}, reconstructed={}, u_global={}",
-                            party_idx,
-                            trbfv_idx,
-                            bfv_idx,
-                            coeff_idx,
-                            u_i_coeff,
-                            quotient_coeff,
-                            q_l,
-                            reconstructed,
-                            u_global_coeff
-                        ),
-                    });
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Verify BFV decoding: u_global to decrypted_share
-    fn verify_decoding(
-        &self,
-        party_idx: usize,
-        trbfv_idx: usize,
-        bfv_params: &Arc<BfvParameters>,
-    ) -> ZkFheResult<()> {
-        let ctx = bfv_params.ctx_at_level(0)?;
-        let n = ctx.degree;
-        let t = BigInt::from(bfv_params.plaintext());
-
-        // Compute Q = product of all BFV moduli
-        let q = BigInt::from(ctx.modulus().clone());
-        let q_half = &q / BigInt::from(2);
-
-        // Compute Q^{-1} mod t
-        use num_integer::Integer;
-        let gcd_result = q.extended_gcd(&t);
-        let q_inv_mod_t = {
-            let inv = gcd_result.x % &t;
-            if inv < BigInt::zero() { inv + &t } else { inv }
-        };
-
-        for coeff_idx in 0..n {
-            let u_global_coeff = &self.u_global[party_idx][trbfv_idx][coeff_idx];
-            let decrypted_coeff = &self.decrypted_shares[party_idx][trbfv_idx][coeff_idx];
-
-            // Compute (t * u_global) mod Q
-            let t_times_u = &t * u_global_coeff;
-            let t_times_u_q = &t_times_u % &q;
-            let t_times_u_q_positive = if t_times_u_q < BigInt::zero() {
-                &t_times_u_q + &q
-            } else {
-                t_times_u_q.clone()
-            };
-
-            // Check if centering is needed
-            let needs_centering = t_times_u_q_positive > q_half;
-
-            let computed_message = if needs_centering {
-                let centered_positive = &q - &t_times_u_q_positive;
-                (&q_inv_mod_t * &centered_positive) % &t
-            } else {
-                let product = (&q_inv_mod_t * &t_times_u_q_positive) % &t;
-                if product == BigInt::zero() {
-                    BigInt::zero()
-                } else {
-                    &t - &product
-                }
-            };
-
-            // Ensure positive
-            let computed_message = if computed_message < BigInt::zero() {
-                &computed_message + &t
-            } else {
-                computed_message
-            };
-
-            // Verify (only check non-zero coefficients as per Noir circuit)
-            if *decrypted_coeff != BigInt::zero() && computed_message != *decrypted_coeff {
-                return Err(ZkFheError::Bfv {
-                    message: format!(
-                        "Decoding verification failed at party={}, trbfv={}, coeff={}: \
-                        expected={}, computed={}",
-                        party_idx, trbfv_idx, coeff_idx, decrypted_coeff, computed_message
-                    ),
-                });
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Verify TRBFV share aggregation
-    /// For each TRBFV basis l: sum of decrypted_shares[h][l] mod trbfv_qis[l] = expected[l]
-    fn verify_trbfv_aggregation(&self, trbfv_params: &Arc<BfvParameters>) -> ZkFheResult<()> {
-        let num_honest_parties = self.decrypted_shares.len();
-        let num_trbfv_bases = trbfv_params.moduli().len();
-        let n = self.decrypted_shares[0][0].len();
-
-        for trbfv_idx in 0..num_trbfv_bases {
-            let trbfv_q = BigInt::from(trbfv_params.moduli()[trbfv_idx]);
-
-            for coeff_idx in 0..n {
-                // Sum shares from all honest parties
-                let mut sum = BigInt::zero();
-                for party_idx in 0..num_honest_parties {
-                    sum = &sum + &self.decrypted_shares[party_idx][trbfv_idx][coeff_idx];
-                }
-
-                // Reduce mod TRBFV modulus
-                let sum_reduced = &sum % &trbfv_q;
-                let sum_reduced = if sum_reduced < BigInt::zero() {
-                    &sum_reduced + &trbfv_q
-                } else {
-                    sum_reduced
-                };
-
-                // Verify against expected
-                let expected = &self.expected_aggregated_shares[trbfv_idx][coeff_idx];
-                if sum_reduced != *expected {
-                    return Err(ZkFheError::Bfv {
-                        message: format!(
-                            "TRBFV aggregation verification failed at trbfv={}, coeff={}: \
-                            sum_reduced={}, expected={}",
-                            trbfv_idx, coeff_idx, sum_reduced, expected
-                        ),
-                    });
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
-/// Reduce 4D coefficients modulo zkp_modulus
-fn reduce_coefficients_4d(
-    coeffs: &[Vec<Vec<Vec<BigInt>>>],
-    zkp_modulus: &BigInt,
-) -> Vec<Vec<Vec<Vec<BigInt>>>> {
-    coeffs
-        .iter()
-        .map(|d1| reduce_coefficients_3d(d1, zkp_modulus))
-        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bounds::DecBfvNoHomAddBounds;
     use crate::sample::generate_sample_decryption_no_hom_add;
     use shared::circuit::SampleType;
     use shared::utils::{test_parameters_bfv, test_parameters_trbfv};
@@ -733,11 +519,16 @@ mod tests {
         )
         .unwrap();
 
+        let (crypto_params, _bounds) =
+            DecBfvNoHomAddBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
+
         let vectors = DecBfvNoHomAddVectors::compute(
             &data.honest_ciphertexts,
             &data.secret_key,
             &bfv_params,
             &trbfv_params,
+            0, // bit_sk (not used in this test)
+            crypto_params.bfv_q_inverse_mod_t,
         )
         .unwrap();
 
@@ -764,37 +555,6 @@ mod tests {
                 .expected_aggregated_shares
                 .iter()
                 .all(|row| row.iter().all(|x| x < &p))
-        );
-    }
-
-    #[test]
-    fn test_verify_circuit_constraints() {
-        let bfv_params = test_parameters_bfv();
-        let trbfv_params = test_parameters_trbfv();
-
-        let data = generate_sample_decryption_no_hom_add(
-            &bfv_params,
-            &trbfv_params,
-            SampleType::SecretKey,
-            None,
-            shared::DEFAULT_INSECURE_LAMBDA,
-        )
-        .unwrap();
-
-        let vectors = DecBfvNoHomAddVectors::compute(
-            &data.honest_ciphertexts,
-            &data.secret_key,
-            &bfv_params,
-            &trbfv_params,
-        )
-        .unwrap();
-
-        // Verify all circuit constraints pass
-        let result = vectors.verify(&bfv_params, &trbfv_params);
-        assert!(
-            result.is_ok(),
-            "Circuit verification should pass: {:?}",
-            result.err()
         );
     }
 }

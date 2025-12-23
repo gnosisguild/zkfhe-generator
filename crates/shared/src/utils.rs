@@ -3,11 +3,14 @@
 //! This module contains helper functions for string conversion,
 //! serialization, and other common operations.
 
+use ark_bn254::Fr as Field;
+use bigint_poly::reduce_coefficients_3d;
 use fhe::bfv::BfvParameters;
 use fhe::bfv::BfvParametersBuilder;
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_traits::Zero;
+use safe::SafeSponge;
 use std::sync::Arc;
 
 /// Convert a 1D vector of BigInt to a vector of strings
@@ -28,6 +31,17 @@ pub fn to_string_3d_vec(vec: &[Vec<Vec<BigInt>>]) -> Vec<Vec<Vec<String>>> {
 /// Convert a 4D vector of BigInt to a vector of vectors of vectors of vectors of strings
 pub fn to_string_4d_vec(vec: &[Vec<Vec<Vec<BigInt>>>]) -> Vec<Vec<Vec<Vec<String>>>> {
     vec.iter().map(|d1| to_string_3d_vec(d1)).collect()
+}
+
+/// Reduce 4D coefficients modulo zkp_modulus
+pub fn reduce_coefficients_4d(
+    coeffs: &[Vec<Vec<Vec<BigInt>>>],
+    zkp_modulus: &BigInt,
+) -> Vec<Vec<Vec<Vec<BigInt>>>> {
+    coeffs
+        .iter()
+        .map(|d1| reduce_coefficients_3d(d1, zkp_modulus))
+        .collect()
 }
 
 /// Exact variance string for Uniform(-B..B): Var = B(B+1)/3 (exact)
@@ -69,4 +83,17 @@ pub fn test_parameters_bfv() -> Arc<BfvParameters> {
         .set_variance(3)
         .build_arc()
         .unwrap()
+}
+
+pub fn compute_safe(
+    domain_separator: [u8; 64],
+    inputs: Vec<Field>,
+    io_pattern: [u32; 2],
+) -> Vec<Field> {
+    let mut sponge = SafeSponge::start(io_pattern, domain_separator);
+    sponge.absorb(inputs);
+    let digests = sponge.squeeze();
+    sponge.finish();
+
+    digests
 }

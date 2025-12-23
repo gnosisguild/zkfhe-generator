@@ -3,8 +3,10 @@ resolver = "2"
 members = [
     "crates/generator",
     "crates/shared",
-    "crates/circuits/greco",
-    "crates/circuits/pk_trbfv",
+    "crates/circuits/enc_trbfv",
+    "crates/circuits/pk_bfv",
+    "crates/circuits/verify_shares_trbfv",
+    "crates/circuits/enc_bfv",
     "crates/circuits/dec_share_trbfv",
     "crates/circuits/dec_bfv",
     "crates/circuits/dec_bfv_no_hom_add",
@@ -26,8 +28,10 @@ categories = ["mathematics", "cryptography", "science"]
 rust-version = "1.86.0"
 
 [workspace.dependencies]
-greco = { package = "zkfhe-greco", path = "./crates/circuits/greco" }
-pk_trbfv = { package = "zkfhe-pk-trbfv", path = "./crates/circuits/pk_trbfv" }
+greco = { package = "zkfhe-greco", path = "./crates/circuits/enc_trbfv" }
+pk_bfv = { package = "zkfhe-pk-bfv", path = "./crates/circuits/pk_bfv" }
+verify_shares_trbfv = { package = "zkfhe-verify-shares-trbfv", path = "./crates/circuits/verify_shares_trbfv" }
+enc_bfv = { package = "zkfhe-enc-bfv", path = "./crates/circuits/enc_bfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "./crates/circuits/dec_share_trbfv" }
 dec_share_agg_trbfv = { package = "zkfhe-dec-share-agg-trbfv", path = "./crates/circuits/dec_share_agg_trbfv" }
 dec_bfv = { package = "zkfhe-dec-bfv", path = "./crates/circuits/dec_bfv" }
@@ -60,3 +64,4 @@ tempfile = "3.8"
 chrono = { version = "0.4", features = ["serde"] }
 ark-ff = "0.5"
 ark-bn254 = "0.5"
+hex = "0.4"

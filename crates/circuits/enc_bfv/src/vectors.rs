@@ -1,0 +1,728 @@
+//! Input validation vectors for BFV Encryption zero-knowledge proofs.
+//!
+//! This module contains the core data structure and computation logic for generating
+//! input validation vectors required for proving correct BFV encryption in zero-knowledge.
+
+use bigint_poly::*;
+use fhe::bfv::{BfvParameters, Ciphertext, Plaintext, PublicKey};
+use fhe_math::{
+    rq::{Poly, Representation},
+    zq::Modulus,
+};
+use itertools::izip;
+use num_bigint::BigInt;
+use num_bigint::BigUint;
+use num_bigint::ToBigInt;
+use num_traits::Zero;
+use rayon::iter::{ParallelBridge, ParallelIterator};
+use serde_json::json;
+use std::ops::Deref;
+use std::sync::Arc;
+
+use ark_bn254::Fr as FieldElement;
+use ark_ff::{BigInteger, PrimeField};
+
+use shared::errors::ZkFheResult;
+use shared::utils::{compute_safe, to_string_1d_vec, to_string_2d_vec};
+
+/// Convert BigInt to Field by reducing modulo ZKP modulus
+/// This is a helper to simplify BigInt to Field conversion
+fn bigint_to_field(value: &BigInt) -> FieldElement {
+    let zkp_modulus = shared::constants::get_zkp_modulus();
+    let reduced = if value < &BigInt::zero() {
+        (value % &zkp_modulus) + &zkp_modulus
+    } else {
+        value % &zkp_modulus
+    };
+    let biguint = reduced
+        .to_biguint()
+        .unwrap_or_else(|| (&zkp_modulus + reduced).to_biguint().unwrap());
+    let bytes = biguint.to_bytes_le();
+    FieldElement::from_le_bytes_mod_order(&bytes)
+}
+
+/// Compute a commitment to the message polynomial.
+fn compute_message_commitment(message: &[BigInt]) -> BigInt {
+    // Convert message coefficients to Field (matches compute_message_commitment in Noir)
+    // In Noir, message.coefficients[i] are Field values, so we convert BigInt to Field
+    let inputs: Vec<FieldElement> = message.iter().map(bigint_to_field).collect();
+
+    // Step 2: Hash using SafeSponge (matches compute_message_commitment in Noir)
+    // Domain separator - "PVSS_sh_pm" (must match SK shares circuit)
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x68, 0x5f, 0x70, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
+/// Set of vectors for input validation of a ciphertext
+#[derive(Clone, Debug)]
+pub struct EncBfvVectors {
+    pub pk0is: Vec<Vec<BigInt>>,
+    pub pk1is: Vec<Vec<BigInt>>,
+    pub ct0is: Vec<Vec<BigInt>>,
+    pub ct1is: Vec<Vec<BigInt>>,
+    pub r1is: Vec<Vec<BigInt>>,
+    pub r2is: Vec<Vec<BigInt>>,
+    pub p1is: Vec<Vec<BigInt>>,
+    pub p2is: Vec<Vec<BigInt>>,
+    pub k0is: Vec<BigInt>,
+    pub e0is: Vec<Vec<BigInt>>,
+    pub e0_quotients: Vec<Vec<BigInt>>,
+    pub e0: Vec<BigInt>,
+    pub e1: Vec<BigInt>,
+    pub u: Vec<BigInt>,
+    pub message: Vec<BigInt>,
+    pub expected_message_commitment: BigInt,
+}
+
+impl EncBfvVectors {
+    /// Create a new `EncBfvVectors` with the given number of moduli and degree.
+    ///
+    /// # Arguments
+    ///
+    /// * `num_moduli` - The number of moduli, which determines the number of inner vectors in 2D vectors.
+    /// * `degree` - The size of each inner vector in the 2D vectors.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new instance of `EncBfvVectors` with all fields initialized to zero.
+    pub fn new(num_moduli: usize, degree: usize) -> Self {
+        EncBfvVectors {
+            pk0is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            pk1is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            ct0is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            ct1is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            r1is: vec![vec![BigInt::zero(); 2 * (degree - 1) + 1]; num_moduli],
+            r2is: vec![vec![BigInt::zero(); degree - 1]; num_moduli],
+            p1is: vec![vec![BigInt::zero(); 2 * (degree - 1) + 1]; num_moduli],
+            p2is: vec![vec![BigInt::zero(); degree - 1]; num_moduli],
+            e0: vec![BigInt::zero(); degree],
+            e1: vec![BigInt::zero(); degree],
+            e0is: vec![vec![BigInt::zero(); degree]; num_moduli],
+            e0_quotients: vec![vec![BigInt::zero(); degree]; num_moduli],
+            k0is: vec![BigInt::zero(); num_moduli],
+            u: vec![BigInt::zero(); degree],
+            message: vec![BigInt::zero(); degree],
+            expected_message_commitment: BigInt::zero(),
+        }
+    }
+
+    /// Create the centered validation vectors necessary for creating an input validation proof for BFV encryption.
+    /// For more information, please see https://eprint.iacr.org/2024/594.
+    ///
+    /// # Arguments
+    ///
+    /// * `pt` - Plaintext from fhe.rs.
+    /// * `u_rns` - Private polynomial used in ciphertext sampled from secret key distribution.
+    /// * `e0_rns` - Error polynomial used in ciphertext sampled from error distribution.
+    /// * `e1_rns` - Error polynomial used in ciphertext sampled from error distribution.
+    /// * `ct` - Ciphertext from fhe.rs.
+    /// * `pk` - Public Key from fhe.rs.
+    #[allow(clippy::too_many_arguments)]
+    pub fn compute(
+        pt: &Plaintext,
+        u_rns: &Poly,
+        e0_rns: &Poly,
+        e1_rns: &Poly,
+        ct: &Ciphertext,
+        pk: &PublicKey,
+        params: &Arc<BfvParameters>,
+    ) -> ZkFheResult<EncBfvVectors> {
+        // Reconstruct e1_rns in mod Q.
+        let mut e0_power = e0_rns.clone();
+        e0_power.change_representation(Representation::PowerBasis);
+
+        // This conversion internally calls lift for each coefficient
+        // to make them in mod Q.
+        let e0_mod_q: Vec<BigUint> = Vec::<BigUint>::from(&e0_power);
+
+        // Then, make it a polynomial in mod Q.
+        let ctx = params.ctx()[0].clone();
+        let e0_bigints: Vec<BigInt> = e0_mod_q.iter().map(|c| c.to_bigint().unwrap()).collect();
+        let e0 = (*Poly::from_bigints(&e0_bigints, &ctx)?).clone();
+
+        // Get context, plaintext modulus, and degree
+        let ctx = params.ctx_at_level(pt.level())?;
+        let t = Modulus::new(params.plaintext())?;
+        let n: u64 = ctx.degree as u64;
+
+        // Calculate message (plaintext coefficients), reverse
+        // Message is in [0, t), so we just extract and reverse the coefficients
+        let message: Vec<BigInt> = pt
+            .value
+            .deref()
+            .to_vec()
+            .iter()
+            .map(|&x| BigInt::from(x))
+            .rev()
+            .collect();
+
+        // Compute k1 (scaled message) from message, matching Noir's compute_scaled_message
+        // k1[i] = (q_mod_t * message[i]) mod t, centered to [-t/2, t/2)
+        let q_mod_t_biguint = ctx.modulus() % t.modulus(); // [q]_t
+        let t_biguint = BigUint::from(t.modulus());
+        let t_half = &t_biguint / 2u32;
+        let t_bigint = BigInt::from(t.modulus());
+
+        let k1: Vec<BigInt> = message
+            .iter()
+            .map(|msg_i| {
+                // Convert msg_i to BigUint (message is in [0, t))
+                let msg_i_biguint = msg_i.to_biguint().unwrap();
+
+                // Compute (q_mod_t * message[i]) mod t
+                let q_times_m_mod_t = (&q_mod_t_biguint * &msg_i_biguint) % &t_biguint;
+
+                // Center to [-t/2, t/2)
+                if q_times_m_mod_t > t_half {
+                    // Value is in (t/2, t), negative in centered form
+                    BigInt::from(q_times_m_mod_t) - &t_bigint
+                } else {
+                    // Value is in [0, t/2], stays positive
+                    BigInt::from(q_times_m_mod_t)
+                }
+            })
+            .collect();
+
+        // NOTE: Verification is now done after all vectors are computed
+        // See verify_circuit_evaluation_at_gamma call at the end of compute()
+
+        // Extract single vectors of u, e1, and e2 as Vec<BigInt>, center and reverse
+        let mut u_rns_copy = u_rns.clone();
+        let mut e0_rns_copy = e0_rns.clone();
+        let mut e0_poly_copy = e0.clone();
+        let mut e1_rns_copy = e1_rns.clone();
+
+        u_rns_copy.change_representation(Representation::PowerBasis);
+        e0_rns_copy.change_representation(Representation::PowerBasis);
+        e0_poly_copy.change_representation(Representation::PowerBasis);
+        e1_rns_copy.change_representation(Representation::PowerBasis);
+
+        // Extract coefficients using the current API
+        let u: Vec<BigInt> = unsafe {
+            ctx.moduli_operators()[0]
+                .center_vec_vt(
+                    u_rns_copy
+                        .coefficients()
+                        .row(0)
+                        .as_slice()
+                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
+                )
+                .iter()
+                .rev()
+                .map(|&x| BigInt::from(x))
+                .collect()
+        };
+
+        let mut e0_vec: Vec<BigInt> = e0_bigints.iter().rev().cloned().collect();
+
+        // Center the coefficients mod Q
+        let q_bigint = BigInt::from(ctx.modulus().clone());
+        reduce_and_center_coefficients_mut(&mut e0_vec, &q_bigint);
+
+        let e1: Vec<BigInt> = unsafe {
+            ctx.moduli_operators()[0]
+                .center_vec_vt(
+                    e1_rns_copy
+                        .coefficients()
+                        .row(0)
+                        .as_slice()
+                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
+                )
+                .iter()
+                .rev()
+                .map(|&x| BigInt::from(x))
+                .collect()
+        };
+
+        // Extract and convert ciphertext and public key polynomials
+        let mut ct0 = ct.c[0].clone();
+        let mut ct1 = ct.c[1].clone();
+        ct0.change_representation(Representation::PowerBasis);
+        ct1.change_representation(Representation::PowerBasis);
+
+        let mut pk0: Poly = pk.c.c[0].clone();
+        let mut pk1: Poly = pk.c.c[1].clone();
+        pk0.change_representation(Representation::PowerBasis);
+        pk1.change_representation(Representation::PowerBasis);
+
+        // Create cyclotomic polynomial x^N + 1
+        let mut cyclo = vec![BigInt::from(0u64); (n + 1) as usize];
+
+        cyclo[0] = BigInt::from(1u64); // x^N term
+        cyclo[n as usize] = BigInt::from(1u64); // x^0 term
+
+        // Initialize matrices to store results
+        let num_moduli = ctx.moduli().len();
+        let mut res = EncBfvVectors::new(num_moduli, n as usize);
+
+        let ct0_coeffs = ct0.coefficients();
+        let ct1_coeffs = ct1.coefficients();
+        let pk0_coeffs = pk0.coefficients();
+        let pk1_coeffs = pk1.coefficients();
+        let e0_coeffs = e0_rns_copy.coefficients();
+        let e0_poly_coeffs = e0_poly_copy.coefficients();
+
+        let ct0_coeffs_rows = ct0_coeffs.rows();
+        let ct1_coeffs_rows = ct1_coeffs.rows();
+        let pk0_coeffs_rows = pk0_coeffs.rows();
+        let pk1_coeffs_rows = pk1_coeffs.rows();
+        let e0_coeffs_rows = e0_coeffs.rows();
+        let e0_poly_coeffs_rows = e0_poly_coeffs.rows();
+
+        // Perform the main computation logic
+        let results: Vec<_> = izip!(
+            ctx.moduli_operators(),
+            ct0_coeffs_rows,
+            ct1_coeffs_rows,
+            pk0_coeffs_rows,
+            pk1_coeffs_rows,
+            e0_coeffs_rows,
+            e0_poly_coeffs_rows,
+        )
+        .enumerate()
+        .par_bridge()
+        .map(
+            |(
+                i,
+                (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs, e0_coeffs, e0_poly_coeffs),
+            )| {
+                // --------------------------------------------------- ct0i ---------------------------------------------------
+
+                // Convert to vectors of bigint, center, and reverse order.
+                let mut ct0i: Vec<BigInt> =
+                    ct0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                let mut ct1i: Vec<BigInt> =
+                    ct1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                let mut pk0i: Vec<BigInt> =
+                    pk0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                let mut pk1i: Vec<BigInt> =
+                    pk1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+
+                let qi_bigint = BigInt::from(qi.modulus());
+
+                reduce_and_center_coefficients_mut(&mut ct0i, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut ct1i, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut pk0i, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut pk1i, &qi_bigint);
+
+                let e0i: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(
+                        e0_coeffs
+                            .as_slice()
+                            .ok_or_else(|| "Cannot center coefficients.".to_string())
+                            .unwrap(),
+                    )
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
+
+                // Explicitly check e1is[i] == e1 mod qi (after centering and reversal)
+                let e0i_from_poly: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(
+                        e0_poly_coeffs
+                            .as_slice()
+                            .ok_or_else(|| "Cannot center coefficients.".to_string())
+                            .unwrap(),
+                    )
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
+
+                // Check that e0i equals e0 reduced modulo q_i (from e0_poly)
+                assert_eq!(e0i, e0i_from_poly);
+
+                // Compute e0_quotients[i] = (e0 - e0i) / qi for each coefficient
+                // This is used for CRT consistency check: e0[j] = e0i[j] + e0_quotients[i][j] * qi
+                let e0_quotient: Vec<BigInt> = e0_vec
+                    .iter()
+                    .zip(e0i.iter())
+                    .map(|(e0_coeff, e0i_coeff)| {
+                        let diff = e0_coeff - e0i_coeff;
+                        // Division should be exact since e0 = e0i (mod qi)
+                        let quotient = &diff / &qi_bigint;
+                        // Verify the CRT relationship
+                        assert_eq!(e0_coeff, &(e0i_coeff + &quotient * &qi_bigint));
+                        quotient
+                    })
+                    .collect();
+
+                // k0qi = -t^{-1} mod qi
+                let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
+                let k0qi = BigInt::from(koqi_u64);
+
+                // Compute ki from k1: ki = k1 * k0qi (scalar multiplication)
+                // Note: We don't reduce ki mod qi here - it's used directly in polynomial arithmetic
+                let ki_poly = Polynomial::new(k1.clone()).scalar_mul(&k0qi);
+                let ki = ki_poly.coefficients().to_vec();
+
+                // Calculate ct0i_hat = pk0 * ui + e0i + ki
+                let ct0i_hat = {
+                    let pk0i_poly = Polynomial::new(pk0i.clone());
+                    let u_poly = Polynomial::new(u.clone());
+                    let pk0i_times_u = pk0i_poly.mul(&u_poly);
+                    assert_eq!((pk0i_times_u.coefficients().len() as u64) - 1, 2 * (n - 1));
+
+                    let e0i_poly = Polynomial::new(e0i.clone());
+                    let ki_poly = Polynomial::new(ki.clone());
+                    let e0_plus_ki = e0i_poly.add(&ki_poly);
+                    assert_eq!((e0_plus_ki.coefficients().len() as u64) - 1, n - 1);
+
+                    pk0i_times_u.add(&e0_plus_ki).coefficients().to_vec()
+                };
+                assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (n - 1));
+
+                // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
+                let mut ct0i_hat_mod_rqi = ct0i_hat.clone();
+                reduce_in_ring(&mut ct0i_hat_mod_rqi, &cyclo, &qi_bigint);
+                assert_eq!(&ct0i, &ct0i_hat_mod_rqi);
+
+                // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
+                let ct0i_poly = Polynomial::new(ct0i.clone());
+                let ct0i_hat_poly = Polynomial::new(ct0i_hat.clone());
+                let ct0i_minus_ct0i_hat = ct0i_poly.sub(&ct0i_hat_poly).coefficients().to_vec();
+                assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (n - 1));
+                let mut ct0i_minus_ct0i_hat_mod_zqi = ct0i_minus_ct0i_hat.clone();
+                reduce_and_center_coefficients_mut(&mut ct0i_minus_ct0i_hat_mod_zqi, &qi_bigint);
+
+                // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
+                // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
+                let ct0i_minus_ct0i_hat_poly = Polynomial::new(ct0i_minus_ct0i_hat_mod_zqi.clone());
+                let cyclo_poly = Polynomial::new(cyclo.clone());
+                let (r2i_poly, r2i_rem_poly) = ct0i_minus_ct0i_hat_poly.div(&cyclo_poly).unwrap();
+                let r2i = r2i_poly.coefficients().to_vec();
+                let r2i_rem = r2i_rem_poly.coefficients().to_vec();
+                assert!(r2i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r2i.len() as u64) - 1, n - 2); // Order(r2i) = N - 2
+
+                // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
+                let r2i_poly = Polynomial::new(r2i.clone());
+                let r2i_times_cyclo = r2i_poly.mul(&cyclo_poly).coefficients().to_vec();
+                let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
+                reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
+                assert_eq!(&ct0i_minus_ct0i_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
+                assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (n - 1));
+
+                // Calculate r1i = (ct0i - ct0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
+                let ct0i_minus_ct0i_hat_poly = Polynomial::new(ct0i_minus_ct0i_hat.clone());
+                let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
+                let r1i_num = ct0i_minus_ct0i_hat_poly
+                    .sub(&r2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
+                assert_eq!((r1i_num.len() as u64) - 1, 2 * (n - 1));
+
+                let r1i_num_poly = Polynomial::new(r1i_num.clone());
+                let qi_poly = Polynomial::new(vec![qi_bigint.clone()]);
+                let (r1i_poly, r1i_rem_poly) = r1i_num_poly.div(&qi_poly).unwrap();
+                let r1i = r1i_poly.coefficients().to_vec();
+                let r1i_rem = r1i_rem_poly.coefficients().to_vec();
+                assert!(r1i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r1i.len() as u64) - 1, 2 * (n - 1)); // Order(r1i) = 2*(N-1)
+                let r1i_poly_check = Polynomial::new(r1i.clone());
+                assert_eq!(
+                    &r1i_num,
+                    &r1i_poly_check.mul(&qi_poly).coefficients().to_vec()
+                );
+
+                // Assert that ct0i = ct0i_hat + r1i * qi + r2i * cyclo mod Z_p
+                let r1i_poly = Polynomial::new(r1i.clone());
+                let r1i_times_qi = r1i_poly.scalar_mul(&qi_bigint).coefficients().to_vec();
+                let ct0i_hat_poly = Polynomial::new(ct0i_hat.clone());
+                let r1i_times_qi_poly = Polynomial::new(r1i_times_qi.clone());
+                let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
+                let mut ct0i_calculated = ct0i_hat_poly
+                    .add(&r1i_times_qi_poly)
+                    .add(&r2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
+
+                while !ct0i_calculated.is_empty() && ct0i_calculated[0].is_zero() {
+                    ct0i_calculated.remove(0);
+                }
+
+                assert_eq!(&ct0i, &ct0i_calculated);
+
+                // --------------------------------------------------- ct1i ---------------------------------------------------
+
+                // Calculate ct1i_hat = pk1i * ui + e1
+                let ct1i_hat = {
+                    let pk1i_poly = Polynomial::new(pk1i.clone());
+                    let u_poly = Polynomial::new(u.clone());
+                    let pk1i_times_u = pk1i_poly.mul(&u_poly);
+                    assert_eq!((pk1i_times_u.coefficients().len() as u64) - 1, 2 * (n - 1));
+
+                    let e1_poly = Polynomial::new(e1.clone());
+                    pk1i_times_u.add(&e1_poly).coefficients().to_vec()
+                };
+                assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (n - 1));
+
+                // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
+                let mut ct1i_hat_mod_rqi = ct1i_hat.clone();
+                reduce_in_ring(&mut ct1i_hat_mod_rqi, &cyclo, &qi_bigint);
+                assert_eq!(&ct1i, &ct1i_hat_mod_rqi);
+
+                // Compute p2i numerator = ct1i - ct1i_hat
+                let ct1i_poly = Polynomial::new(ct1i.clone());
+                let ct1i_hat_poly = Polynomial::new(ct1i_hat.clone());
+                let ct1i_minus_ct1i_hat = ct1i_poly.sub(&ct1i_hat_poly).coefficients().to_vec();
+                assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (n - 1));
+                let mut ct1i_minus_ct1i_hat_mod_zqi = ct1i_minus_ct1i_hat.clone();
+                reduce_and_center_coefficients_mut(&mut ct1i_minus_ct1i_hat_mod_zqi, &qi_bigint);
+
+                // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
+                // and reduce/center the resulting coefficients to produce:
+                // (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
+                let ct1i_minus_ct1i_hat_poly = Polynomial::new(ct1i_minus_ct1i_hat_mod_zqi.clone());
+                let (p2i_poly, p2i_rem_poly) =
+                    ct1i_minus_ct1i_hat_poly.div(&cyclo_poly.clone()).unwrap();
+                let p2i = p2i_poly.coefficients().to_vec();
+                let p2i_rem = p2i_rem_poly.coefficients().to_vec();
+                assert!(p2i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((p2i.len() as u64) - 1, n - 2); // Order(p2i) = N - 2
+
+                // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
+                let p2i_poly = Polynomial::new(p2i.clone());
+                let p2i_times_cyclo: Vec<BigInt> =
+                    p2i_poly.mul(&cyclo_poly).coefficients().to_vec();
+                let mut p2i_times_cyclo_mod_zqi = p2i_times_cyclo.clone();
+                reduce_and_center_coefficients_mut(&mut p2i_times_cyclo_mod_zqi, &qi_bigint);
+                assert_eq!(&ct1i_minus_ct1i_hat_mod_zqi, &p2i_times_cyclo_mod_zqi);
+                assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (n - 1));
+
+                // Calculate p1i = (ct1i - ct1i_hat - p2i * cyclo) / qi mod Z_p. Remainder should be empty.
+                let ct1i_minus_ct1i_hat_poly = Polynomial::new(ct1i_minus_ct1i_hat.clone());
+                let p2i_times_cyclo_poly = Polynomial::new(p2i_times_cyclo.clone());
+                let p1i_num = ct1i_minus_ct1i_hat_poly
+                    .sub(&p2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
+                assert_eq!((p1i_num.len() as u64) - 1, 2 * (n - 1));
+
+                let p1i_num_poly = Polynomial::new(p1i_num.clone());
+                let qi_poly = Polynomial::new(vec![BigInt::from(qi.modulus())]);
+                let (p1i_poly, p1i_rem_poly) = p1i_num_poly.div(&qi_poly).unwrap();
+                let p1i = p1i_poly.coefficients().to_vec();
+                let p1i_rem = p1i_rem_poly.coefficients().to_vec();
+                assert!(p1i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((p1i.len() as u64) - 1, 2 * (n - 1)); // Order(p1i) = 2*(N-1)
+                let p1i_poly_check = Polynomial::new(p1i.clone());
+                assert_eq!(
+                    &p1i_num,
+                    &p1i_poly_check.mul(&qi_poly).coefficients().to_vec()
+                );
+
+                // Assert that ct1i = ct1i_hat + p1i * qi + p2i * cyclo mod Z_p
+                let p1i_poly = Polynomial::new(p1i.clone());
+                let p1i_times_qi = p1i_poly.scalar_mul(&qi_bigint).coefficients().to_vec();
+                let ct1i_hat_poly = Polynomial::new(ct1i_hat.clone());
+                let p1i_times_qi_poly = Polynomial::new(p1i_times_qi.clone());
+                let p2i_times_cyclo_poly = Polynomial::new(p2i_times_cyclo.clone());
+                let mut ct1i_calculated = ct1i_hat_poly
+                    .add(&p1i_times_qi_poly)
+                    .add(&p2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
+
+                while !ct1i_calculated.is_empty() && ct1i_calculated[0].is_zero() {
+                    ct1i_calculated.remove(0);
+                }
+
+                assert_eq!(&ct1i, &ct1i_calculated);
+                (
+                    i,
+                    r2i,
+                    r1i,
+                    k0qi,
+                    ct0i,
+                    ct1i,
+                    pk0i,
+                    pk1i,
+                    p1i,
+                    p2i,
+                    e0i,
+                    e0_quotient,
+                )
+            },
+        )
+        .collect();
+
+        // Merge results into the `res` structure after parallel execution
+        for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i, e0i, e0_quotient) in
+            results.into_iter()
+        {
+            res.r2is[i] = r2i;
+            res.r1is[i] = r1i;
+            res.k0is[i] = k0i;
+            res.ct0is[i] = ct0i;
+            res.ct1is[i] = ct1i;
+            res.pk0is[i] = pk0i;
+            res.pk1is[i] = pk1i;
+            res.p1is[i] = p1i;
+            res.p2is[i] = p2i;
+            res.e0is[i] = e0i;
+            res.e0_quotients[i] = e0_quotient;
+        }
+
+        // Set final result vectors
+        res.u = u;
+        res.message = message;
+        res.e0 = e0_vec;
+        res.e1 = e1;
+
+        // Compute expected_message_commitment from message
+        res.expected_message_commitment = compute_message_commitment(&res.message);
+
+        Ok(res)
+    }
+}
+
+impl EncBfvVectors {
+    pub fn standard_form(&self) -> Self {
+        let zkp_modulus = &shared::constants::get_zkp_modulus();
+        EncBfvVectors {
+            pk0is: reduce_coefficients_2d(&self.pk0is, zkp_modulus),
+            pk1is: reduce_coefficients_2d(&self.pk1is, zkp_modulus),
+            ct0is: reduce_coefficients_2d(&self.ct0is, zkp_modulus),
+            ct1is: reduce_coefficients_2d(&self.ct1is, zkp_modulus),
+            r1is: reduce_coefficients_2d(&self.r1is, zkp_modulus),
+            r2is: reduce_coefficients_2d(&self.r2is, zkp_modulus),
+            p1is: reduce_coefficients_2d(&self.p1is, zkp_modulus),
+            p2is: reduce_coefficients_2d(&self.p2is, zkp_modulus),
+            e0is: reduce_coefficients_2d(&self.e0is, zkp_modulus),
+            e0_quotients: reduce_coefficients_2d(&self.e0_quotients, zkp_modulus),
+            e0: reduce_coefficients(&self.e0, zkp_modulus),
+            e1: reduce_coefficients(&self.e1, zkp_modulus),
+            k0is: reduce_coefficients(&self.k0is, zkp_modulus),
+            u: reduce_coefficients(&self.u, zkp_modulus),
+            message: reduce_coefficients(&self.message, zkp_modulus),
+            expected_message_commitment: {
+                let mut reduced = self.expected_message_commitment.clone() % zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += zkp_modulus;
+                }
+                reduced
+            },
+        }
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        json!({
+            "pk0is": to_string_2d_vec(&self.pk0is),
+            "pk1is": to_string_2d_vec(&self.pk1is),
+            "e0is": to_string_2d_vec(&self.e0is),
+            "e0_quotients": to_string_2d_vec(&self.e0_quotients),
+            "u": to_string_1d_vec(&self.u),
+            "e0": to_string_1d_vec(&self.e0),
+            "e1": to_string_1d_vec(&self.e1),
+            "message": to_string_1d_vec(&self.message),
+            "r2is": to_string_2d_vec(&self.r2is),
+            "r1is": to_string_2d_vec(&self.r1is),
+            "p2is": to_string_2d_vec(&self.p2is),
+            "p1is": to_string_2d_vec(&self.p1is),
+            "k0is": to_string_1d_vec(&self.k0is),
+            "ct0is": to_string_2d_vec(&self.ct0is),
+            "ct1is": to_string_2d_vec(&self.ct1is),
+            "expected_message_commitment": self.expected_message_commitment.to_string(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fhe::bfv::{Encoding, Plaintext, SecretKey};
+    use fhe_traits::FheEncoder;
+    use rand::{SeedableRng, rngs::StdRng};
+    use shared::utils::test_parameters_bfv;
+
+    #[test]
+    fn test_standard_form() {
+        let vecs = EncBfvVectors::new(1, 512);
+        let std_form = vecs.standard_form();
+
+        // Check that all vectors are properly reduced
+        let p = shared::constants::get_zkp_modulus();
+        assert!(std_form.u.iter().all(|x| x < &p));
+        assert!(std_form.message.iter().all(|x| x < &p));
+    }
+
+    #[test]
+    fn test_vector_computation_to_json() {
+        let params = test_parameters_bfv();
+
+        let mut rng = StdRng::seed_from_u64(0);
+        let sk = SecretKey::random(&params, &mut rng);
+        let pk = PublicKey::new(&sk, &mut rng);
+
+        // Create a sample plaintext
+        let mut message_data = vec![3u64; params.degree()];
+        message_data[0] = 1;
+        let pt = Plaintext::try_encode(&message_data, Encoding::poly(), &params).unwrap();
+
+        // Use extended encryption to get the polynomial data
+        let mut rng = StdRng::seed_from_u64(0);
+        let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
+
+        // Compute vectors
+        let vecs =
+            EncBfvVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params).unwrap();
+
+        let json = vecs.to_json();
+
+        // Check all required fields are present
+        let required_fields = [
+            "pk0is",
+            "pk1is",
+            "u",
+            "e0",
+            "e1",
+            "e0is",
+            "e0_quotients",
+            "message",
+            "r2is",
+            "r1is",
+            "p2is",
+            "p1is",
+            "k0is",
+            "ct0is",
+            "ct1is",
+            "expected_message_commitment",
+        ];
+
+        for field in required_fields.iter() {
+            assert!(json.get(field).is_some(), "Missing field: {}", field);
+        }
+
+        // Verify expected_message_commitment is non-zero (since we have actual data)
+        let msg_commitment = json
+            .get("expected_message_commitment")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        let msg_commitment_bigint = msg_commitment.parse::<num_bigint::BigInt>().unwrap();
+        assert!(
+            !msg_commitment_bigint.is_zero(),
+            "expected_message_commitment should not be zero"
+        );
+    }
+}

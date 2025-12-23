@@ -26,6 +26,12 @@ pub struct DecShareAggTrBfvTemplateParams {
     pub threshold: u32,
     /// Bit width for noise bounds
     pub bit_noise: u32,
+    /// Parameter set (trbfv)
+    pub parameter_set: String,
+    /// Security level (production or insecure)
+    pub security_level: String,
+    /// Number of parties
+    pub num_parties: u32,
 }
 
 impl DecShareAggTrBfvTemplateParams {
@@ -33,6 +39,9 @@ impl DecShareAggTrBfvTemplateParams {
         base: BaseTemplateParams,
         threshold: u32,
         bounds: &DecShareAggTrBfvBoundsData,
+        parameter_set: String,
+        security_level: String,
+        num_parties: u32,
     ) -> ZkFheResult<Self> {
         // Calculate bit width for noise bound
         let bit_noise = calculate_bit_width(&bounds.delta_half)?;
@@ -41,6 +50,9 @@ impl DecShareAggTrBfvTemplateParams {
             base,
             threshold,
             bit_noise,
+            parameter_set,
+            security_level,
+            num_parties,
         })
     }
 }
@@ -50,28 +62,34 @@ pub struct DecShareAggTrBfvMainTemplate;
 
 impl MainTemplateGenerator<DecShareAggTrBfvTemplateParams> for DecShareAggTrBfvMainTemplate {
     fn generate_template(&self, params: &DecShareAggTrBfvTemplateParams) -> ZkFheResult<String> {
-        let import_example = "// use dec_share_agg_trbfv::{DecryptionShareAggregation, Params};
-// use polynomial::Polynomial;";
+        // Determine which verification function to use based on security level
+        let verify_call = if params.security_level == "production" {
+            "dec_share_agg.verify()"
+        } else {
+            "dec_share_agg.verify_no_bn()"
+        };
 
         let template = format!(
-            r#"//! Generated main.nr template for Decryption Share Aggregation TRBFV circuit
-// TODO: Your imports here (example below)
-{}
+            r#"use lib::configs::{}::{}::{{
+    DEC_SHARES_AGG_BIT_NOISE, DEC_SHARES_AGG_CONFIGS, L,
+}};
+use lib::core::trbfv_dec_shares_agg::DecryptionSharesAggregation;
+use lib::math::polynomial::Polynomial;
+
+/// Number of non-zero coefficients in the message polynomial.
+pub global MSG_NON_ZERO_COEFFS: u32 = {};
+/// Threshold.
+pub global T: u32 = {};
 
 fn main(
-    params: Params<{}, {}, {}>,
-    decryption_shares: [[Polynomial<{}>; {}]; {}],
-    party_ids: [Field; {}],
-    message: Polynomial<{}>,
-    u_global: Polynomial<{}>,
-    crt_quotients: [Polynomial<{}>; {}],
-    // TODO: Other parameters...
+    decryption_shares: [[Polynomial<MSG_NON_ZERO_COEFFS>; L]; T + 1],
+    party_ids: [Field; T + 1],
+    message: Polynomial<MSG_NON_ZERO_COEFFS>,
+    u_global: Polynomial<MSG_NON_ZERO_COEFFS>,
+    crt_quotients: [Polynomial<MSG_NON_ZERO_COEFFS>; L],
 ) {{
-    // TODO: Your logic here...
-
-    // Create Decryption Share Aggregation circuit instance.
-    let dec_share_agg: DecryptionShareAggregation<{}, {}, {}, {}> = DecryptionShareAggregation::new(
-        params,
+    let dec_share_agg: DecryptionSharesAggregation<MSG_NON_ZERO_COEFFS, L, T, DEC_SHARES_AGG_BIT_NOISE> = DecryptionSharesAggregation::new(
+        DEC_SHARES_AGG_CONFIGS,
         decryption_shares,
         party_ids,
         message,
@@ -79,27 +97,13 @@ fn main(
         crt_quotients,
     );
 
-    // Verify decryption share aggregation
-    dec_share_agg.verify();
-
-    // TODO: Your logic here...
+    {};
 }}"#,
-            import_example,
-            params.base.n,
-            params.base.l,
+            params.security_level,
+            params.parameter_set,
+            params.base.n, // MSG_NON_ZERO_COEFFS (trimmed degree)
             params.threshold,
-            params.base.n,
-            params.base.l,
-            params.threshold + 1,
-            params.threshold + 1,
-            params.base.n,
-            params.base.n,
-            params.base.n,
-            params.base.l,
-            params.base.n,
-            params.base.l,
-            params.threshold,
-            params.bit_noise,
+            verify_call,
         );
 
         Ok(template)

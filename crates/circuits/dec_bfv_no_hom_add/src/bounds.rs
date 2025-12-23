@@ -111,7 +111,7 @@ impl DecBfvNoHomAddBounds {
                     message: format!("Q and t are not coprime, gcd = {}", gcd_result.gcd),
                 });
             }
-            // Ensure the inverse is positive
+            // Compute Q^(-1) mod t (positive)
             let inv = gcd_result.x % &t;
             let inv_positive = if inv < BigInt::from(0) { inv + &t } else { inv };
             inv_positive.to_u64().ok_or_else(|| ZkFheError::Bfv {

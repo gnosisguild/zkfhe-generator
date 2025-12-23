@@ -5,12 +5,17 @@
 //! without homomorphic addition.
 
 use crate::bounds::DecBfvNoHomAddBounds;
+use crate::configs::DecBfvNoHomAddConfigsGenerator;
 use crate::sample::generate_sample_decryption_no_hom_add;
+use crate::template::{
+    DecBfvNoHomAddBoundsData, DecBfvNoHomAddMainTemplate, DecBfvNoHomAddTemplateParams,
+};
 use crate::toml::DecBfvNoHomAddTomlGenerator;
 use crate::vectors::DecBfvNoHomAddVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType, SampleType};
+use shared::template::MainTemplateGenerator;
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -106,23 +111,77 @@ impl Circuit for DecBfvNoHomAddCircuit {
         })?;
 
         // Compute witness vectors from the decryption data
+        // Calculate bit_sk for commitment computation
+        let bit_sk = shared::template::calculate_bit_width(&bounds.s_bound.to_string())?;
+
         let vectors = DecBfvNoHomAddVectors::compute(
             &decryption_data.honest_ciphertexts,
             &decryption_data.secret_key,
             bfv_params,
             trbfv_params,
+            bit_sk,
+            crypto_params.bfv_q_inverse_mod_t,
         )?;
-
-        // Verify all circuit constraints in Rust before generating TOML
-        // This ensures the generated witness data is valid
-        vectors.verify(bfv_params, trbfv_params)?;
 
         // Convert to standard form (reduce modulo ZKP field)
         let vectors_standard = vectors.standard_form();
 
-        // Create TOML generator and generate file
-        let toml_generator =
-            DecBfvNoHomAddTomlGenerator::new(crypto_params, bounds, vectors_standard);
+        // Generate template params for config file generation
+        let bounds_data = DecBfvNoHomAddBoundsData {
+            s_bound: bounds.s_bound.to_string(),
+            u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
+            u_global_bound: bounds.u_global_bound.to_string(),
+            r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
+            r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+            delta: bounds.delta.to_string(),
+            delta_half: bounds.delta_half.to_string(),
+        };
+
+        // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
+        let security_level = if self.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
+            "production"
+        } else {
+            "insecure"
+        };
+
+        // Get number of honest parties from vectors
+        let num_honest_parties = vectors_standard.honest_c0.len();
+        let num_trbfv_bases = trbfv_params.moduli().len();
+        let num_bfv_bases = bfv_params.moduli().len();
+
+        let template_params = DecBfvNoHomAddTemplateParams::from_bounds(
+            shared::template::BaseTemplateParams::new(
+                bfv_params.degree(),
+                num_trbfv_bases,
+                self.name(),
+            ),
+            num_honest_parties,
+            num_trbfv_bases,
+            num_bfv_bases,
+            &bounds_data,
+            self.parameter_type().as_str().to_string(),
+            security_level.to_string(),
+        )?;
+
+        // Generate config .nr file (named after parameter set: bfv.nr)
+        let configs_filename = format!("{}.nr", self.parameter_type().as_str());
+        DecBfvNoHomAddConfigsGenerator::generate_configs_file(
+            &crypto_params,
+            &bounds,
+            &template_params,
+            output_dir,
+            &configs_filename,
+            self.parameter_type().as_str(),
+        )?;
+
+        // Generate main.nr template
+        let template_generator = DecBfvNoHomAddMainTemplate;
+        let template_content = template_generator.generate_template(&template_params)?;
+        let template_path = output_dir.join("main.nr");
+        std::fs::write(&template_path, template_content)?;
+
+        // Create TOML generator and generate file (without params - they're in the config file)
+        let toml_generator = DecBfvNoHomAddTomlGenerator::new(vectors_standard);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())
@@ -163,10 +222,30 @@ mod tests {
         assert!(toml_path.exists(), "Prover.toml should be created");
 
         // Read and verify basic structure
+        // Note: crypto and bounds are in a separate config file, not in Prover.toml
         let content = std::fs::read_to_string(&toml_path).unwrap();
-        assert!(content.contains("params"));
         assert!(content.contains("honest_c0"));
         assert!(content.contains("expected_aggregated_shares"));
+
+        // Verify config file was generated (named after parameter set)
+        let configs_path = temp_dir.path().join("bfv.nr");
+        assert!(
+            configs_path.exists(),
+            "Config file bfv.nr should be created"
+        );
+        let configs_content = std::fs::read_to_string(&configs_path).unwrap();
+        assert!(configs_content.contains("DEC_BFV_CONFIGS"));
+        assert!(configs_content.contains("N: u32"));
+        assert!(configs_content.contains("L_TRBFV: u32"));
+        assert!(configs_content.contains("L_PRIME: u32"));
+        // H is declared in the template, not in the configs file
+
+        // Verify main.nr template was generated
+        let template_path = temp_dir.path().join("main.nr");
+        assert!(template_path.exists(), "main.nr template should be created");
+        let template_content = std::fs::read_to_string(&template_path).unwrap();
+        assert!(template_content.contains("BfvDecNoHomAdd"));
+        assert!(template_content.contains("expected_sk_commitment"));
     }
 
     #[test]

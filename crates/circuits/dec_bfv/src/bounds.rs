@@ -13,11 +13,14 @@ use std::sync::Arc;
 /// Cryptographic parameters for BFV decryption circuit
 #[derive(Clone, Debug)]
 pub struct DecBfvCryptographicParameters {
-    pub moduli: Vec<u64>,
-    pub plaintext_modulus: u64,
-    pub q_inverse_mod_t: u64,
-    pub q_mod_t: BigUint,
-    pub t_inv_mod_q: BigUint,
+    /// BFV CRT moduli: [q'_0, q'_1, ..., q'_{L'-1}]
+    pub bfv_moduli: Vec<u64>,
+    /// TRBFV CRT moduli: [q_0, q_1, ..., q_{L-1}]
+    pub trbfv_moduli: Vec<u64>,
+    /// BFV plaintext modulus (large enough for TRBFV values)
+    pub bfv_plaintext_modulus: u64,
+    /// BFV Q^{-1} mod t for decoding
+    pub bfv_q_inverse_mod_t: u64,
 }
 
 /// Bounds for BFV decryption circuit polynomial coefficients
@@ -25,28 +28,41 @@ pub struct DecBfvCryptographicParameters {
 pub struct DecBfvBounds {
     /// Bound for secret key s
     pub s_bound: BigUint,
-    /// Bounds for u_i polynomials (per-basis decryption results)
+    /// Bounds for u_i polynomials (per-BFV-basis decryption results)
+    /// Length: L_PRIME (number of BFV CRT moduli)
     pub u_i_bounds: Vec<BigUint>,
     /// Bound for global u polynomial
     pub u_global_bound: BigUint,
-    /// Bounds for r_1 polynomials (modulus quotients)
+    /// Bounds for r_1 polynomials (modulus quotients, per BFV basis)
+    /// Length: L_PRIME (number of BFV CRT moduli)
     pub r1_bounds: Vec<BigUint>,
-    /// Bounds for r_2 polynomials (cyclotomic quotients)
+    /// Bounds for r_2 polynomials (cyclotomic quotients, per BFV basis)
+    /// Length: L_PRIME (number of BFV CRT moduli)
     pub r2_bounds: Vec<BigUint>,
+    /// Global delta value: delta = floor(Q/t) where Q is the product of all q_i
+    /// Used in the decoding formula to scale the plaintext
     pub delta: BigInt,
+    /// Global half-delta value: delta_half = floor(delta / 2)
+    /// Used to check the noise bound: |u_global - delta * m| < delta/2
     pub delta_half: BigInt,
 }
 
 impl DecBfvBounds {
-    /// Compute bounds and cryptographic parameters from BFV parameters
+    /// Compute bounds and cryptographic parameters from BFV and TRBFV parameters
+    ///
+    /// # Arguments
+    /// * `bfv_params` - BFV parameters for share encryption/decryption
+    /// * `trbfv_params` - TRBFV parameters (provides the moduli for aggregation)
+    /// * `level` - The level at which to compute bounds
     pub fn compute(
-        params: &Arc<BfvParameters>,
+        bfv_params: &Arc<BfvParameters>,
+        trbfv_params: &Arc<BfvParameters>,
         level: usize,
     ) -> ZkFheResult<(DecBfvCryptographicParameters, Self)> {
         // Get cyclotomic degree and context at provided level
-        let n = BigInt::from(params.degree());
-        let t = BigInt::from(params.plaintext());
-        let ctx = params.ctx_at_level(level)?;
+        let n = BigInt::from(bfv_params.degree());
+        let t = BigInt::from(bfv_params.plaintext());
+        let ctx = bfv_params.ctx_at_level(level)?;
 
         // Calculate delta = floor(q/t)
         let q = BigInt::from(ctx.modulus().clone());
@@ -103,48 +119,11 @@ impl DecBfvBounds {
             })?
         };
 
-        // Compute q_mod_t: Q mod t
-        let q_mod_t = {
-            let q_biguint = q.to_biguint().ok_or_else(|| ZkFheError::Bfv {
-                message: "Q is negative, cannot convert to BigUint".to_string(),
-            })?;
-            let t_biguint = t.to_biguint().ok_or_else(|| ZkFheError::Bfv {
-                message: "t is negative, cannot convert to BigUint".to_string(),
-            })?;
-            &q_biguint % &t_biguint
-        };
-
-        // Compute t_inv_mod_q: t^(-1) mod Q
-        let t_inv_mod_q = {
-            let gcd_result = q.extended_gcd(&t);
-            if gcd_result.gcd != BigInt::from(1) {
-                return Err(ZkFheError::Bfv {
-                    message: format!(
-                        "Q and t are not coprime (gcd = {}), cannot compute modular inverse",
-                        gcd_result.gcd
-                    ),
-                });
-            }
-            // y is t^(-1) mod Q (from the extended GCD: Q*x + t*y = gcd)
-            // But may be negative, so normalize to [0, Q)
-            let t_inverse_bigint = if gcd_result.y < BigInt::from(0) {
-                gcd_result.y + &q
-            } else {
-                gcd_result.y
-            };
-            t_inverse_bigint
-                .to_biguint()
-                .ok_or_else(|| ZkFheError::Bfv {
-                    message: "Failed to convert t_inv_mod_q to BigUint".to_string(),
-                })?
-        };
-
         let crypto_params = DecBfvCryptographicParameters {
-            moduli: ctx.moduli().to_vec(),
-            plaintext_modulus: params.plaintext(),
-            q_inverse_mod_t,
-            q_mod_t,
-            t_inv_mod_q,
+            bfv_moduli: ctx.moduli().to_vec(),
+            trbfv_moduli: trbfv_params.moduli().to_vec(),
+            bfv_plaintext_modulus: bfv_params.plaintext(),
+            bfv_q_inverse_mod_t: q_inverse_mod_t,
         };
 
         let bounds = DecBfvBounds {
@@ -173,11 +152,10 @@ impl DecBfvBounds {
 impl DecBfvCryptographicParameters {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
-            "moduli": self.moduli,
-            "plaintext_modulus": self.plaintext_modulus,
-            "q_inverse_mod_t": self.q_inverse_mod_t,
-            "q_mod_t": self.q_mod_t.to_string(),
-            "t_inv_mod_q": self.t_inv_mod_q.to_string(),
+            "bfv_moduli": self.bfv_moduli,
+            "trbfv_moduli": self.trbfv_moduli,
+            "bfv_plaintext_modulus": self.bfv_plaintext_modulus,
+            "bfv_q_inverse_mod_t": self.bfv_q_inverse_mod_t,
         })
     }
 }
@@ -203,13 +181,20 @@ mod tests {
 
     #[test]
     fn test_bounds_computation() {
-        let params = test_parameters_bfv();
-        let (crypto_params, bounds) = DecBfvBounds::compute(&params, 0).unwrap();
+        use shared::utils::test_parameters_trbfv;
+        let bfv_params = test_parameters_bfv();
+        let trbfv_params = test_parameters_trbfv();
+        let (crypto_params, bounds) = DecBfvBounds::compute(&bfv_params, &trbfv_params, 0).unwrap();
 
-        assert_eq!(crypto_params.moduli.len(), params.moduli().len());
-        assert_eq!(bounds.u_i_bounds.len(), params.moduli().len());
-        assert_eq!(bounds.r1_bounds.len(), params.moduli().len());
-        assert_eq!(bounds.r2_bounds.len(), params.moduli().len());
+        assert_eq!(crypto_params.bfv_moduli.len(), bfv_params.moduli().len());
+        assert_eq!(
+            crypto_params.trbfv_moduli.len(),
+            trbfv_params.moduli().len()
+        );
+        // Bounds are per BFV basis (L_PRIME), not per TRBFV basis (L)
+        assert_eq!(bounds.u_i_bounds.len(), bfv_params.moduli().len());
+        assert_eq!(bounds.r1_bounds.len(), bfv_params.moduli().len());
+        assert_eq!(bounds.r2_bounds.len(), bfv_params.moduli().len());
         assert!(bounds.delta > BigInt::from(0u32));
         assert!(bounds.delta_half > BigInt::from(0u32));
 
