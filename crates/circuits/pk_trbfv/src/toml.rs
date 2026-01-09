@@ -1,15 +1,15 @@
-use crate::vectors::PkBfvVectors;
+use crate::vectors::PkTrBfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
 use shared::toml::TomlGenerator;
 use shared::utils::to_string_1d_vec;
 
-pub struct PkBfvTomlGenerator {
-    vectors: PkBfvVectors,
+pub struct PkTrBfvTomlGenerator {
+    vectors: PkTrBfvVectors,
 }
 
-impl PkBfvTomlGenerator {
-    pub fn new(vectors: PkBfvVectors) -> Self {
+impl PkTrBfvTomlGenerator {
+    pub fn new(vectors: PkTrBfvVectors) -> Self {
         Self { vectors }
     }
 }
@@ -24,9 +24,10 @@ struct ProverTomlFormat {
     a: Vec<serde_json::Value>,
     sk: serde_json::Value,
     eek: serde_json::Value,
+    e_sm: serde_json::Value,
 }
 
-impl TomlGenerator for PkBfvTomlGenerator {
+impl TomlGenerator for PkTrBfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
         // Note: Configs (N, L, QIS, bounds, bit parameters, Configs) are now
         // generated in a separate .nr config file, not in the TOML.
@@ -100,6 +101,11 @@ impl TomlGenerator for PkBfvTomlGenerator {
             eek: serde_json::json!({
                 "coefficients": to_string_1d_vec(&self.vectors.eek)
             }),
+
+            // e_sm: smudging noise polynomial - convert to simple string format
+            e_sm: serde_json::json!({
+                "coefficients": to_string_1d_vec(&self.vectors.e_sm)
+            }),
         };
 
         Ok(toml::to_string(&toml_data)?)
@@ -109,15 +115,15 @@ impl TomlGenerator for PkBfvTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vectors::PkBfvVectors;
+    use crate::vectors::PkTrBfvVectors;
 
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let vectors = PkBfvVectors::new(1, 512);
+        let vectors = PkTrBfvVectors::new(1, 512);
 
-        let generator = PkBfvTomlGenerator::new(vectors);
+        let generator = PkTrBfvTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();
@@ -138,6 +144,7 @@ mod tests {
         assert!(content.contains("a"));
         assert!(content.contains("sk"));
         assert!(content.contains("eek"));
+        assert!(content.contains("e_sm"));
         let toml_string = generator.to_toml_string().unwrap();
 
         // Verify the TOML string contains the expected sections
@@ -148,5 +155,6 @@ mod tests {
         assert!(toml_string.contains("[[a]]"));
         assert!(toml_string.contains("[sk]"));
         assert!(toml_string.contains("[eek]"));
+        assert!(toml_string.contains("[e_sm]"));
     }
 }

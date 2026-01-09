@@ -1746,7 +1746,7 @@ dependencies = [
  "zkfhe-enc-bfv",
  "zkfhe-greco",
  "zkfhe-pk-agg-trbfv",
- "zkfhe-pk-bfv",
+ "zkfhe-pk-trbfv",
  "zkfhe-shared",
  "zkfhe-verify-shares-trbfv",
 ]
@@ -1805,7 +1805,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zkfhe-pk-bfv"
+name = "zkfhe-pk-trbfv"
 version = "0.1.0"
 dependencies = [
  "anyhow",

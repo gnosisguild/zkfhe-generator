@@ -231,8 +231,8 @@ fn get_circuit(
             let circuit = greco::circuit::GrecoCircuit::new(parameter_type, sample_type, lambda);
             Ok(Box::new(circuit))
         }
-        "pk-bfv" => {
-            let circuit = pk_bfv::circuit::PkBfvCircuit::new(parameter_type, lambda);
+        "pk-trbfv" => {
+            let circuit = pk_trbfv::circuit::PkTrBfvCircuit::new(parameter_type, lambda);
             Ok(Box::new(circuit))
         }
         "pk-agg-trbfv" => {
@@ -274,7 +274,7 @@ fn get_circuit(
 pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<ParameterType> {
     match circuit_name.to_lowercase().as_str() {
         "enc-trbfv" => vec![ParameterType::Trbfv],
-        "pk-bfv" => vec![ParameterType::Trbfv, ParameterType::Bfv],
+        "pk-trbfv" => vec![ParameterType::Trbfv],
         "enc-bfv" => vec![ParameterType::Bfv],
         "pk-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
@@ -786,25 +786,35 @@ fn generate_main_template(
             let template_generator = GrecoMainTemplate;
             template_generator.generate_main_file(&greco_template_params, output_dir)?;
         }
-        "pk-bfv" => {
-            use pk_bfv::bounds::PkBfvBounds;
-            use pk_bfv::template::{PkBfvBoundsData, PkBfvMainTemplate, PkBfvTemplateParams};
-
-            // Select the correct params based on circuit's parameter type
-            let selected_params = if circuit.parameter_type() == ParameterType::Trbfv {
-                trbfv_params
-            } else {
-                bfv_params
+        "pk-trbfv" => {
+            use pk_trbfv::bounds::PkTrBfvBounds;
+            use pk_trbfv::template::{
+                PkTrBfvBoundsData, PkTrBfvMainTemplate, PkTrBfvTemplateParams,
             };
 
-            let (_, bounds) = PkBfvBounds::compute(selected_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute PkBfv bounds: {e:?}"))?;
+            // pk-trbfv circuit now only supports TRBFV
+            let selected_params = trbfv_params;
 
-            let bounds_data = PkBfvBoundsData {
+            let lambda = circuit.security_parameter();
+            // Get ciphernodes config for smudging bound calculation
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(CiphernodesConfig::defaults);
+            // Needed for smudging bound calculation (B_c)
+            // We set it to 1 as we only need one ciphertext for public key generation
+            let num_ciphertexts = 1;
+
+            let (_, bounds) =
+                PkTrBfvBounds::compute(selected_params, 0, lambda, &config, num_ciphertexts)
+                    .map_err(|e| anyhow::anyhow!("Failed to compute PkTrBfv bounds: {e:?}"))?;
+
+            let bounds_data = PkTrBfvBoundsData {
                 eek_bound: bounds.eek_bound.to_string(),
                 sk_bound: bounds.sk_bound.to_string(),
+                e_sm_bound: bounds.e_sm_bound.to_string(),
                 r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
                 r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                pk_bound: bounds.pk_bound.to_string(),
             };
 
             // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
@@ -814,7 +824,7 @@ fn generate_main_template(
                 "insecure"
             };
 
-            let pk_bfv_template_params = PkBfvTemplateParams::from_bounds(
+            let pk_trbfv_template_params = PkTrBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(
                     selected_params.degree(),
                     selected_params.moduli().len(),
@@ -825,8 +835,8 @@ fn generate_main_template(
                 security_level.to_string(),
             )?;
 
-            let template_generator = PkBfvMainTemplate;
-            template_generator.generate_main_file(&pk_bfv_template_params, output_dir)?;
+            let template_generator = PkTrBfvMainTemplate;
+            template_generator.generate_main_file(&pk_trbfv_template_params, output_dir)?;
         }
         "pk-agg-trbfv" => {
             use pk_agg_trbfv::bounds::PkAggTrBfvCryptographicParameters;
@@ -1269,7 +1279,7 @@ fn main() -> anyhow::Result<()> {
                 println!("📋 Available circuits:");
                 println!("  • enc-trbfv   - Greco circuit implementation (TRBFV only)");
                 println!(
-                    "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
+                    "  • pk-trbfv     - Public Key Threshold BFV circuit implementation (supports trbfv, bfv)"
                 );
                 println!("  • enc-bfv     - Encryption BFV circuit implementation (supports bfv)");
                 println!(
@@ -1306,7 +1316,7 @@ fn main() -> anyhow::Result<()> {
                 println!("📋 Available circuits:");
                 println!("  • enc-trbfv   - Greco circuit implementation (TRBFV only)");
                 println!(
-                    "  • pk-bfv     - Public Key BFV circuit implementation (supports trbfv, bfv)"
+                    "  • pk-trbfv     - Public Key Threshold BFV circuit implementation (supports trbfv, bfv)"
                 );
                 println!("  • enc-bfv     - Encryption BFV circuit implementation (supports bfv)");
                 println!(

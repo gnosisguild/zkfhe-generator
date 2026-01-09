@@ -8,7 +8,6 @@ use rayon::prelude::*;
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::sample::PublicKeyOrPoly;
 use shared::errors::ZkFheResult;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 
@@ -24,22 +23,24 @@ type ModulusComputationResult = (
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
-pub struct PkBfvVectors {
+pub struct PkTrBfvVectors {
     pub a: Vec<Vec<BigInt>>,
     pub eek: Vec<BigInt>,
     pub sk: Vec<BigInt>,
+    pub e_sm: Vec<BigInt>,
     pub r1is: Vec<Vec<BigInt>>,
     pub r2is: Vec<Vec<BigInt>>,
     pub pk0is: Vec<Vec<BigInt>>,
     pub pk1is: Vec<Vec<BigInt>>,
 }
 
-impl PkBfvVectors {
+impl PkTrBfvVectors {
     pub fn new(num_moduli: usize, degree: usize) -> Self {
-        PkBfvVectors {
+        PkTrBfvVectors {
             a: vec![vec![BigInt::zero(); degree]; num_moduli],
             eek: vec![BigInt::zero(); degree],
             sk: vec![BigInt::zero(); degree],
+            e_sm: vec![BigInt::zero(); degree],
             r1is: vec![vec![BigInt::zero(); 2 * (degree - 1)]; num_moduli],
             r2is: vec![vec![BigInt::zero(); degree - 1]; num_moduli],
             pk0is: vec![vec![BigInt::zero(); degree]; num_moduli],
@@ -51,9 +52,10 @@ impl PkBfvVectors {
         a_rns: &Poly,
         eek_rns: &Poly,
         sk_rns: &Poly,
-        pk: &PublicKeyOrPoly,
+        e_sm_rns: &Poly,
+        pk: &Poly,
         params: &Arc<BfvParameters>,
-    ) -> ZkFheResult<PkBfvVectors> {
+    ) -> ZkFheResult<PkTrBfvVectors> {
         let ctx = params.ctx_at_level(0)?;
         let n: u64 = ctx.degree as u64;
 
@@ -61,10 +63,12 @@ impl PkBfvVectors {
         let mut a_rns_copy = a_rns.clone();
         let mut eek_rns_copy = eek_rns.clone();
         let mut sk_rns_copy = sk_rns.clone();
+        let mut e_sm_rns_copy = e_sm_rns.clone();
 
         a_rns_copy.change_representation(Representation::PowerBasis);
         eek_rns_copy.change_representation(Representation::PowerBasis);
         sk_rns_copy.change_representation(Representation::PowerBasis);
+        e_sm_rns_copy.change_representation(Representation::PowerBasis);
 
         let sk: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
@@ -96,18 +100,23 @@ impl PkBfvVectors {
                 .collect()
         };
 
-        // Extract and convert public key polynomials
-        let (mut pk0, mut pk1): (Poly, Poly) = match pk {
-            PublicKeyOrPoly::Full(public_key) => {
-                let pk0 = public_key.c.c[0].clone();
-                let pk1 = public_key.c.c[1].clone();
-                (pk0, pk1)
-            }
-            PublicKeyOrPoly::Share(pk0_share) => {
-                // For threshold BFV, pk0 is the share and pk1 = a (since pk1 = a in public key construction)
-                (pk0_share.clone(), a_rns.clone())
-            }
+        let e_sm: Vec<BigInt> = unsafe {
+            ctx.moduli_operators()[0]
+                .center_vec_vt(
+                    e_sm_rns_copy
+                        .coefficients()
+                        .row(0)
+                        .as_slice()
+                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
+                )
+                .iter()
+                .rev()
+                .map(|&x| BigInt::from(x))
+                .collect()
         };
+
+        // Extract and convert public key polynomials
+        let (mut pk0, mut pk1): (Poly, Poly) = (pk.clone(), a_rns.clone());
         pk0.change_representation(Representation::PowerBasis);
         pk1.change_representation(Representation::PowerBasis);
 
@@ -119,7 +128,7 @@ impl PkBfvVectors {
 
         // Initialize matrices to store results
         let num_moduli = ctx.moduli().len();
-        let mut res = PkBfvVectors::new(num_moduli, n as usize);
+        let mut res = PkTrBfvVectors::new(num_moduli, n as usize);
 
         let pk0_coeffs = pk0.coefficients();
         let pk1_coeffs = pk1.coefficients();
@@ -298,15 +307,16 @@ impl PkBfvVectors {
         // Set final result vectors
         res.sk = sk;
         res.eek = eek;
+        res.e_sm = e_sm;
 
         Ok(res)
     }
 }
 
-impl PkBfvVectors {
+impl PkTrBfvVectors {
     pub fn standard_form(&self) -> Self {
         let zkp_modulus = &shared::constants::get_zkp_modulus();
-        PkBfvVectors {
+        PkTrBfvVectors {
             a: reduce_coefficients_2d(&self.a, zkp_modulus),
             pk0is: reduce_coefficients_2d(&self.pk0is, zkp_modulus),
             pk1is: reduce_coefficients_2d(&self.pk1is, zkp_modulus),
@@ -314,6 +324,7 @@ impl PkBfvVectors {
             r2is: reduce_coefficients_2d(&self.r2is, zkp_modulus),
             sk: reduce_coefficients(&self.sk, zkp_modulus),
             eek: reduce_coefficients(&self.eek, zkp_modulus),
+            e_sm: reduce_coefficients(&self.e_sm, zkp_modulus),
         }
     }
 
@@ -321,6 +332,7 @@ impl PkBfvVectors {
         json!({
             "sk": to_string_1d_vec(&self.sk),
             "eek": to_string_1d_vec(&self.eek),
+            "e_sm": to_string_1d_vec(&self.e_sm),
             "a": to_string_2d_vec(&self.a),
             "r2is": to_string_2d_vec(&self.r2is),
             "r1is": to_string_2d_vec(&self.r1is),
@@ -334,12 +346,13 @@ impl PkBfvVectors {
 mod tests {
     use super::*;
     use fhe::bfv::SecretKey;
+    use fhe::mbfv::{CommonRandomPoly, PublicKeyShare};
     use rand::{SeedableRng, rngs::StdRng};
     use shared::utils::test_parameters_trbfv;
 
     #[test]
     fn test_standard_form() {
-        let vecs = PkBfvVectors::new(1, 512);
+        let vecs = PkTrBfvVectors::new(1, 512);
         let std_form = vecs.standard_form();
 
         // Check that all vectors are properly reduced
@@ -347,6 +360,7 @@ mod tests {
         assert!(std_form.a.iter().flatten().all(|x| x < &p));
         assert!(std_form.eek.iter().all(|x| x < &p));
         assert!(std_form.sk.iter().all(|x| x < &p));
+        assert!(std_form.e_sm.iter().all(|x| x < &p));
     }
 
     #[test]
@@ -359,18 +373,22 @@ mod tests {
 
         // Use extended encryption to get the polynomial data
         let mut rng = StdRng::seed_from_u64(0);
-        use fhe::bfv::PublicKey;
-        let (pk, a, sk_rns, eek_rns) = PublicKey::new_extended(&sk, &mut rng).unwrap();
+        let crp = CommonRandomPoly::new(&params, &mut rng).unwrap();
+        let (public_key_share, a, sk_rns, e_rns) =
+            PublicKeyShare::new_extended(&sk, crp.clone(), &mut rng).unwrap();
+
+        // For testing, use a copy of e_rns as e_sm (in real usage, sample.rs generates this)
+        let e_sm_rns = e_rns.clone();
+
         // Compute vectors
-        use crate::sample::PublicKeyOrPoly;
         let vecs =
-            PkBfvVectors::compute(&a, &eek_rns, &sk_rns, &PublicKeyOrPoly::Full(pk), &params)
+            PkTrBfvVectors::compute(&a, &e_rns, &sk_rns, &e_sm_rns, &public_key_share, &params)
                 .unwrap();
 
         let json = vecs.to_json();
 
         // Check all required fields are present
-        let required_fields = ["pk0is", "pk1is", "a", "eek", "sk", "r2is", "r1is"];
+        let required_fields = ["pk0is", "pk1is", "a", "eek", "sk", "e_sm", "r2is", "r1is"];
 
         for field in required_fields.iter() {
             assert!(json.get(field).is_some(), "Missing field: {}", field);
