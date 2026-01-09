@@ -1746,6 +1746,7 @@ dependencies = [
  "zkfhe-enc-bfv",
  "zkfhe-greco",
  "zkfhe-pk-agg-trbfv",
+ "zkfhe-pk-bfv",
  "zkfhe-pk-trbfv",
  "zkfhe-shared",
  "zkfhe-verify-shares-trbfv",
@@ -1797,6 +1798,28 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "rand",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "zkfhe-shared",
+]
+
+[[package]]
+name = "zkfhe-pk-bfv"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bigint-poly",
+ "blake3",
+ "fhe",
+ "fhe-math",
+ "fhe-traits",
+ "itertools 0.14.0",
+ "num-bigint",
+ "num-traits",
+ "rand",
+ "rayon",
  "serde",
  "serde_json",
  "tempfile",
