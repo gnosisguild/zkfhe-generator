@@ -7,13 +7,19 @@ use ark_ff::PrimeField;
 use num_bigint::BigInt;
 use num_traits::Zero;
 
-/// Compute a commitment to the public key polynomials by flattening them and hashing.
+/// Compute a commitment to two polynomial components by flattening them and hashing.
 /// This matches the Noir `commitment_payload` and `generate_challenge` functions exactly.
-pub fn compute_pk_commitment(pk0: &[Vec<BigInt>], pk1: &[Vec<BigInt>], bit_pk: u32) -> BigInt {
-    // Step 1: Flatten pk0is and pk1is (matches commitment_payload in Noir)
+/// Can be used for any polynomials in Greco as they all have the same length.
+///
+/// # Arguments
+/// * `poly0` - First polynomial component array
+/// * `poly1` - Second polynomial component array
+/// * `bit` - The bit width for coefficient bounds
+pub fn compute_poly_commitment(poly0: &[Vec<BigInt>], poly1: &[Vec<BigInt>], bit: u32) -> BigInt {
+    // Step 1: Flatten both polynomial components (matches commitment_payload in Noir)
     let mut inputs: Vec<Field> = Vec::new();
-    inputs = flatten(inputs, pk0, bit_pk);
-    inputs = flatten(inputs, pk1, bit_pk);
+    inputs = flatten(inputs, poly0, bit);
+    inputs = flatten(inputs, poly1, bit);
 
     // Step 2: Hash using SafeSponge (matches generate_challenge in Noir)
     let domain_separator: [u8; 64] = [
