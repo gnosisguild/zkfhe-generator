@@ -65,6 +65,36 @@ pub fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {
     BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
 }
 
+/// Compute a commitment to the secret (either sk_trbfv or e_sm).
+/// This matches the Noir `compute_secret_commitment` function exactly.
+/// Used in C1, C2.
+pub fn compute_secret_commitment(secret: &[BigInt], bit_secret: u32) -> BigInt {
+    // Step 1: Flatten secret (matches prepare_single_polynomial_commitment_payload in Noir)
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, &[secret.to_vec()], bit_secret);
+
+    // Step 2: Hash using SafeSponge (matches compute_secret_commitment in Noir)
+    // Domain separator - "PVSS_secret" (must match C1 and C2)
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x65, 0x63, 0x72, 0x65, 0x74, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
 /// Compute aggregated commitment for s or e
 /// This matches the circuit's compute_aggregated_commitment function exactly
 pub fn compute_aggregated_commitment(values: &[Vec<BigInt>]) -> BigInt {

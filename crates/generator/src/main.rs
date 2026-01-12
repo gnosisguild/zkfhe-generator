@@ -699,6 +699,7 @@ fn generate_circuit_params(
                 &trbfv_params,
                 output_dir,
                 ciphernodes_config.as_ref(),
+                sample_type,
             )?;
         } else {
             generate_main_template(
@@ -707,6 +708,7 @@ fn generate_circuit_params(
                 &trbfv_params,
                 output_dir,
                 ciphernodes_config.as_ref(),
+                sample_type,
             )?;
         }
         println!("✅ main.nr template generated successfully");
@@ -729,6 +731,7 @@ fn generate_main_template(
     trbfv_params: &Arc<BfvParameters>,
     output_dir: &Path,
     ciphernodes_config: Option<&CiphernodesConfig>,
+    sample_type: SampleType,
 ) -> anyhow::Result<()> {
     // Extract base parameters (N, L) that are common to all circuits
     let l = bfv_params.moduli().len();
@@ -1160,19 +1163,46 @@ fn generate_main_template(
                 VerifySharesTrbfvTemplateParams,
             };
 
-            let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(trbfv_params, 0)
-                .map_err(|e| {
-                    anyhow::anyhow!("Failed to compute verify_shares_trbfv bounds: {e:?}")
-                })?;
-
-            let bounds_data = VerifySharesTrbfvBoundsData {
-                sk_bound: bounds.sk_bound.to_string(),
-                moduli: crypto_params.moduli,
-            };
-
             let config = ciphernodes_config
                 .cloned()
                 .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
+
+            // For verify_shares, we process shares for a single secret, so num_ciphertexts = 1
+            let num_ciphertexts = 1;
+
+            // Compute bounds based on sample type
+            // For smudging noise, we need to compute the smudging bound
+            let (crypto_params, bounds) = if matches!(sample_type, SampleType::SmudgingNoise) {
+                VerifySharesTrbfvBounds::compute_with_smudging(
+                    trbfv_params,
+                    0,
+                    circuit.security_parameter(),
+                    &config,
+                    num_ciphertexts,
+                )
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to compute verify_shares_trbfv bounds with smudging: {e:?}"
+                    )
+                })?
+            } else {
+                VerifySharesTrbfvBounds::compute(trbfv_params, 0).map_err(|e| {
+                    anyhow::anyhow!("Failed to compute verify_shares_trbfv bounds: {e:?}")
+                })?
+            };
+
+            // Use the actual secret bound for bit_secret calculation (smudging bound if available, otherwise sk_bound)
+            let secret_bound_str = bounds
+                .e_sm_bound
+                .as_ref()
+                .map(|b| b.to_string())
+                .unwrap_or_else(|| bounds.sk_bound.to_string());
+
+            let bounds_data = VerifySharesTrbfvBoundsData {
+                sk_bound: bounds.sk_bound.to_string(),
+                secret_bound: secret_bound_str,
+                moduli: crypto_params.moduli,
+            };
 
             // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
             let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
@@ -1181,7 +1211,7 @@ fn generate_main_template(
                 "insecure"
             };
 
-            let sk_shares_template_params = VerifySharesTrbfvTemplateParams::from_bounds(
+            let mut sk_shares_template_params = VerifySharesTrbfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(trbfv_params.degree(), l, circuit_type),
                 config.num_parties,
                 config.threshold,
@@ -1189,6 +1219,12 @@ fn generate_main_template(
                 circuit.parameter_type().as_str().to_string(),
                 security_level.to_string(),
             )?;
+
+            // Set the secret type postfix based on sample type
+            sk_shares_template_params.secret_type_postfix = match sample_type {
+                SampleType::SecretKey => "SK".to_string(),
+                SampleType::SmudgingNoise => "E_SM".to_string(),
+            };
 
             let template_generator = VerifySharesTrbfvMainTemplate;
             template_generator.generate_main_file(&sk_shares_template_params, output_dir)?;

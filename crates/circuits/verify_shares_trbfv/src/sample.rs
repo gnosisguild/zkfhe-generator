@@ -6,7 +6,7 @@
 
 use fhe::bfv::{BfvParameters, SecretKey};
 use fhe::trbfv::{ShareManager, TRBFV};
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use parity_matrix::matrix::{ParityMatrixConfig, build_generator_matrix, null_space};
 use rand::rngs::OsRng;
 use shared::circuit::{CiphernodesConfig, SampleType};
@@ -15,8 +15,10 @@ use std::sync::Arc;
 /// Data from a sample verify shares TRBFV generation
 #[derive(Debug, Clone)]
 pub struct VerifySharesTrbfvData {
-    /// Secret key (trinary coefficients)
-    pub sk: SecretKey,
+    /// Secret coefficients (can be either secret key trinary coefficients or smudging noise)
+    /// For secret key: trinary coefficients {-1, 0, 1}
+    /// For smudging noise: the actual smudging noise coefficients (can be large values)
+    pub secret_coeffs: Vec<BigInt>,
     /// Shamir secret shares: sk_sss[modulus_idx][party_idx][coeff_idx]
     /// Gives the share that party_idx has for coefficient coeff_idx at modulus_idx
     pub sk_sss: Vec<ndarray::Array2<u64>>,
@@ -30,10 +32,10 @@ pub struct VerifySharesTrbfvData {
     pub threshold: usize,
 }
 
-/// Generate sample secret key shares data
+/// Generate sample secret shares data
 ///
 /// This generates:
-/// 1. A random secret key (trinary coefficients) or smudging error
+/// 1. A random secret (either secret key with trinary coefficients, or smudging noise)
 /// 2. Shamir secret shares for each coefficient at each modulus
 /// 3. Parity check matrices for each modulus
 ///
@@ -43,15 +45,16 @@ pub struct VerifySharesTrbfvData {
 /// * `sample_type` - The sample type (SecretKey or SmudgingNoise)
 /// * `ciphernodes_config` - Optional configuration for number of parties and threshold.
 ///   If None, uses default values (5 parties, threshold 2).
+/// * `lambda` - Security parameter
 ///
 /// # Sample Type
 ///
-/// * `SecretKey` - Generates shares from a secret key (default use case)
-/// * `SmudgingNoise` - Generates shares from smudging error (for noise flooding)
+/// * `SecretKey` - Generates shares from a secret key (trinary coefficients {-1, 0, 1})
+/// * `SmudgingNoise` - Generates shares from smudging noise (actual noise coefficients)
 ///
 /// # Returns
 ///
-/// A `VerifySharesTrbfvData` struct containing the secret key, shares, and parity matrices.
+/// A `VerifySharesTrbfvData` struct containing the secret coefficients, shares, and parity matrices.
 pub fn generate_sample_sk_shares(
     trbfv_params: &Arc<BfvParameters>,
     sample_type: SampleType,
@@ -74,10 +77,10 @@ pub fn generate_sample_sk_shares(
     let mut share_manager = ShareManager::new(num_parties, threshold, trbfv_params.clone());
 
     // Generate shares based on sample type
-    let (sk, sk_sss) = match sample_type {
+    let (secret_coeffs, sk_sss) = match sample_type {
         SampleType::SmudgingNoise => {
             // Generate smudging error and split into shares
-            let num_ciphertexts = 10;
+            let num_ciphertexts = 1;
             let esi_coeffs = trbfv
                 .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
                 .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
@@ -88,10 +91,11 @@ pub fn generate_sample_sk_shares(
                 .generate_secret_shares_from_poly(esi_poly.clone(), rng)
                 .map_err(|e| format!("Failed to generate error shares: {:?}", e))?;
 
-            // For the sk field, we use a dummy secret key (trinary coefficients)
-            // The actual shares come from smudging error
-            let sk = SecretKey::random(trbfv_params, &mut rng);
-            (sk, esi_sss)
+            // Use smudging noise coefficients directly as the secret
+            // The smudging noise coefficients are the actual secret we're sharing
+            let secret_coeffs = esi_coeffs.clone();
+
+            (secret_coeffs, esi_sss)
         }
         SampleType::SecretKey => {
             // Generate a random secret key (trinary coefficients)
@@ -109,7 +113,10 @@ pub fn generate_sample_sk_shares(
                 .generate_secret_shares_from_poly(sk_poly.clone(), rng)
                 .map_err(|e| format!("Failed to generate SK shares: {:?}", e))?;
 
-            (sk, sk_sss)
+            // Extract secret key coefficients (trinary: -1, 0, 1) and convert to BigInt
+            let secret_coeffs: Vec<BigInt> = sk.coeffs.iter().map(|&c| BigInt::from(c)).collect();
+
+            (secret_coeffs, sk_sss)
         }
     };
 
@@ -148,7 +155,7 @@ pub fn generate_sample_sk_shares(
     }
 
     Ok(VerifySharesTrbfvData {
-        sk,
+        secret_coeffs,
         sk_sss,
         h,
         num_parties,

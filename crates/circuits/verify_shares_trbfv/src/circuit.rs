@@ -18,11 +18,13 @@ use std::sync::Arc;
 
 /// Verify Shares TRBFV circuit implementation
 ///
-/// This circuit verifies that Shamir secret key shares satisfy the Reed-Solomon parity check.
+/// This circuit verifies that Shamir secret shares satisfy the Reed-Solomon parity check.
+/// The secret can be either sk_trbfv or e_sm (smudging noise).
 /// It verifies:
-/// 1. sk consistency: y[i][j][0] == sk[i] for all i, j
-/// 2. Range checks: sk coefficients are trinary {-1, 0, 1}, shares are in [0, q_j)
+/// 1. secret consistency: y[i][j][0] == secret[i] for all i, j
+/// 2. Range checks: secret coefficients are trinary {-1, 0, 1}, shares are in [0, q_j)
 /// 3. Parity check: H[j] * y[i][j]^T == 0 mod q_j for all i, j
+/// 4. Secret commitment matches expected commitment (from C1)
 pub struct VerifySharesTrbfvCircuit {
     /// The parameter type this circuit is configured with
     pub parameter_type: ParameterType,
@@ -88,12 +90,29 @@ impl Circuit for VerifySharesTrbfvCircuit {
         let selected_params = trbfv_params;
 
         // Generate bounds and cryptographic parameters
-        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute(selected_params, 0)?;
+        // For smudging noise, we need to compute the smudging bound
+        let (crypto_params, bounds) = if matches!(self.sample_type, SampleType::SmudgingNoise) {
+            let config = ciphernodes_config
+                .cloned()
+                .unwrap_or_else(|| shared::circuit::CiphernodesConfig::new(5, 5, 2));
+            let num_ciphertexts = 1; // we only need one ciphertext for the secret commitment
+            VerifySharesTrbfvBounds::compute_with_smudging(
+                selected_params,
+                0,
+                self.security_parameter,
+                &config,
+                num_ciphertexts,
+            )?
+        } else {
+            VerifySharesTrbfvBounds::compute(selected_params, 0)?
+        };
 
-        // Calculate bit_sk from bounds for commitment computation
-        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string())?;
+        // Calculate bit_secret from the appropriate bound for commitment computation
+        // Use smudging bound if available, otherwise use sk_bound
+        let secret_bound = bounds.e_sm_bound.as_ref().unwrap_or(&bounds.sk_bound);
+        let bit_secret = shared::template::calculate_bit_width(&secret_bound.to_string())?;
 
-        // Generate sample secret key shares data
+        // Generate sample secret shares data (can be either secret key or smudging noise)
         let shares_data = generate_sample_sk_shares(
             selected_params,
             self.sample_type,
@@ -105,7 +124,7 @@ impl Circuit for VerifySharesTrbfvCircuit {
         })?;
 
         // Compute witness vectors from the shares data
-        let vectors = VerifySharesTrbfvVectors::compute(&shares_data, selected_params, bit_sk)?;
+        let vectors = VerifySharesTrbfvVectors::compute(&shares_data, selected_params, bit_secret)?;
 
         // Verify that vectors satisfy circuit constraints
         vectors.verify(
@@ -118,8 +137,15 @@ impl Circuit for VerifySharesTrbfvCircuit {
         let vectors_standard = vectors.standard_form();
 
         // Generate template params for constant file generation
+        // Use the actual secret bound for bit_secret calculation (smudging bound if available, otherwise sk_bound)
+        let secret_bound_str = bounds
+            .e_sm_bound
+            .as_ref()
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| bounds.sk_bound.to_string());
         let bounds_data = VerifySharesTrbfvBoundsData {
             sk_bound: bounds.sk_bound.to_string(),
+            secret_bound: secret_bound_str,
             moduli: crypto_params.moduli.clone(),
         };
 
@@ -134,7 +160,7 @@ impl Circuit for VerifySharesTrbfvCircuit {
             "insecure"
         };
 
-        let template_params = VerifySharesTrbfvTemplateParams::from_bounds(
+        let mut template_params = VerifySharesTrbfvTemplateParams::from_bounds(
             shared::template::BaseTemplateParams::new(
                 selected_params.degree(),
                 selected_params.moduli().len(),
@@ -147,15 +173,31 @@ impl Circuit for VerifySharesTrbfvCircuit {
             security_level.to_string(),
         )?;
 
-        // Generate config .nr file (named after parameter set: trbfv.nr or bfv.nr)
-        let configs_filename = format!("{}.nr", self.parameter_type().as_str());
-        VerifySharesTrbfvConfigsGenerator::generate_configs_file(
+        // Set the secret type postfix based on sample type
+        template_params.secret_type_postfix = match self.sample_type {
+            SampleType::SecretKey => "SK".to_string(),
+            SampleType::SmudgingNoise => "E_SM".to_string(),
+        };
+
+        // Calculate bit widths for both secret types
+        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string())?;
+        let bit_esm = bounds
+            .e_sm_bound
+            .as_ref()
+            .map(|b| shared::template::calculate_bit_width(&b.to_string()))
+            .transpose()?
+            .unwrap_or(bit_sk); // Fallback to sk if no esm bound
+
+        // Generate single config file with both SK and ESM bit parameters
+        let param_type_str = self.parameter_type().as_str();
+        let configs_filename = format!("{}.nr", param_type_str);
+        let content = VerifySharesTrbfvConfigsGenerator::generate_configs_with_both_secret_types(
             &crypto_params,
-            &bounds,
             &template_params,
-            output_dir,
-            &configs_filename,
+            bit_sk,
+            bit_esm,
         )?;
+        std::fs::write(output_dir.join(&configs_filename), content)?;
 
         // Create TOML generator and generate file (without params - they're in the config file)
         let toml_generator = VerifySharesTrbfvTomlGenerator::new(vectors_standard);
@@ -207,7 +249,8 @@ mod tests {
         // Read and verify basic structure
         let content = std::fs::read_to_string(&toml_path).unwrap();
         // Note: params are now in a separate .nr constant file
-        assert!(content.contains("sk"));
+        assert!(content.contains("secret"));
+        assert!(content.contains("expected_secret_commitment"));
         assert!(content.contains("y"));
         assert!(content.contains("h"));
 

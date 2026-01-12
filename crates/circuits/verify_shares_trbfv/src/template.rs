@@ -12,6 +12,7 @@ use shared::template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_
 #[derive(Debug, Clone)]
 pub struct VerifySharesTrbfvBoundsData {
     pub sk_bound: String,
+    pub secret_bound: String, // Actual bound for secret (either sk_bound or e_sm_bound)
     pub moduli: Vec<u64>,
 }
 
@@ -27,8 +28,8 @@ pub struct VerifySharesTrbfvTemplateParams {
     pub num_parties: usize,
     /// Threshold value (T)
     pub threshold: usize,
-    /// Bit width for secret key (BIT_SK)
-    pub bit_sk: u32,
+    /// Bit width for secret (BIT_SECRET)
+    pub bit_secret: u32,
     /// Bit width for shares (BIT_SHARE)
     pub bit_share: u32,
     /// Parameter set name (trbfv or bfv) for import path
@@ -36,6 +37,8 @@ pub struct VerifySharesTrbfvTemplateParams {
     /// Security level (secure or insecure) for import path
     /// "production" for SET_8192_100_4, "insecure" otherwise
     pub security_level: String,
+    /// Secret type postfix ("SK" or "ESM") for config names
+    pub secret_type_postfix: String,
 }
 
 impl VerifySharesTrbfvTemplateParams {
@@ -47,8 +50,8 @@ impl VerifySharesTrbfvTemplateParams {
         parameter_set: String,
         security_level: String,
     ) -> ZkFheResult<Self> {
-        // Calculate bit width for secret key bound
-        let bit_sk = calculate_bit_width(&bounds.sk_bound)?;
+        // Calculate bit width for secret bound (use secret_bound which may be smudging bound)
+        let bit_secret = calculate_bit_width(&bounds.secret_bound)?;
 
         // Calculate bit width for shares directly from moduli
         // Share bound for each modulus q_j is q_j - 1 (since shares are in [0, q_j))
@@ -63,10 +66,11 @@ impl VerifySharesTrbfvTemplateParams {
             base,
             num_parties,
             threshold,
-            bit_sk,
+            bit_secret,
             bit_share,
             parameter_set,
             security_level,
+            secret_type_postfix: String::new(), // Will be set by caller
         })
     }
 }
@@ -76,9 +80,18 @@ pub struct VerifySharesTrbfvMainTemplate;
 
 impl MainTemplateGenerator<VerifySharesTrbfvTemplateParams> for VerifySharesTrbfvMainTemplate {
     fn generate_template(&self, params: &VerifySharesTrbfvTemplateParams) -> ZkFheResult<String> {
+        let bit_secret_name = format!("VERIFY_SHARES_BIT_SECRET_{}", params.secret_type_postfix);
+        let configs_name = format!("VERIFY_SHARES_CONFIGS_{}", params.secret_type_postfix);
+
+        // Determine which verification function to use:
+        // Since we normalize y[i][j][0] = secret[i] mod q_j in Rust, values are kept small.
+        // We use ModU128 for all cases to keep circuit size manageable.
+        // Note: q_j values for production are typically < 2^52, so normalized values should fit in U128.
+        let verify_call = "verify_shares.verify()";
+
         let template = format!(
             r#"use lib::configs::{}::{}::{{
-    L, N, VERIFY_SHARES_BIT_SHARE, VERIFY_SHARES_BIT_SK, VERIFY_SHARES_CONFIGS,
+    L, N, VERIFY_SHARES_BIT_SHARE, {}, {},
 }};
 use lib::core::trbfv_verify_shares::VerifyShares;
 use lib::math::polynomial::Polynomial;
@@ -89,17 +102,25 @@ pub global N_PARTIES: u32 = {};
 pub global T: u32 = {};
 
 fn main(
-    expected_sk_commitment: Field,
-    sk: Polynomial<N>,
+    expected_secret_commitment: Field,
+    secret: Polynomial<N>,
     y: [[[Field; N_PARTIES + 1]; L]; N],
-    h: [[[Field; N_PARTIES + 1]; T + 1]; L],
+    h: [[[Field; N_PARTIES + 1]; N_PARTIES - T]; L],
 ) -> pub [[Field; L]; N_PARTIES] {{
-    let sk_shares: VerifyShares<N, L, N_PARTIES, T, VERIFY_SHARES_BIT_SK, VERIFY_SHARES_BIT_SHARE>
-         = VerifyShares::new(VERIFY_SHARES_CONFIGS, expected_sk_commitment, sk, y, h);
+    let verify_shares: VerifyShares<N, L, N_PARTIES, T, {}, VERIFY_SHARES_BIT_SHARE>
+         = VerifyShares::new({}, expected_secret_commitment, secret, y, h);
 
-    sk_shares.verify()
+    {}
 }}"#,
-            params.security_level, params.parameter_set, params.num_parties, params.threshold,
+            params.security_level,
+            params.parameter_set,
+            bit_secret_name,
+            configs_name,
+            params.num_parties,
+            params.threshold,
+            bit_secret_name,
+            configs_name,
+            verify_call,
         );
 
         Ok(template)

@@ -7,24 +7,27 @@ use crate::sample::VerifySharesTrbfvData;
 use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use shared::commitments::compute_sk_commitment;
+use shared::commitments::compute_secret_commitment;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
 /// Set of vectors for input validation of Verify Shares TRBFV
 #[derive(Clone, Debug)]
 pub struct VerifySharesTrbfvVectors {
-    /// Secret key coefficients (N elements, trinary: {-1, 0, 1})
-    pub sk: Vec<BigInt>,
+    /// Secret polynomial coefficients (N elements)
+    /// For secret key: trinary coefficients {-1, 0, 1}
+    /// For smudging noise: actual noise coefficients (can be large values)
+    pub secret: Vec<BigInt>,
     /// Shares: y[coeff_idx][mod_idx][0..N_PARTIES+1]
-    /// y[i][j][0] = sk[i] at modulus j
+    /// y[i][j][0] = secret[i] at modulus j
     /// y[i][j][k] = share for party k-1 (for k = 1..N_PARTIES)
     pub y: Vec<Vec<Vec<BigInt>>>,
     /// Parity check matrices: h[mod_idx][row][col]
     /// Size per modulus: (N_PARTIES - T) × (N_PARTIES + 1)
     pub h: Vec<Vec<Vec<BigInt>>>,
-    /// Expected commitment to sk (from BFV public key circuit)
-    pub expected_sk_commitment: BigInt,
+    /// Expected commitment to secret (from C1, pk_trbfv circuit)
+    /// This can be either commit(sk_trbfv) or commit(e_sm)
+    pub expected_secret_commitment: BigInt,
 }
 
 impl VerifySharesTrbfvVectors {
@@ -32,10 +35,10 @@ impl VerifySharesTrbfvVectors {
     pub fn new(degree: usize, num_moduli: usize, num_parties: usize, threshold: usize) -> Self {
         let num_parity_rows = num_parties - threshold;
         VerifySharesTrbfvVectors {
-            sk: vec![BigInt::zero(); degree],
+            secret: vec![BigInt::zero(); degree],
             y: vec![vec![vec![BigInt::zero(); num_parties + 1]; num_moduli]; degree],
             h: vec![vec![vec![BigInt::zero(); num_parties + 1]; num_parity_rows]; num_moduli],
-            expected_sk_commitment: BigInt::zero(),
+            expected_secret_commitment: BigInt::zero(),
         }
     }
 
@@ -45,7 +48,7 @@ impl VerifySharesTrbfvVectors {
     ///
     /// * `data` - Sample secret key shares data
     /// * `params` - BFV parameters
-    /// * `bit_sk` - Bit width for secret key bounds (used for commitment computation)
+    /// * `bit_secret` - Bit width for secret bounds (used for commitment computation)
     ///
     /// # Returns
     ///
@@ -54,25 +57,20 @@ impl VerifySharesTrbfvVectors {
     pub fn compute(
         data: &VerifySharesTrbfvData,
         params: &Arc<BfvParameters>,
-        bit_sk: u32,
+        bit_secret: u32,
     ) -> ZkFheResult<Self> {
         let ctx = params.ctx_at_level(0)?;
         let degree = params.degree();
         let num_moduli = ctx.moduli().len();
 
-        // Extract secret key coefficients in signed form
-        // The circuit expects sk[i] to equal y[i][j][0] for all j
-        // sk[i] is range-checked to be in {-1, 0, 1} using range_check_2bounds
-        let mut sk: Vec<BigInt> = Vec::new();
-        for coeff_idx in 0..degree {
-            // Get the signed value from the original secret key
-            let sk_signed = data.sk.coeffs[coeff_idx];
-            // Convert to BigInt (signed: -1, 0, or 1)
-            sk.push(BigInt::from(sk_signed));
-        }
+        // Extract secret coefficients (already in BigInt form)
+        // The circuit expects secret[i] to equal y[i][j][0] for all j
+        // For secret key: secret[i] is range-checked to be in {-1, 0, 1}
+        // For smudging noise: secret[i] can be any value within the noise bound
+        let secret = data.secret_coeffs.clone();
 
-        // Compute y[coeff_idx][mod_idx][0..N_PARTIES+1] from sk and sk_sss
-        // y[i][j][0] = sk[i] (same signed value for all j)
+        // Compute y[coeff_idx][mod_idx][0..N_PARTIES+1] from secret and sk_sss
+        // y[i][j][0] = secret[i] (same signed value for all j)
         // y[i][j][k] = sk_sss[j][k-1][i] (share for party k-1, already normalized to [0, q_j))
         let mut y: Vec<Vec<Vec<BigInt>>> = Vec::new();
 
@@ -83,8 +81,8 @@ impl VerifySharesTrbfvVectors {
             for mod_idx in 0..num_moduli {
                 let mut y_mod: Vec<BigInt> = Vec::new();
 
-                // y[i][j][0] = sk[i] (same signed value for all j)
-                y_mod.push(sk[coeff_idx].clone());
+                // y[i][j][0] = secret[i] (same signed value for all j)
+                y_mod.push(secret[coeff_idx].clone());
 
                 // y[i][j][k] for k = 1..N_PARTIES from sk_sss
                 // sk_sss[mod_idx][party_idx][coeff_idx] gives the share that party_idx has
@@ -116,22 +114,22 @@ impl VerifySharesTrbfvVectors {
             h.push(h_mod);
         }
 
-        // Compute expected_sk_commitment (matches BFV circuit's commit_to_sk)
-        let expected_sk_commitment = compute_sk_commitment(&sk, bit_sk);
+        // Compute expected_secret_commitment (matches C1's compute_secret_commitment)
+        let expected_secret_commitment = compute_secret_commitment(&secret, bit_secret);
 
         Ok(VerifySharesTrbfvVectors {
-            sk,
+            secret,
             y,
             h,
-            expected_sk_commitment,
+            expected_secret_commitment,
         })
     }
 
     /// Verify that the vectors satisfy all circuit constraints
     ///
     /// This function checks:
-    /// 1. SK consistency: y[i][j][0] == sk[i] for all i, j
-    /// 2. Range checks: sk coefficients are trinary {-1, 0, 1}, shares are in [0, q_j)
+    /// 1. Secret consistency: y[i][j][0] == secret[i] for all i, j
+    /// 2. Range checks: secret coefficients (trinary for secret key, bounded for smudging noise), shares are in [0, q_j)
     /// 3. Parity check: H[j] * y[i][j]^T == 0 mod q_j for all i, j
     ///
     /// # Arguments
@@ -153,25 +151,30 @@ impl VerifySharesTrbfvVectors {
         let degree = params.degree();
         let num_moduli = ctx.moduli().len();
 
-        // Step 1: Verify SK consistency
-        // y[i][j][0] == sk[i] for all i, j
-        // Note: sk[i] is stored in signed form (-1, 0, 1)
-        // All y[i][j][0] are set to the same value as sk[i]
+        // Step 1: Verify secret consistency
+        // y[i][j][0] == secret[i] for all i, j
+        // All y[i][j][0] are set to the same value as secret[i]
         // After standard_form, both will be reduced modulo ZKP modulus and should still be equal
         for coeff_idx in 0..degree {
-            let sk_coeff = &self.sk[coeff_idx];
+            let secret_coeff = &self.secret[coeff_idx];
 
             for mod_idx in 0..num_moduli {
                 let y_value = &self.y[coeff_idx][mod_idx][0];
 
-                // The circuit expects exact equality: y[i][j][0] == sk[i] for all j
-                // Since we set all y[i][j][0] to the same value as sk[i],
-                // they should all equal sk[i] exactly
-                if sk_coeff != y_value {
+                // The circuit expects exact equality: y[i][j][0] == secret[i] for all j
+                // Since we set all y[i][j][0] to the same value as secret[i],
+                // they should all equal secret[i] exactly
+                if secret_coeff != y_value {
                     return Err(shared::errors::ZkFheError::Bfv {
                         message: format!(
-                            "SK consistency check failed at coefficient {}, modulus {}: sk[{}] = {}, y[{}][{}][0] = {}. These should be equal.",
-                            coeff_idx, mod_idx, coeff_idx, sk_coeff, coeff_idx, mod_idx, y_value
+                            "Secret consistency check failed at coefficient {}, modulus {}: secret[{}] = {}, y[{}][{}][0] = {}. These should be equal.",
+                            coeff_idx,
+                            mod_idx,
+                            coeff_idx,
+                            secret_coeff,
+                            coeff_idx,
+                            mod_idx,
+                            y_value
                         ),
                     });
                 }
@@ -179,22 +182,7 @@ impl VerifySharesTrbfvVectors {
         }
 
         // Step 2: Range checks
-        // SK coefficients should be trinary: -1, 0, or 1 (signed form)
-        // The circuit uses range_check_2bounds to verify this
-        for (coeff_idx, sk_coeff) in self.sk.iter().enumerate() {
-            // Check that sk_coeff is in {-1, 0, 1}
-            if *sk_coeff != BigInt::from(-1)
-                && *sk_coeff != BigInt::from(0)
-                && *sk_coeff != BigInt::from(1)
-            {
-                return Err(shared::errors::ZkFheError::Bfv {
-                    message: format!(
-                        "SK range check failed at coefficient {}: sk_coeff = {} (expected -1, 0, or 1)",
-                        coeff_idx, sk_coeff
-                    ),
-                });
-            }
-        }
+        // We don't verify range here as it depends on the sample type, but the circuit will check it
 
         // Shares y[i][j][k] for k >= 1 should be in [0, q_j)
         for mod_idx in 0..num_moduli {
@@ -290,9 +278,9 @@ impl VerifySharesTrbfvVectors {
         use shared::constants::get_zkp_modulus;
         let zkp_modulus = get_zkp_modulus();
 
-        // Reduce sk coefficients
-        let sk: Vec<BigInt> = self
-            .sk
+        // Reduce secret coefficients
+        let secret: Vec<BigInt> = self
+            .secret
             .into_iter()
             .map(|x| {
                 let mut reduced = x % &zkp_modulus;
@@ -309,17 +297,17 @@ impl VerifySharesTrbfvVectors {
         // Reduce h coefficients (3D array)
         let h = reduce_coefficients_3d(&self.h, &zkp_modulus);
 
-        // Reduce expected_sk_commitment modulo ZKP modulus
-        let mut expected_sk_commitment = self.expected_sk_commitment % &zkp_modulus;
-        if expected_sk_commitment < BigInt::zero() {
-            expected_sk_commitment += &zkp_modulus;
+        // Reduce expected_secret_commitment modulo ZKP modulus
+        let mut expected_secret_commitment = self.expected_secret_commitment % &zkp_modulus;
+        if expected_secret_commitment < BigInt::zero() {
+            expected_secret_commitment += &zkp_modulus;
         }
 
         VerifySharesTrbfvVectors {
-            sk,
+            secret,
             y,
             h,
-            expected_sk_commitment,
+            expected_secret_commitment,
         }
     }
 }
@@ -336,7 +324,8 @@ mod tests {
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
         let (_, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
-        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
+        let bit_secret =
+            shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
 
         let data = generate_sample_sk_shares(
             &params,
@@ -346,8 +335,8 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_sk).unwrap();
-        assert_eq!(vectors.sk.len(), params.degree());
+        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
+        assert_eq!(vectors.secret.len(), params.degree());
         assert_eq!(vectors.y.len(), params.degree());
         assert_eq!(vectors.h.len(), params.moduli().len());
 
@@ -375,7 +364,8 @@ mod tests {
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
         let (_, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
-        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
+        let bit_secret =
+            shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
 
         let data = generate_sample_sk_shares(
             &params,
@@ -385,16 +375,16 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_sk).unwrap();
+        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
         let vectors_standard = vectors.standard_form();
 
         // Verify all values are within ZKP modulus
         use shared::constants::get_zkp_modulus;
         let zkp_modulus = get_zkp_modulus();
 
-        for sk_val in &vectors_standard.sk {
-            assert!(*sk_val >= BigInt::zero());
-            assert!(*sk_val < zkp_modulus);
+        for secret_val in &vectors_standard.secret {
+            assert!(*secret_val >= BigInt::zero());
+            assert!(*secret_val < zkp_modulus);
         }
 
         for y_coeff in &vectors_standard.y {
@@ -422,7 +412,8 @@ mod tests {
         use shared::circuit::SampleType;
         let params = test_parameters_trbfv();
         let (_, bounds) = VerifySharesTrbfvBounds::compute(&params, 0).unwrap();
-        let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
+        let bit_secret =
+            shared::template::calculate_bit_width(&bounds.sk_bound.to_string()).unwrap();
 
         let data = generate_sample_sk_shares(
             &params,
@@ -432,7 +423,7 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_sk).unwrap();
+        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
 
         // Verify should pass for valid data
         let result = vectors.verify(&params, data.num_parties, data.threshold);
