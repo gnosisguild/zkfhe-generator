@@ -1064,25 +1064,17 @@ fn generate_main_template(
                 .generate_main_file(&dec_share_agg_trbfv_template_params, output_dir)?;
         }
         "dec-bfv" => {
-            use dec_bfv::bounds::DecBfvBounds;
-            use dec_bfv::template::{DecBfvBoundsData, DecBfvMainTemplate, DecBfvTemplateParams};
-
-            let (_, bounds) = DecBfvBounds::compute(bfv_params, trbfv_params, 0)
-                .map_err(|e| anyhow::anyhow!("Failed to compute dec_bfv bounds: {e:?}"))?;
-
-            let bounds_data = DecBfvBoundsData {
-                s_bound: bounds.s_bound.to_string(),
-                u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
-                u_global_bound: bounds.u_global_bound.to_string(),
-                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
-                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-                delta: bounds.delta.to_string(),
-                delta_half: bounds.delta_half.to_string(),
-            };
+            use dec_bfv::template::{DecBfvMainTemplate, DecBfvTemplateParams};
 
             let num_honest_parties = ciphernodes_config
                 .map(|c| c.num_honest_parties)
                 .unwrap_or(CiphernodesConfig::defaults().num_honest_parties); // Default to 3 if not provided
+
+            // Calculate bit_msg for commitment computation
+            // Use a reasonable default based on plaintext modulus
+            let plaintext_modulus = bfv_params.plaintext();
+            let bit_msg = shared::template::calculate_bit_width(&plaintext_modulus.to_string())
+                .map_err(|e| anyhow::anyhow!("Failed to calculate bit_msg: {e:?}"))?;
 
             // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
             let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
@@ -1091,12 +1083,22 @@ fn generate_main_template(
                 "insecure"
             };
 
+            // Determine sample type postfix
+            let sample_type_postfix = match sample_type {
+                SampleType::SecretKey => "SK",
+                SampleType::SmudgingNoise => "E_SM",
+            };
+
+            // For dec_bfv, L should be the number of TRBFV moduli (not BFV moduli)
+            let l_trbfv = trbfv_params.moduli().len();
+
             let dec_bfv_template_params = DecBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
+                BaseTemplateParams::new(bfv_params.degree(), l_trbfv, circuit_type),
                 num_honest_parties,
-                &bounds_data,
+                bit_msg,
                 circuit.parameter_type().as_str().to_string(),
                 security_level.to_string(),
+                sample_type_postfix.to_string(),
             )?;
 
             let template_generator = DecBfvMainTemplate;

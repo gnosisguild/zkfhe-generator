@@ -196,3 +196,65 @@ pub fn compute_message_commitment(message: &[BigInt]) -> BigInt {
     let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
     BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
 }
+
+/// Compute a commitment to a single polynomial (shares party-modulus commitment).
+/// This matches the Noir `compute_shares_party_modulus_commitment` function exactly.
+/// Used in C2, C3 (message), C4 (single polynomial).
+/// Takes a single polynomial and uses flatten with BIT_MSG for packing.
+pub fn compute_shares_party_modulus_commitment(share: &[BigInt], bit_msg: u32) -> BigInt {
+    // Step 1: Flatten share (matches prepare_single_polynomial_commitment_payload in Noir)
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, &[share.to_vec()], bit_msg);
+
+    // Step 2: Hash using SafeSponge (matches compute_shares_party_modulus_commitment in Noir)
+    // Domain separator - "PVSS_sh_pm" (shares party-modulus)
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x68, 0x5f, 0x70, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
+/// Compute aggregated shares commitment (either sk_shares or e_sm_shares).
+/// This matches the Noir `compute_aggregated_shares_commitment` function exactly.
+/// Used in C4.
+/// Takes L polynomials and uses flatten with BIT_MSG for packing.
+pub fn compute_aggregated_shares_commitment(aggregated: &[Vec<BigInt>], bit_msg: u32) -> BigInt {
+    // Step 1: Flatten aggregated shares (matches prepare_aggregated_shares_commitment_payload in Noir)
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, aggregated, bit_msg);
+
+    // Step 2: Hash using SafeSponge (matches compute_aggregated_shares_commitment in Noir)
+    // Domain separator - "PVSS_agg_sh"
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x61, 0x67, 0x67, 0x5f, 0x73, 0x68, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
