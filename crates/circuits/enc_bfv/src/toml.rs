@@ -22,6 +22,7 @@ impl EncBfvTomlGenerator {
 /// Complete `Prover.toml` format for BFV Encryption circuit
 #[derive(Serialize)]
 struct ProverTomlFormat {
+    expected_pk_commitment: String,
     expected_message_commitment: String,
     pk0is: Vec<serde_json::Value>,
     pk1is: Vec<serde_json::Value>,
@@ -45,6 +46,7 @@ impl TomlGenerator for EncBfvTomlGenerator {
         // generated in a separate .nr config file, not in the TOML.
 
         let toml_data = ProverTomlFormat {
+            expected_pk_commitment: self.vectors.expected_pk_commitment.to_string(),
             expected_message_commitment: self.vectors.expected_message_commitment.to_string(),
             pk0is: self
                 .vectors
@@ -189,6 +191,7 @@ mod tests {
         let content = std::fs::read_to_string(&output_path).unwrap();
 
         // Check that the file contains the expected sections
+        assert!(content.contains("expected_pk_commitment"));
         assert!(content.contains("expected_message_commitment"));
         assert!(content.contains("pk0is"));
         assert!(content.contains("pk1is"));

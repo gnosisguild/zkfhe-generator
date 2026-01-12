@@ -220,7 +220,7 @@ fn get_circuit(
 ) -> anyhow::Result<Box<dyn Circuit>> {
     match circuit_name.to_lowercase().as_str() {
         "enc-bfv" => {
-            let circuit = enc_bfv::circuit::EncBfvCircuit::new(lambda);
+            let circuit = enc_bfv::circuit::EncBfvCircuit::new(sample_type, lambda);
             Ok(Box::new(circuit))
         }
         "enc-trbfv" => {
@@ -1260,11 +1260,18 @@ fn generate_main_template(
                 "insecure"
             };
 
+            // Determine sample_type_postfix based on sample_type
+            let sample_type_postfix = match sample_type {
+                SampleType::SecretKey => "SK",
+                SampleType::SmudgingNoise => "E_SM",
+            };
+
             let enc_bfv_template_params = EncBfvTemplateParams::from_bounds(
                 BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
                 &bounds_data,
                 circuit.parameter_type().as_str().to_string(),
                 security_level.to_string(),
+                sample_type_postfix.to_string(),
             )?;
 
             let template_generator = EncBfvMainTemplate;
@@ -1309,10 +1316,13 @@ fn main() -> anyhow::Result<()> {
             // Parse parameter type
             let param_type = ParameterType::from_str_to_parameter_type(&parameter_type)?;
 
-            // Parse sample type (only used for dec-bfv and verify-shares-trbfv circuits)
+            // Parse sample type (only used for dec-bfv, verify-shares-trbfv, and enc-bfv circuits)
             let effective_sample_type = {
                 let circuit_name = circuit.to_lowercase();
-                if circuit_name == "dec-bfv" || circuit_name == "verify-shares-trbfv" {
+                if circuit_name == "dec-bfv"
+                    || circuit_name == "verify-shares-trbfv"
+                    || circuit_name == "enc-bfv"
+                {
                     let parsed_type = SampleType::from_str_to_sample_type(&sample_type)?;
                     // Print the sample type being used
                     if sample_type == "secret-key" {
@@ -1328,9 +1338,9 @@ fn main() -> anyhow::Result<()> {
                         eprintln!(
                             "⚠️  Warning: --sample-type is not applicable to enc-trbfv circuit (TRBFV only). This flag will be ignored."
                         );
-                    } else if circuit_name != "enc-bfv" {
+                    } else {
                         eprintln!(
-                            "⚠️  Warning: --sample-type is only applicable to dec-bfv and verify-shares-trbfv circuits. This flag will be ignored."
+                            "⚠️  Warning: --sample-type is only applicable to dec-bfv, verify-shares-trbfv, and enc-bfv circuits. This flag will be ignored."
                         );
                     }
                     SampleType::SecretKey

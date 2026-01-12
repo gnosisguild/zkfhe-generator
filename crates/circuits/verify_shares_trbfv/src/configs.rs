@@ -48,27 +48,37 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-verify_shares (CIRCUIT 2 - VERIFY SHARES)
+verify_shares (CIRCUIT 2a - VERIFY SHARES SK)
 -------------------------------------
 ************************************/
 
 // verify_shares - bit parameters
-pub global VERIFY_SHARES_BIT_SECRET_SK: u32 = {};
-pub global VERIFY_SHARES_BIT_SECRET_E_SM: u32 = {};
 pub global VERIFY_SHARES_BIT_SHARE: u32 = {};
+pub global VERIFY_SHARES_BIT_SECRET_SK: u32 = {};
 
 // verify_shares - configs
 pub global VERIFY_SHARES_CONFIGS_SK: VerifySharesConfigs<L> =
     VerifySharesConfigs::new(QIS);
+
+/************************************
+-------------------------------------
+verify_shares (CIRCUIT 2b - VERIFY SHARES E_SM)
+-------------------------------------
+************************************/
+
+// verify_shares - bit parameters
+pub global VERIFY_SHARES_BIT_SECRET_E_SM: u32 = {};
+
+// verify_shares - configs
 pub global VERIFY_SHARES_CONFIGS_E_SM: VerifySharesConfigs<L> =
     VerifySharesConfigs::new(QIS);
 "#,
             template_params.base.n,    // N
             template_params.base.l,    // L
             qis_str,                   // QIS array
+            template_params.bit_share, // VERIFY_SHARES_BIT_SHARE
             bit_secret_sk,             // VERIFY_SHARES_BIT_SECRET_SK
             bit_secret_esm,            // VERIFY_SHARES_BIT_SECRET_E_SM
-            template_params.bit_share, // VERIFY_SHARES_BIT_SHARE
         );
 
         Ok(configs)

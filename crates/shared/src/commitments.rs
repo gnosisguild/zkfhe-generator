@@ -36,6 +36,37 @@ pub fn compute_pk_commitment(pk0: &[Vec<BigInt>], pk1: &[Vec<BigInt>], bit_pk: u
     BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
 }
 
+/// Compute a commitment to the BFV public key polynomials by flattening them and hashing.
+/// This matches the Noir `compute_pk_bfv_commitment` function exactly.
+/// Used in BFV encryption circuit (enc_bfv).
+pub fn compute_pk_bfv_commitment(pk0: &[Vec<BigInt>], pk1: &[Vec<BigInt>], bit_pk: u32) -> BigInt {
+    // Step 1: Flatten pk0is and pk1is (matches prepare_pk_commitment_payload in Noir)
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, pk0, bit_pk);
+    inputs = flatten(inputs, pk1, bit_pk);
+
+    // Step 2: Hash using SafeSponge (matches compute_pk_bfv_commitment in Noir)
+    // Domain separator - "PVSS_pk_bfv" (must match BFV encryption circuit)
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x70, 0x6b, 0x5f, 0x62, 0x66, 0x76, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
 /// Compute a commitment to the secret key polynomial by flattening it and hashing.
 /// This matches the Noir `compute_sk_commitment` function exactly.
 pub fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {

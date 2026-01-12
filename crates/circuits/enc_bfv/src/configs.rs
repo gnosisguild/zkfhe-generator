@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 pub struct EncBfvConfigsGenerator;
 
 impl EncBfvConfigsGenerator {
-    /// Generate the config .nr file content
+    /// Generate the config .nr file content with both SK and E_SM variants
     ///
     /// # Arguments
     ///
@@ -23,8 +23,8 @@ impl EncBfvConfigsGenerator {
     ///
     /// # Returns
     ///
-    /// The complete config file content as a string
-    pub fn generate_configs(
+    /// The complete config file content as a string with both SK and E_SM configs
+    pub fn generate_configs_with_both_sample_types(
         crypto_params: &EncBfvCryptographicParameters,
         bounds: &EncBfvBounds,
         template_params: &EncBfvTemplateParams,
@@ -104,7 +104,7 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-enc_bfv (CIRCUIT {} - BFV ENCRYPTION)
+enc_bfv (CIRCUIT 3a - BFV ENCRYPTION SK)
 -------------------------------------
 ************************************/
 
@@ -136,7 +136,31 @@ pub global ENC_BFV_P2_BOUNDS: [Field; L] = [{}];
 pub global ENC_BFV_MSG_BOUND: Field = {};
 
 // enc_bfv - configs
-pub global ENC_BFV_CONFIGS: BfvEncConfigs<L> = BfvEncConfigs::new(
+pub global ENC_BFV_CONFIGS_SK: BfvEncConfigs<L> = BfvEncConfigs::new(
+    ENC_BFV_T,
+    ENC_BFV_Q_MOD_T,
+    QIS,
+    ENC_BFV_K0IS,
+    ENC_BFV_PK_BOUNDS,
+    ENC_BFV_E0_BOUND,
+    ENC_BFV_E1_BOUND,
+    ENC_BFV_U_BOUND,
+    ENC_BFV_R1_LOW_BOUNDS,
+    ENC_BFV_R1_UP_BOUNDS,
+    ENC_BFV_R2_BOUNDS,
+    ENC_BFV_P1_BOUNDS,
+    ENC_BFV_P2_BOUNDS,
+    ENC_BFV_MSG_BOUND,
+);
+
+/************************************
+-------------------------------------
+enc_bfv (CIRCUIT 3b - BFV ENCRYPTION E_SM)
+-------------------------------------
+************************************/
+
+// enc_bfv E_SM uses the same bit parameters and bounds as SK
+pub global ENC_BFV_CONFIGS_E_SM: BfvEncConfigs<L> = BfvEncConfigs::new(
     ENC_BFV_T,
     ENC_BFV_Q_MOD_T,
     QIS,
@@ -156,7 +180,6 @@ pub global ENC_BFV_CONFIGS: BfvEncConfigs<L> = BfvEncConfigs::new(
             template_params.base.n,  // N
             template_params.base.l,  // L
             qis_str,                 // QIS array
-            "4",                     // Circuit number
             template_params.bit_pk,  // BIT_PK
             template_params.bit_ct,  // BIT_CT
             template_params.bit_u,   // BIT_U
@@ -183,6 +206,21 @@ pub global ENC_BFV_CONFIGS: BfvEncConfigs<L> = BfvEncConfigs::new(
         );
 
         Ok(configs)
+    }
+
+    /// Generate the config .nr file content (backwards compatibility)
+    pub fn generate_configs(
+        crypto_params: &EncBfvCryptographicParameters,
+        bounds: &EncBfvBounds,
+        template_params: &EncBfvTemplateParams,
+        parameter_type: &str,
+    ) -> ZkFheResult<String> {
+        Self::generate_configs_with_both_sample_types(
+            crypto_params,
+            bounds,
+            template_params,
+            parameter_type,
+        )
     }
 
     /// Generate and write the config file to the output directory
