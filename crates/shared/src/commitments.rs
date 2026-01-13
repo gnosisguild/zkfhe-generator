@@ -197,10 +197,62 @@ pub fn compute_message_commitment(message: &[BigInt]) -> BigInt {
     BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
 }
 
+/// Prepare the payload for shares party-modulus commitment.
+/// This matches the Noir `prepare_shares_party_modulus_commitment_payload` function exactly.
+/// Used in C2 (verify shares circuit).
+/// Returns N field elements (shares for each coefficient) plus party_idx and mod_idx.
+pub fn prepare_shares_party_modulus_commitment_payload(
+    y: &[Vec<Vec<BigInt>>],
+    party_idx: usize,
+    mod_idx: usize,
+) -> Vec<Field> {
+    let mut inputs = Vec::new();
+
+    // Add shares y[coeff_idx][mod_idx][party_idx + 1] for each coefficient
+    for coeff_y in y {
+        let share_value = &coeff_y[mod_idx][party_idx + 1];
+        inputs.push(crate::utils::bigint_to_field(share_value));
+    }
+
+    // Include party_idx and mod_idx in the hash
+    inputs.push(Field::from(party_idx as u64));
+    inputs.push(Field::from(mod_idx as u64));
+
+    inputs
+}
+
+/// Compute a commitment to shares for a specific party and modulus.
+/// This matches the Noir `compute_shares_party_modulus_commitment` function exactly.
+/// Used in C2 (verify shares circuit).
+/// Takes a prepared payload from `prepare_shares_party_modulus_commitment_payload`.
+pub fn compute_shares_party_modulus_commitment_from_payload(payload: Vec<Field>) -> BigInt {
+    // Hash using SafeSponge (matches compute_shares_party_modulus_commitment in Noir)
+    // Domain separator - "PVSS_sh_pm" (shares party-modulus)
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x68, 0x5f, 0x70, 0x6d, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = payload.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, payload, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
 /// Compute a commitment to a single polynomial (shares party-modulus commitment).
 /// This matches the Noir `compute_shares_party_modulus_commitment` function exactly.
-/// Used in C2, C3 (message), C4 (single polynomial).
+/// Used in C3 (message), C4 (single polynomial).
 /// Takes a single polynomial and uses flatten with BIT_MSG for packing.
+/// For C2 (verify shares), use `prepare_shares_party_modulus_commitment_payload` + `compute_shares_party_modulus_commitment_from_payload` instead.
 pub fn compute_shares_party_modulus_commitment(share: &[BigInt], bit_msg: u32) -> BigInt {
     // Step 1: Flatten share (matches prepare_single_polynomial_commitment_payload in Noir)
     let mut inputs: Vec<Field> = Vec::new();

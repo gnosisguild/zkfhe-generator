@@ -249,7 +249,7 @@ mod tests {
         // Read and verify basic structure
         let content = std::fs::read_to_string(&toml_path).unwrap();
         // Note: params are now in a separate .nr constant file
-        assert!(content.contains("secret"));
+        assert!(content.contains("secret_crt"));
         assert!(content.contains("expected_secret_commitment"));
         assert!(content.contains("y"));
         assert!(content.contains("h"));

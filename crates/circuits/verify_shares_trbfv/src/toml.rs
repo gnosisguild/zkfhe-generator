@@ -25,7 +25,7 @@ impl VerifySharesTrbfvTomlGenerator {
 #[derive(Serialize)]
 struct ProverTomlFormat {
     expected_secret_commitment: String,
-    secret: serde_json::Value,
+    secret_crt: Vec<serde_json::Value>, // [L] array of Polynomial<N>
     y: Vec<Vec<Vec<serde_json::Value>>>, // [N][L][N_PARTIES+1]
     h: Vec<Vec<Vec<serde_json::Value>>>, // [L][N_PARTIES-T][N_PARTIES+1]
 }
@@ -75,11 +75,22 @@ impl TomlGenerator for VerifySharesTrbfvTomlGenerator {
             })
             .collect::<Vec<Vec<Vec<serde_json::Value>>>>();
 
+        // The circuit expects secret_crt: [Polynomial<N>; L] as input
+        // Convert secret_crt to JSON format: array of L polynomials
+        let secret_crt_json: Vec<serde_json::Value> = self
+            .vectors
+            .secret_crt
+            .iter()
+            .map(|mod_secret| {
+                serde_json::json!({
+                    "coefficients": to_string_1d_vec(mod_secret)
+                })
+            })
+            .collect();
+
         let toml_data = ProverTomlFormat {
             expected_secret_commitment: self.vectors.expected_secret_commitment.to_string(),
-            secret: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.secret)
-            }),
+            secret_crt: secret_crt_json,
             y: y_json,
             h: h_json,
         };
@@ -131,7 +142,7 @@ mod tests {
         // Check that the file contains the expected sections
         // Note: params are now in a separate .nr constant file, not in TOML
         assert!(content.contains("expected_secret_commitment"));
-        assert!(content.contains("[secret]"));
+        assert!(content.contains("secret_crt"));
         assert!(content.contains("y"));
         assert!(content.contains("h"));
     }
@@ -160,7 +171,7 @@ mod tests {
         // Verify the TOML string contains the expected sections
         // Note: params are now in a separate .nr constant file, not in TOML
         assert!(toml_string.contains("expected_secret_commitment"));
-        assert!(toml_string.contains("[secret]"));
+        assert!(toml_string.contains("secret_crt"));
         assert!(toml_string.contains("y"));
         assert!(toml_string.contains("h"));
     }
