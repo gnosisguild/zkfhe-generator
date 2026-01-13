@@ -43,67 +43,77 @@ cargo run -p zkfhe-generator -- list --presets
 
 # Generate parameters for a circuit with preset
 cargo run -p zkfhe-generator -- generate \
-  --circuit enc-trbfv \
+  --circuit greco \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --main \
-  --output ./circuit_7
+  --output ./greco
 ```
 
 ## Available Circuits
 
-The generator supports 9 circuits (with Circuit 5 having two variants) organized by their role in the threshold BFV protocol:
+The generator supports 8 circuits organized by their role in the threshold BFV protocol. The circuits are organized into 4 phases:
 
-### Key Generation Circuits
+### Phase 0: BFV Key Setup
 
-#### **Circuit 1 & 2: Public Key Generation (pk-bfv)**
-Proves correct key generation for threshold BFV.
+#### **Circuit 0: BFV Public Key Commitment (pk-bfv)**
+Each party commits to their BFV public key during initial setup. This is used for encrypting secret shares in Phase 1.
 
-**Circuit 1 - trBFV Key Generation:**
-```bash
-cargo run -p zkfhe-generator -- generate \
-  --circuit pk-bfv \
-  --preset SET_8192_1000_4 \
-  --parameter-type trbfv \
-  --main \
-  --output ./circuit_1
-```
-
-**Circuit 2 - BFV Key Generation:**
 ```bash
 cargo run -p zkfhe-generator -- generate \
   --circuit pk-bfv \
   --preset SET_8192_1000_4 \
   --parameter-type bfv \
   --main \
-  --output ./circuit_2
+  --output ./circuit_0
 ```
 
-**Supported Parameter Types:** trBFV, BFV
+**Supported Parameter Types:** BFV  
+**Output:** `commit(pk_bfv)`
 
 ---
 
-#### **Circuit 3: Verify Secret Key Shares (verify-shares-trbfv)**
-Verifies the correctness of distributed secret key shares in threshold setup.
+### Phase 1: Distributed Key Generation (DKG)
+
+#### **Circuit 1: TRBFV Public Key Verification (pk-trbfv)**
+Each party verifies the correctness of their TRBFV public key generation. Produces commitments to the secret key, public key, and smudging noise.
+
+```bash
+cargo run -p zkfhe-generator -- generate \
+  --circuit pk-trbfv \
+  --preset SET_8192_1000_4 \
+  --parameter-type trbfv \
+  --main \
+  --output ./circuit_1
+```
+
+**Supported Parameter Types:** trBFV  
+**Output:** `commit(sk_trbfv)`, `commit(pk_trbfv)`, `commit(e_sm)`
+
+---
+
+#### **Circuit 2: Verify Secret Key Shares (verify-shares-trbfv)**
+Verifies the correctness of distributed secret key shares (sk_share) and smudging noise shares (e_sm_share) in threshold setup. Can be used for both types of shares by selecting the appropriate sample type.
 
 ```bash
 cargo run -p zkfhe-generator -- generate \
   --circuit verify-shares-trbfv \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
+  --sample-type secret-key \
   --main \
-  --output ./circuit_3
+  --output ./circuit_2
 ```
 
 **Supported Parameter Types:** trBFV  
-**Configurable:** num_parties, num_honest_parties, threshold
+**Sample Types:** `secret-key`, `smudging-noise`  
+**Configurable:** num_parties, threshold  
+**Output:** `commit(sk_share[i][j])` or `commit(e_sm_share[i][j])`
 
 ---
 
-### Encryption Circuits
-
-#### **Circuit 4: Encrypt Threshold Shares (enc-bfv)**
-Encrypts threshold secret key shares for distribution. During threshold setup, Party i encrypts shares for Party j using Party j's public key.
+#### **Circuit 3: Encrypt Threshold Shares (enc-bfv)**
+Encrypts threshold secret key shares for distribution. During threshold setup, Party i encrypts shares for Party j using Party j's BFV public key. Used for both sk shares and e_sm shares.
 
 ```bash
 cargo run -p zkfhe-generator -- generate \
@@ -111,18 +121,16 @@ cargo run -p zkfhe-generator -- generate \
   --preset SET_8192_1000_4 \
   --parameter-type bfv \
   --main \
-  --output ./circuit_4
+  --output ./circuit_3
 ```
 
-**Supported Parameter Types:** BFV
+**Supported Parameter Types:** BFV  
+**Input:** `commit(pk_bfv)`, `commit(message)` where message is either `sk_share[i][j]` or `e_sm_share[i][j]`
 
 ---
 
-#### **Circuit 5: BFV Decryption**
-Proves correct BFV decryption of encrypted Shamir shares (non-threshold decryption). Supports both secret-key and smudging-noise sample types.
-
-**Circuit 5A - Production Parameters (dec-bfv):**
-For production use with secure parameter sets (SET_8192_1000_4, SET_8192_100_4).
+#### **Circuit 4: BFV Decryption with Commitment Verification (dec-bfv)**
+Proves correct BFV decryption of encrypted Shamir shares and verifies the commitment matches expected shares. Used to decrypt and aggregate both sk shares and e_sm shares.
 
 ```bash
 cargo run -p zkfhe-generator -- generate \
@@ -131,30 +139,20 @@ cargo run -p zkfhe-generator -- generate \
   --parameter-type bfv \
   --sample-type secret-key \
   --main \
-  --output ./circuit_5
-```
-
-**Circuit 5B - Insecure Parameters (dec-bfv-no-hom-add):**
-For fast development/testing with insecure parameter sets (INSECURE_SET_512_10_1). Does not support homomorphic addition.
-
-```bash
-cargo run -p zkfhe-generator -- generate \
-  --circuit dec-bfv-no-hom-add \
-  --preset INSECURE_SET_512_10_1 \
-  --parameter-type bfv \
-  --sample-type secret-key \
-  --main \
-  --output ./circuit_5_insecure
+  --output ./circuit_4
 ```
 
 **Supported Parameter Types:** BFV  
 **Sample Types:** `secret-key`, `smudging-noise`  
-**Configurable:** num_honest_parties
+**Configurable:** num_honest_parties  
+**Output:** `commit(aggregated_sk_shares)` or `commit(aggregated_e_sm_shares)`
 
 ---
 
-#### **Circuit 6: Public Key Aggregation (pk-agg-trbfv)**
-Aggregates public keys from multiple parties in the threshold setup.
+### Phase 2: Honest Party Aggregation
+
+#### **Circuit 5: Public Key Aggregation (pk-agg-trbfv)**
+Aggregates public keys from honest parties in the threshold setup to produce the final aggregated public key.
 
 ```bash
 cargo run -p zkfhe-generator -- generate \
@@ -162,35 +160,42 @@ cargo run -p zkfhe-generator -- generate \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --main \
-  --output ./circuit_6
+  --output ./circuit_5
 ```
 
 **Supported Parameter Types:** trBFV  
-**Configurable:** num_honest_parties
+**Configurable:** num_honest_parties  
+**Input:** `commit(pk_trbfv)` from honest parties  
+**Output:** `commit(pk0_agg, pk1_agg)`
 
 ---
 
-#### **Circuit 7: Encrypt Messages/Votes (enc-trbfv, a.k.a. Greco)**
-Encrypts messages or votes in threshold voting systems using trBFV parameters. This is the main application-layer encryption circuit (e.g., for e-voting).
+### Phase 3: User Encryption
+
+#### **Greco: Encrypt Messages/Votes (greco / enc-trbfv)**
+Encrypts messages or votes in threshold voting systems using trBFV parameters. This is the main application-layer encryption circuit (e.g., for e-voting). Users encrypt their data with the aggregated public key.
 
 ```bash
 cargo run -p zkfhe-generator -- generate \
-  --circuit enc-trbfv \
+  --circuit greco \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --main \
-  --output ./circuit_7
+  --output ./greco
 ```
 
 **Supported Parameter Types:** trBFV only  
-**Note:** The Greco circuit only works with trBFV parameter type
+**Input:** `pk_agg` from Circuit 5  
+**Output:** Encrypted user data (ready for homomorphic computation)
+
+**Note:** The circuit name `enc-trbfv` is an alias for `greco`. Both refer to the same circuit.
 
 ---
 
-### Decryption Circuits
+### Phase 4: Threshold Decryption
 
-#### **Circuit 8: Decryption Share Generation (dec-share-trbfv)**
-Proves correct decryption share computation in threshold BFV for a single party.
+#### **Circuit 6: Decryption Share Generation (dec-share-trbfv)**
+Proves correct decryption share computation in threshold BFV for a single party. Each honest party generates a decryption share using their aggregated secret shares.
 
 ```bash
 cargo run -p zkfhe-generator -- generate \
@@ -198,16 +203,19 @@ cargo run -p zkfhe-generator -- generate \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --main \
-  --output ./circuit_8
+  --output ./circuit_6
 ```
 
 **Supported Parameter Types:** trBFV  
-**Configurable:** num_parties, threshold
+**Configurable:** num_parties, threshold  
+**Input:** `commit(s) == commit(aggregated_sk_shares)`, `commit(e) == commit(aggregated_e_sm_shares)`  
+**Verification:** `d = c_0 + c_1 * s + e`  
+**Output:** Decryption share `d` (public)
 
 ---
 
-#### **Circuit 9: Decryption Share Aggregation (dec-share-agg-trbfv)**
-Aggregates decryption shares from multiple parties and recovers the plaintext.
+#### **Circuit 7: Decryption Share Aggregation (dec-share-agg-trbfv)**
+Aggregates decryption shares from multiple parties using Lagrange interpolation, performs CRT reconstruction, and recovers the final decrypted plaintext message.
 
 ```bash
 cargo run -p zkfhe-generator -- generate \
@@ -215,11 +223,13 @@ cargo run -p zkfhe-generator -- generate \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --main \
-  --output ./circuit_9
+  --output ./circuit_7
 ```
 
 **Supported Parameter Types:** trBFV  
-**Configurable:** num_parties, threshold
+**Configurable:** num_parties, threshold  
+**Input:** Decryption shares `d` from Circuit 6  
+**Output:** Final decrypted message
 
 ---
 
@@ -230,13 +240,13 @@ cargo run -p zkfhe-generator -- generate \
 - Stricter security constraints
 - 40-61 bit primes
 - Required for threshold cryptography circuits
-- Used in circuits: 1, 3, 6, 7, 8, 9
+- Used in circuits: 1, 2, 5, 6, 7 (greco)
 
 ### BFV (Standard BFV)
 - Simpler security conditions
 - 40-63 bit primes (including 62-bit primes)
-- Used for non-threshold operations
-- Used in circuits: 2, 4, dec-bfv, dec-bfv-no-hom-add
+- Used for non-threshold operations and share encryption
+- Used in circuits: 0, 3, 4
 
 ## Available Presets
 
@@ -301,12 +311,11 @@ cargo run -p zkfhe-generator -- generate \
 
 | Circuit | Supported Parameters |
 |---------|---------------------|
-| **verify-shares-trbfv** (Circuit 3) | num_parties, threshold |
-| **pk-agg-trbfv** (Circuit 6) | num_honest_parties |
-| **dec-bfv** (Circuit 5A) | num_honest_parties |
-| **dec-bfv-no-hom-add** (Circuit 5B) | num_honest_parties |
-| **dec-share-trbfv** (Circuit 8) | num_parties, threshold |
-| **dec-share-agg-trbfv** (Circuit 9) | num_parties, threshold |
+| **verify-shares-trbfv** (Circuit 2) | num_parties, threshold |
+| **dec-bfv** (Circuit 4) | num_honest_parties |
+| **pk-agg-trbfv** (Circuit 5) | num_honest_parties |
+| **dec-share-trbfv** (Circuit 6) | num_parties, threshold |
+| **dec-share-agg-trbfv** (Circuit 7) | num_parties, threshold |
 
 ## CLI Usage
 
@@ -332,7 +341,7 @@ Options:
           Generate template main.nr file
           
       --sample-type <SAMPLE_TYPE>
-          Sample type for share_row generation (dec-bfv circuits only)
+          Sample type for share generation (dec-bfv and verify-shares-trbfv circuits)
           Options: secret-key, smudging-noise [default: secret-key]
           
       --num-parties <NUM_PARTIES>
@@ -410,7 +419,7 @@ Circuit-specific configuration files with:
 ```bash
 # Generate with custom cryptographic parameters
 cargo run -p zkfhe-generator -- generate \
-  --circuit enc-trbfv \
+  --circuit greco \
   --parameter-type trbfv \
   --bfv-n 2000 \
   --bfv-z 1000 \
@@ -426,7 +435,7 @@ cargo run -p zkfhe-generator -- generate \
 ```bash
 # Show detailed parameter search and security analysis
 cargo run -p zkfhe-generator -- generate \
-  --circuit pk-bfv \
+  --circuit pk-trbfv \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --verbose
@@ -438,34 +447,42 @@ cargo run -p zkfhe-generator -- generate \
 # Generate all threshold BFV protocol circuits for a 5-party system
 mkdir -p ./threshold_circuits
 
-# Circuit 1: trBFV Key Generation
+# Phase 0: Circuit 0 - BFV Public Key Commitment
 cargo run -p zkfhe-generator -- generate \
   --circuit pk-bfv \
+  --preset SET_8192_1000_4 \
+  --parameter-type bfv \
+  --main \
+  --output ./threshold_circuits/circuit_0
+
+# Phase 1: Circuit 1 - TRBFV Public Key Verification
+cargo run -p zkfhe-generator -- generate \
+  --circuit pk-trbfv \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --main \
   --output ./threshold_circuits/circuit_1
 
-# Circuit 3: Verify Shares
+# Phase 1: Circuit 2 - Verify Shares
 cargo run -p zkfhe-generator -- generate \
   --circuit verify-shares-trbfv \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
+  --sample-type secret-key \
   --num-parties 5 \
   --threshold 2 \
   --main \
+  --output ./threshold_circuits/circuit_2
+
+# Phase 1: Circuit 3 - Encrypt Shares
+cargo run -p zkfhe-generator -- generate \
+  --circuit enc-bfv \
+  --preset SET_8192_1000_4 \
+  --parameter-type bfv \
+  --main \
   --output ./threshold_circuits/circuit_3
 
-# Circuit 6: PK Aggregation
-cargo run -p zkfhe-generator -- generate \
-  --circuit pk-agg-trbfv \
-  --preset SET_8192_1000_4 \
-  --parameter-type trbfv \
-  --num-honest-parties 3 \
-  --main \
-  --output ./threshold_circuits/circuit_6
-
-# Circuit 5: BFV Decryption
+# Phase 1: Circuit 4 - BFV Decryption
 cargo run -p zkfhe-generator -- generate \
   --circuit dec-bfv \
   --preset SET_8192_1000_4 \
@@ -473,17 +490,26 @@ cargo run -p zkfhe-generator -- generate \
   --sample-type secret-key \
   --num-honest-parties 3 \
   --main \
+  --output ./threshold_circuits/circuit_4
+
+# Phase 2: Circuit 5 - PK Aggregation
+cargo run -p zkfhe-generator -- generate \
+  --circuit pk-agg-trbfv \
+  --preset SET_8192_1000_4 \
+  --parameter-type trbfv \
+  --num-honest-parties 3 \
+  --main \
   --output ./threshold_circuits/circuit_5
 
-# Circuit 7: Encrypt Messages (Greco)
+# Phase 3: Greco - Encrypt Messages
 cargo run -p zkfhe-generator -- generate \
-  --circuit enc-trbfv \
+  --circuit greco \
   --preset SET_8192_1000_4 \
   --parameter-type trbfv \
   --main \
-  --output ./threshold_circuits/circuit_7
+  --output ./threshold_circuits/greco
 
-# Circuit 8: Decryption Share
+# Phase 4: Circuit 6 - Decryption Share
 cargo run -p zkfhe-generator -- generate \
   --circuit dec-share-trbfv \
   --preset SET_8192_1000_4 \
@@ -491,9 +517,9 @@ cargo run -p zkfhe-generator -- generate \
   --num-parties 5 \
   --threshold 2 \
   --main \
-  --output ./threshold_circuits/circuit_8
+  --output ./threshold_circuits/circuit_6
 
-# Circuit 9: Decryption Share Aggregation
+# Phase 4: Circuit 7 - Decryption Share Aggregation
 cargo run -p zkfhe-generator -- generate \
   --circuit dec-share-agg-trbfv \
   --preset SET_8192_1000_4 \
@@ -501,7 +527,7 @@ cargo run -p zkfhe-generator -- generate \
   --num-parties 5 \
   --threshold 2 \
   --main \
-  --output ./threshold_circuits/circuit_9
+  --output ./threshold_circuits/circuit_7
 ```
 
 ## Architecture
@@ -557,15 +583,15 @@ zkfhe-toml-generator/
 │   ├── crypto_params/      # Cryptographic parameter search
 │   ├── parity_matrix/      # Parity matrix utilities
 │   └── circuits/           # Circuit implementations
-│       ├── enc_trbfv/      # Circuit 7 (Greco)
-│       ├── pk_bfv/         # Circuits 1 & 2
-│       ├── verify_shares_trbfv/  # Circuit 3
-│       ├── enc_bfv/        # Circuit 4
-│       ├── pk_agg_trbfv/   # Circuit 6
-│       ├── dec_share_trbfv/      # Circuit 8
-│       ├── dec_share_agg_trbfv/  # Circuit 9
-│       ├── dec_bfv/        # Standard BFV decryption
-│       └── dec_bfv_no_hom_add/   # Insecure params decryption
+│       ├── greco/          # Phase 3: Greco (user encryption)
+│       ├── pk_bfv/         # Phase 0: Circuit 0 (BFV PK commitment)
+│       ├── pk_trbfv/       # Phase 1: Circuit 1 (TRBFV PK verification)
+│       ├── verify_shares_trbfv/  # Phase 1: Circuit 2 (verify shares)
+│       ├── enc_bfv/        # Phase 1: Circuit 3 (encrypt shares)
+│       ├── dec_bfv/        # Phase 1: Circuit 4 (decrypt shares)
+│       ├── pk_agg_trbfv/   # Phase 2: Circuit 5 (PK aggregation)
+│       ├── dec_share_trbfv/      # Phase 4: Circuit 6 (decryption share)
+│       └── dec_share_agg_trbfv/  # Phase 4: Circuit 7 (decryption aggregation)
 └── README.md
 ```
 
@@ -605,18 +631,17 @@ cargo test -- --nocapture
 
 ## Circuit Reference Table
 
-| Circuit # | Name | CLI Flag | Parameter Types | Threshold Config | Description |
-|-----------|------|----------|-----------------|------------------|-------------|
-| 1 | PK Generation (trBFV) | `pk-bfv` | trBFV | - | Generate trBFV public key |
-| 2 | PK Generation (BFV) | `pk-bfv` | BFV | - | Generate BFV public key |
-| 3 | Verify SK Shares | `verify-shares-trbfv` | trBFV | N, T | Verify secret key shares |
-| 4 | Encrypt Shares | `enc-bfv` | BFV | - | Encrypt threshold shares |
-| 5A | BFV Decryption (Prod) | `dec-bfv` | BFV | H | Production params decryption |
-| 5B | BFV Decryption (Insecure) | `dec-bfv-no-hom-add` | BFV | H | Insecure params decryption |
-| 6 | PK Aggregation | `pk-agg-trbfv` | trBFV | H | Aggregate public keys |
-| 7 | Encrypt Messages (Greco) | `enc-trbfv` | trBFV | - | Encrypt votes/messages |
-| 8 | Decryption Share | `dec-share-trbfv` | trBFV | N, T | Generate decryption share |
-| 9 | Dec Share Aggregation | `dec-share-agg-trbfv` | trBFV | N, T | Aggregate & decrypt |
+| Phase | Circuit # | Name | CLI Flag | Parameter Types | Threshold Config | Description |
+|-------|-----------|------|----------|-----------------|------------------|-------------|
+| 0 | 0 | BFV PK Commitment | `pk-bfv` | BFV | - | Commit to BFV public key |
+| 1 | 1 | TRBFV PK Verification | `pk-trbfv` | trBFV | - | Verify TRBFV public key |
+| 1 | 2 | Verify Shares | `verify-shares-trbfv` | trBFV | N, T | Verify sk/e_sm shares |
+| 1 | 3 | Encrypt Shares | `enc-bfv` | BFV | - | Encrypt threshold shares |
+| 1 | 4 | BFV Decryption | `dec-bfv` | BFV | H | Decrypt & verify shares |
+| 2 | 5 | PK Aggregation | `pk-agg-trbfv` | trBFV | H | Aggregate public keys |
+| 3 | - | User Encryption (Greco) | `greco` / `enc-trbfv` | trBFV | - | Encrypt votes/messages |
+| 4 | 6 | Decryption Share | `dec-share-trbfv` | trBFV | N, T | Generate decryption share |
+| 4 | 7 | Dec Share Aggregation | `dec-share-agg-trbfv` | trBFV | N, T | Aggregate & decrypt |
 
 **Legend:** N = num_parties, H = num_honest_parties, T = threshold
 

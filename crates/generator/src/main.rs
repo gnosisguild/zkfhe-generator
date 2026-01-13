@@ -256,11 +256,6 @@ fn get_circuit(
             let circuit = dec_bfv::circuit::DecBfvCircuit::new(sample_type, lambda);
             Ok(Box::new(circuit))
         }
-        "dec-bfv-no-hom-add" => {
-            let circuit =
-                dec_bfv_no_hom_add::circuit::DecBfvNoHomAddCircuit::new(sample_type, lambda);
-            Ok(Box::new(circuit))
-        }
         "verify-shares-trbfv" => {
             let circuit = verify_shares_trbfv::circuit::VerifySharesTrbfvCircuit::new(
                 parameter_type,
@@ -284,7 +279,6 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
-        "dec-bfv-no-hom-add" => vec![ParameterType::Bfv],
         "verify-shares-trbfv" => vec![ParameterType::Trbfv],
         // Future circuits can support different parameter types
         _ => vec![],
@@ -1098,60 +1092,6 @@ fn generate_main_template(
             let template_generator = DecBfvMainTemplate;
             template_generator.generate_main_file(&dec_bfv_template_params, output_dir)?;
         }
-        "dec-bfv-no-hom-add" => {
-            use dec_bfv_no_hom_add::bounds::DecBfvNoHomAddBounds;
-            use dec_bfv_no_hom_add::template::{
-                DecBfvNoHomAddBoundsData, DecBfvNoHomAddMainTemplate, DecBfvNoHomAddTemplateParams,
-            };
-
-            // For this circuit, we need both BFV and TRBFV params
-            // bfv_params is used for BFV decryption, trbfv_params for TRBFV aggregation
-            // trbfv_params provides the TRBFV moduli for aggregation
-            let (crypto_params, bounds) =
-                DecBfvNoHomAddBounds::compute(bfv_params, trbfv_params, 0).map_err(|e| {
-                    anyhow::anyhow!("Failed to compute dec_bfv_no_hom_add bounds: {e:?}")
-                })?;
-
-            let bounds_data = DecBfvNoHomAddBoundsData {
-                s_bound: bounds.s_bound.to_string(),
-                u_i_bounds: bounds.u_i_bounds.iter().map(|b| b.to_string()).collect(),
-                u_global_bound: bounds.u_global_bound.to_string(),
-                r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
-                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-                delta: bounds.delta.to_string(),
-                delta_half: bounds.delta_half.to_string(),
-            };
-
-            let config = ciphernodes_config
-                .cloned()
-                .unwrap_or_else(|| CiphernodesConfig::new(5, 5, 2));
-
-            // L = number of TRBFV bases (from trbfv_params)
-            // L' = number of BFV bases (from bfv_params)
-            let num_trbfv_bases = crypto_params.trbfv_moduli.len();
-            let num_bfv_bases = crypto_params.bfv_moduli.len();
-
-            // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
-            let security_level = if circuit.security_parameter() >= shared::DEFAULT_SECURE_LAMBDA {
-                "production"
-            } else {
-                "insecure"
-            };
-
-            let dec_bfv_no_hom_add_template_params = DecBfvNoHomAddTemplateParams::from_bounds(
-                BaseTemplateParams::new(bfv_params.degree(), l, circuit_type),
-                config.num_honest_parties,
-                num_trbfv_bases, // L (TRBFV bases)
-                num_bfv_bases,   // L' (BFV bases)
-                &bounds_data,
-                circuit.parameter_type().as_str().to_string(),
-                security_level.to_string(),
-            )?;
-
-            let template_generator = DecBfvNoHomAddMainTemplate;
-            template_generator
-                .generate_main_file(&dec_bfv_no_hom_add_template_params, output_dir)?;
-        }
         "verify-shares-trbfv" => {
             use verify_shares_trbfv::bounds::VerifySharesTrbfvBounds;
             use verify_shares_trbfv::template::{
@@ -1378,9 +1318,6 @@ fn main() -> anyhow::Result<()> {
                     "  • dec-share-agg-trbfv   - Decryption Share Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
                 println!("  • dec-bfv   - BFV Decryption circuit implementation (supports bfv)");
-                println!(
-                    "  • dec-bfv-no-hom-add   - BFV Decryption circuit (no homomorphic addition) for insecure params (supports bfv)"
-                );
                 println!(
                     "  • verify-shares-trbfv   - Secret Key Shares verification circuit (supports trbfv)"
                 );
