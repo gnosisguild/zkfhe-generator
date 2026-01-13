@@ -90,26 +90,33 @@ impl Circuit for VerifySharesTrbfvCircuit {
         let selected_params = trbfv_params;
 
         // Generate bounds and cryptographic parameters
-        // For smudging noise, we need to compute the smudging bound
-        let (crypto_params, bounds) = if matches!(self.sample_type, SampleType::SmudgingNoise) {
-            let config = ciphernodes_config
-                .cloned()
-                .unwrap_or_else(|| shared::circuit::CiphernodesConfig::new(5, 5, 2));
-            let num_ciphertexts = 1; // we only need one ciphertext for the secret commitment
-            VerifySharesTrbfvBounds::compute_with_smudging(
-                selected_params,
-                0,
-                self.security_parameter,
-                &config,
-                num_ciphertexts,
-            )?
-        } else {
-            VerifySharesTrbfvBounds::compute(selected_params, 0)?
-        };
+        // Always compute both SK and ESM bounds since the config file needs to support both
+        let config = ciphernodes_config
+            .cloned()
+            .unwrap_or_else(|| shared::circuit::CiphernodesConfig::new(5, 5, 2));
+        let num_ciphertexts = 1; // we only need one ciphertext for the secret commitment
+        let (crypto_params, bounds) = VerifySharesTrbfvBounds::compute_with_smudging(
+            selected_params,
+            0,
+            self.security_parameter,
+            &config,
+            num_ciphertexts,
+        )?;
 
         // Calculate bit_secret from the appropriate bound for commitment computation
-        // Use smudging bound if available, otherwise use sk_bound
-        let secret_bound = bounds.e_sm_bound.as_ref().unwrap_or(&bounds.sk_bound);
+        // Use the bound that matches the sample type: sk_bound for SecretKey, e_sm_bound for SmudgingNoise
+        let secret_bound = match self.sample_type {
+            SampleType::SecretKey => &bounds.sk_bound,
+            SampleType::SmudgingNoise => {
+                bounds
+                    .e_sm_bound
+                    .as_ref()
+                    .ok_or_else(|| shared::errors::ZkFheError::Bfv {
+                        message: "e_sm_bound should be available when using SmudgingNoise"
+                            .to_string(),
+                    })?
+            }
+        };
         let bit_secret = shared::template::calculate_bit_width(&secret_bound.to_string())?;
 
         // Generate sample secret shares data (can be either secret key or smudging noise)
@@ -180,13 +187,16 @@ impl Circuit for VerifySharesTrbfvCircuit {
         };
 
         // Calculate bit widths for both secret types
+        // Both bounds should be available since we always call compute_with_smudging
         let bit_sk = shared::template::calculate_bit_width(&bounds.sk_bound.to_string())?;
         let bit_esm = bounds
             .e_sm_bound
             .as_ref()
             .map(|b| shared::template::calculate_bit_width(&b.to_string()))
-            .transpose()?
-            .unwrap_or(bit_sk); // Fallback to sk if no esm bound
+            .ok_or_else(|| shared::errors::ZkFheError::Bfv {
+                message: "e_sm_bound should be available when using compute_with_smudging"
+                    .to_string(),
+            })??;
 
         // Generate single config file with both SK and ESM bit parameters
         let param_type_str = self.parameter_type().as_str();
