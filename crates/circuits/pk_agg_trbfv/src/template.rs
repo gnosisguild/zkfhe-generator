@@ -53,6 +53,7 @@ use lib::math::polynomial::Polynomial;
 pub global H: u32 = {};
 
 fn main(
+    expected_pk_trbfv_commitments: [Field; H],
     pk0: [[Polynomial<N>; L]; H],
     pk1: [[Polynomial<N>; L]; H],
     pk0_agg: [Polynomial<N>; L],
@@ -60,6 +61,7 @@ fn main(
 ) -> pub Field {{
     let pk_agg_trbfv: TrbfvPublicKeyAggregation<N, H, L, PK_AGG_TRBFV_BIT_PK> = TrbfvPublicKeyAggregation::new(
         PK_AGG_TRBFV_CONFIGS,
+        expected_pk_trbfv_commitments,
         pk0,
         pk1,
         pk0_agg,

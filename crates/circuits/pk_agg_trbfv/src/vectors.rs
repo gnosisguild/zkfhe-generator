@@ -3,6 +3,7 @@ use fhe_math::rq::Representation;
 use itertools::izip;
 use num_bigint::BigInt;
 use num_traits::Zero;
+use shared::commitments::compute_pk_trbfv_commitment;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
@@ -20,6 +21,8 @@ fn normalize_to_mod_range(val: BigInt, q: &BigInt) -> BigInt {
 /// Set of vectors for input validation of public key aggregation
 #[derive(Clone, Debug)]
 pub struct PkAggTrBfvVectors {
+    /// Expected commitments to TRBFV public keys (from C1): one per honest party
+    pub expected_pk_trbfv_commitments: Vec<BigInt>,
     /// Public key component 0 from honest parties: pk0[party_idx][basis_idx][coeff_idx]
     pub pk0: Vec<Vec<Vec<BigInt>>>,
     /// Public key component 1 from honest parties: pk1[party_idx][basis_idx][coeff_idx]
@@ -33,7 +36,11 @@ pub struct PkAggTrBfvVectors {
 
 impl PkAggTrBfvVectors {
     /// Create vectors from sample data
-    pub fn compute(data: &PkAggTrBfvData, params: &Arc<BfvParameters>) -> ZkFheResult<Self> {
+    pub fn compute(
+        data: &PkAggTrBfvData,
+        params: &Arc<BfvParameters>,
+        bit_pk: u32,
+    ) -> ZkFheResult<Self> {
         let ctx = params.ctx_at_level(0)?;
 
         // Extract pk0 and pk1 coefficients for each party and basis
@@ -132,7 +139,16 @@ impl PkAggTrBfvVectors {
             pk1_agg.push(pk1_vec);
         }
 
+        // Compute expected_pk_trbfv_commitments for each honest party
+        // Each commitment is computed from pk0[i] and pk1[i] for party i
+        let mut expected_pk_trbfv_commitments = Vec::new();
+        for party_idx in 0..data.num_honest_parties {
+            let commitment = compute_pk_trbfv_commitment(&pk0[party_idx], &pk1[party_idx], bit_pk);
+            expected_pk_trbfv_commitments.push(commitment);
+        }
+
         Ok(PkAggTrBfvVectors {
+            expected_pk_trbfv_commitments,
             pk0,
             pk1,
             pk0_agg,
@@ -147,7 +163,21 @@ impl PkAggTrBfvVectors {
         use shared::constants::get_zkp_modulus;
         let zkp_modulus = get_zkp_modulus();
 
+        // Reduce expected_pk_trbfv_commitments modulo ZKP modulus
+        let expected_pk_trbfv_commitments: Vec<BigInt> = self
+            .expected_pk_trbfv_commitments
+            .into_iter()
+            .map(|c| {
+                let mut reduced = c % &zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += &zkp_modulus;
+                }
+                reduced
+            })
+            .collect();
+
         PkAggTrBfvVectors {
+            expected_pk_trbfv_commitments,
             pk0: reduce_coefficients_3d(&self.pk0, &zkp_modulus),
             pk1: reduce_coefficients_3d(&self.pk1, &zkp_modulus),
             pk0_agg: reduce_coefficients_2d(&self.pk0_agg, &zkp_modulus),
@@ -164,9 +194,13 @@ mod tests {
 
     #[test]
     fn test_vectors_computation() {
+        use crate::bounds::PkAggTrBfvCryptographicParameters;
         let params = test_parameters_trbfv();
         let data = generate_sample_pk_aggregation(&params, None).unwrap();
-        let vectors = PkAggTrBfvVectors::compute(&data, &params).unwrap();
+        let crypto_params = PkAggTrBfvCryptographicParameters::compute(&params, 0).unwrap();
+        let bit_pk =
+            shared::template::calculate_bit_width(&crypto_params.pk_bound.to_string()).unwrap();
+        let vectors = PkAggTrBfvVectors::compute(&data, &params, bit_pk).unwrap();
 
         assert_eq!(vectors.pk0.len(), data.num_honest_parties);
         assert_eq!(vectors.pk1.len(), data.num_honest_parties);
