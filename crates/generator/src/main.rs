@@ -111,7 +111,7 @@ enum Commands {
         /// - `smudging-noise`: Generate es_sss share_row
         ///
         /// This affects the type of threshold share that gets encrypted/decrypted.
-        /// Note: enc-trbfv circuit (Greco) only works with TRBFV and does not use sample_type.
+        /// Note: greco circuit only works with TRBFV and does not use sample_type.
         #[arg(long, default_value = "secret-key")]
         sample_type: String,
 
@@ -222,7 +222,7 @@ fn get_circuit(
             let circuit = enc_bfv::circuit::EncBfvCircuit::new(sample_type, lambda);
             Ok(Box::new(circuit))
         }
-        "enc-trbfv" => {
+        "greco" => {
             // Greco only works with TRBFV
             if parameter_type != ParameterType::Trbfv {
                 anyhow::bail!("Greco circuit only supports TRBFV parameter type");
@@ -276,7 +276,7 @@ fn get_circuit(
 /// Get supported parameter types per circuit.
 pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<ParameterType> {
     match circuit_name.to_lowercase().as_str() {
-        "enc-trbfv" => vec![ParameterType::Trbfv],
+        "greco" => vec![ParameterType::Trbfv],
         "pk-trbfv" => vec![ParameterType::Trbfv],
         "pk-bfv" => vec![ParameterType::Bfv],
         "enc-bfv" => vec![ParameterType::Bfv],
@@ -738,7 +738,7 @@ fn generate_main_template(
 
     // Generate circuit-specific template based on circuit type
     match circuit_type {
-        "greco" | "enc-trbfv" => {
+        "greco" => {
             use greco::bounds::GrecoBounds;
             use greco::configs::GrecoConfigsGenerator;
             use greco::template::{GrecoMainTemplate, GrecoTemplateParams};
@@ -1330,9 +1330,10 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     // Default to SecretKey for other circuits
                     // Warn if user specified a sample type for circuits that don't support it
-                    if circuit_name == "enc-trbfv" {
+                    if circuit_name == "greco" {
                         eprintln!(
-                            "⚠️  Warning: --sample-type is not applicable to enc-trbfv circuit (TRBFV only). This flag will be ignored."
+                            "⚠️  Warning: --sample-type is not applicable to {} circuit (TRBFV only). This flag will be ignored.",
+                            circuit_name
                         );
                     } else {
                         eprintln!(
@@ -1359,7 +1360,7 @@ fn main() -> anyhow::Result<()> {
         Commands::List { circuits, presets } => {
             if circuits {
                 println!("📋 Available circuits:");
-                println!("  • enc-trbfv   - Greco circuit implementation (TRBFV only)");
+                println!("  • greco       - Greco circuit implementation (TRBFV only)");
                 println!(
                     "  • pk-trbfv     - Public Key Threshold BFV circuit implementation (supports trbfv)"
                 );
@@ -1394,12 +1395,12 @@ fn main() -> anyhow::Result<()> {
                 println!("\n🔧 Available parameter types:");
                 println!("  • trbfv - Threshold BFV (stricter security, 40-61 bit primes)");
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
-                println!("\n🔐 enc-trbfv circuit (Greco):");
+                println!("\n🔐 greco circuit:");
                 println!("  • TRBFV parameter type only: Encrypts messages/votes (Circuit 7)");
             }
             if !circuits && !presets {
                 println!("📋 Available circuits:");
-                println!("  • enc-trbfv   - Greco circuit implementation (TRBFV only)");
+                println!("  • greco       - Greco circuit implementation (TRBFV only)");
                 println!(
                     "  • pk-trbfv     - Public Key Threshold BFV circuit implementation (supports trbfv)"
                 );
@@ -1424,9 +1425,9 @@ fn main() -> anyhow::Result<()> {
                 println!("  • bfv   - Standard BFV (simpler conditions, 40-63 bit primes)");
                 println!("\n💡 Use --parameter-type to choose between trbfv and bfv (required)");
                 println!("   Example: --parameter-type trbfv");
-                println!("\n🔐 enc-trbfv circuit (Greco) usage:");
+                println!("\n🔐 greco circuit usage:");
                 println!("  • --parameter-type trbfv: Encrypt messages/votes (Circuit 7)");
-                println!("    Note: enc-trbfv only supports TRBFV parameter type");
+                println!("    Note: greco only supports TRBFV parameter type");
             }
         }
     }

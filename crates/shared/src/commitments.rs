@@ -315,6 +315,76 @@ pub fn compute_shares_party_modulus_commitment(share: &[BigInt], bit_msg: u32) -
     BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
 }
 
+/// Compute Greco pk aggregation commitment.
+/// This matches the Noir `compute_greco_pk_agg_commitment` function exactly.
+/// Used in Greco circuit, C5.
+/// Takes a prepared payload (Vec<Field>) directly.
+pub fn compute_greco_pk_agg_commitment(payload: Vec<Field>) -> BigInt {
+    // Domain separator - "Greco"
+    let domain_separator: [u8; 64] = [
+        0x47, 0x72, 0x65, 0x63, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = payload.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, payload, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
+/// Compute Greco challenge commitment.
+/// This matches the Noir `compute_greco_challenge_commitment` function exactly.
+/// Used in Greco circuit.
+/// Verifies pk_commitment using commitment_payload, then generates challenges from gammas_payload.
+pub fn compute_greco_challenge_commitment(
+    commitment_payload: Vec<Field>,
+    gammas_payload: Vec<Field>,
+    pk_commitment: &BigInt,
+    l: usize,
+) -> Vec<BigInt> {
+    // Verify pk_commitment matches the commitment from commitment_payload
+    let computed_pk_commitment = compute_greco_pk_agg_commitment(commitment_payload);
+    if computed_pk_commitment != *pk_commitment {
+        panic!(
+            "PK commitment mismatch in Greco circuit: expected {}, got {}",
+            pk_commitment, computed_pk_commitment
+        );
+    }
+
+    // Domain separator - "Greco"
+    let domain_separator: [u8; 64] = [
+        0x47, 0x72, 0x65, 0x63, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(2*L)
+    let input_size = gammas_payload.len() as u32;
+    let io_pattern = [0x80000000 | input_size, (2 * l as u32)];
+
+    let challenges = compute_safe(domain_separator, gammas_payload, io_pattern);
+
+    // Convert Fields to BigInts
+    challenges
+        .into_iter()
+        .map(|challenge_field| {
+            let challenge_bytes = challenge_field.into_bigint().to_bytes_le();
+            BigInt::from_bytes_le(num_bigint::Sign::Plus, &challenge_bytes)
+        })
+        .collect()
+}
+
 /// Compute aggregated shares commitment (either sk_shares or e_sm_shares).
 /// This matches the Noir `compute_aggregated_shares_commitment` function exactly.
 /// Used in C4.

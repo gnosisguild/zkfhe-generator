@@ -104,53 +104,53 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-greco (CIRCUIT 7 - ENCRYPTION TRBFV x PVSS (enc_trbfv))
+greco (USED FOR ENCRYPTION TRBFV x PVSS)
 -------------------------------------
 ************************************/
 
 // greco - bit parameters
-pub global ENC_TRBFV_BIT_PK: u32 = {};
-pub global ENC_TRBFV_BIT_CT: u32 = {};
-pub global ENC_TRBFV_BIT_U: u32 = {};
-pub global ENC_TRBFV_BIT_E0: u32 = {};
-pub global ENC_TRBFV_BIT_E1: u32 = {};
-pub global ENC_TRBFV_BIT_K: u32 = {};
-pub global ENC_TRBFV_BIT_R1: u32 = {};
-pub global ENC_TRBFV_BIT_R2: u32 = {};
-pub global ENC_TRBFV_BIT_P1: u32 = {};
-pub global ENC_TRBFV_BIT_P2: u32 = {};
+pub global GRECO_BIT_PK: u32 = {};
+pub global GRECO_BIT_CT: u32 = {};
+pub global GRECO_BIT_U: u32 = {};
+pub global GRECO_BIT_E0: u32 = {};
+pub global GRECO_BIT_E1: u32 = {};
+pub global GRECO_BIT_K: u32 = {};
+pub global GRECO_BIT_R1: u32 = {};
+pub global GRECO_BIT_R2: u32 = {};
+pub global GRECO_BIT_P1: u32 = {};
+pub global GRECO_BIT_P2: u32 = {};
 
 // greco - bounds
-pub global ENC_TRBFV_Q_MOD_T: Field = {};
-pub global ENC_TRBFV_K0IS: [Field; L] = [{}];
-pub global ENC_TRBFV_PK_BOUNDS: [Field; L] = [{}];
-pub global ENC_TRBFV_E0_BOUND: Field = {};
-pub global ENC_TRBFV_E1_BOUND: Field = {};
-pub global ENC_TRBFV_U_BOUND: Field = {};
-pub global ENC_TRBFV_K1_LOW_BOUND: Field = {};
-pub global ENC_TRBFV_K1_UP_BOUND: Field = {};
-pub global ENC_TRBFV_R1_LOW_BOUNDS: [Field; L] = [{}];
-pub global ENC_TRBFV_R1_UP_BOUNDS: [Field; L] = [{}];
-pub global ENC_TRBFV_R2_BOUNDS: [Field; L] = [{}];
-pub global ENC_TRBFV_P1_BOUNDS: [Field; L] = [{}];
-pub global ENC_TRBFV_P2_BOUNDS: [Field; L] = [{}];
+pub global GRECO_Q_MOD_T: Field = {};
+pub global GRECO_K0IS: [Field; L] = [{}];
+pub global GRECO_PK_BOUNDS: [Field; L] = [{}];
+pub global GRECO_E0_BOUND: Field = {};
+pub global GRECO_E1_BOUND: Field = {};
+pub global GRECO_U_BOUND: Field = {};
+pub global GRECO_K1_LOW_BOUND: Field = {};
+pub global GRECO_K1_UP_BOUND: Field = {};
+pub global GRECO_R1_LOW_BOUNDS: [Field; L] = [{}];
+pub global GRECO_R1_UP_BOUNDS: [Field; L] = [{}];
+pub global GRECO_R2_BOUNDS: [Field; L] = [{}];
+pub global GRECO_P1_BOUNDS: [Field; L] = [{}];
+pub global GRECO_P2_BOUNDS: [Field; L] = [{}];
 
 // greco - configs
-pub global ENC_TRBFV_CONFIGS: GrecoConfigs<N, L> = GrecoConfigs::new(
-    ENC_TRBFV_Q_MOD_T,
+pub global GRECO_CONFIGS: GrecoConfigs<N, L> = GrecoConfigs::new(
+    GRECO_Q_MOD_T,
     QIS,
-    ENC_TRBFV_K0IS,
-    ENC_TRBFV_PK_BOUNDS,
-    ENC_TRBFV_E0_BOUND,
-    ENC_TRBFV_E1_BOUND,
-    ENC_TRBFV_U_BOUND,
-    ENC_TRBFV_R1_LOW_BOUNDS,
-    ENC_TRBFV_R1_UP_BOUNDS,
-    ENC_TRBFV_R2_BOUNDS,
-    ENC_TRBFV_P1_BOUNDS,
-    ENC_TRBFV_P2_BOUNDS,
-    ENC_TRBFV_K1_LOW_BOUND,
-    ENC_TRBFV_K1_UP_BOUND
+    GRECO_K0IS,
+    GRECO_PK_BOUNDS,
+    GRECO_E0_BOUND,
+    GRECO_E1_BOUND,
+    GRECO_U_BOUND,
+    GRECO_R1_LOW_BOUNDS,
+    GRECO_R1_UP_BOUNDS,
+    GRECO_R2_BOUNDS,
+    GRECO_P1_BOUNDS,
+    GRECO_P2_BOUNDS,
+    GRECO_K1_LOW_BOUND,
+    GRECO_K1_UP_BOUND
 );
 "#,
             template_params.base.n, // N
