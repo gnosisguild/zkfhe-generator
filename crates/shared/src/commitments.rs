@@ -385,6 +385,51 @@ pub fn compute_greco_challenge_commitment(
         .collect()
 }
 
+/// Prepare the payload for aggregated shares from values commitment.
+/// This matches the Noir `prepare_aggregated_shares_from_values_commitment_payload` function exactly.
+/// Used in C6 (dec_share_trbfv circuit).
+/// Flattens values directly without bit packing.
+pub fn prepare_aggregated_shares_from_values_commitment_payload(
+    values: &[Vec<BigInt>],
+) -> Vec<Field> {
+    let mut inputs = Vec::new();
+
+    for value in values {
+        for coeff in value {
+            inputs.push(crate::utils::bigint_to_field(coeff));
+        }
+    }
+
+    inputs
+}
+
+/// Compute aggregated shares commitment from payload.
+/// This matches the Noir `compute_aggregated_shares_commitment` function exactly.
+/// Used in C6 (dec_share_trbfv circuit).
+/// Takes a prepared payload (Vec<Field>) directly.
+pub fn compute_aggregated_shares_commitment_from_payload(payload: Vec<Field>) -> BigInt {
+    // Hash using SafeSponge (matches compute_aggregated_shares_commitment in Noir)
+    // Domain separator - "PVSS_agg_sh"
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x61, 0x67, 0x67, 0x5f, 0x73, 0x68, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = payload.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, payload, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
 /// Compute aggregated shares commitment (either sk_shares or e_sm_shares).
 /// This matches the Noir `compute_aggregated_shares_commitment` function exactly.
 /// Used in C4.
@@ -409,6 +454,32 @@ pub fn compute_aggregated_shares_commitment(aggregated: &[Vec<BigInt>], bit_msg:
     let io_pattern = [0x80000000 | input_size, 0x00000001];
 
     let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
+/// Compute decryption share challenge commitment.
+/// This matches the Noir `compute_dec_share_challenge_commitment` function exactly.
+/// Used in C6 (dec_share_trbfv circuit).
+/// Takes a prepared payload (Vec<Field>) directly.
+pub fn compute_dec_share_challenge_commitment(payload: Vec<Field>) -> BigInt {
+    // Domain separator - "DecShare" in hex
+    let domain_separator: [u8; 64] = [
+        0x44, 0x65, 0x63, 0x53, 0x68, 0x61, 0x72, 0x65, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = payload.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, payload, io_pattern);
 
     // Convert Field to BigInt
     let commitment_field = commitment[0];

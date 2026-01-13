@@ -76,19 +76,19 @@ impl MainTemplateGenerator<DecShareAggTrBfvTemplateParams> for DecShareAggTrBfvM
 use lib::core::trbfv_dec_shares_agg::DecryptionSharesAggregation;
 use lib::math::polynomial::Polynomial;
 
-/// Number of non-zero coefficients in the message polynomial.
-pub global MSG_NON_ZERO_COEFFS: u32 = {};
+/// Max number of non-zero coefficients in the message polynomial.
+pub global MAX_MSG_NON_ZERO_COEFFS: u32 = {};
 /// Threshold.
 pub global T: u32 = {};
 
 fn main(
-    decryption_shares: [[Polynomial<MSG_NON_ZERO_COEFFS>; L]; T + 1],
+    decryption_shares: [[Polynomial<MAX_MSG_NON_ZERO_COEFFS>; L]; T + 1],
     party_ids: [Field; T + 1],
-    message: Polynomial<MSG_NON_ZERO_COEFFS>,
-    u_global: Polynomial<MSG_NON_ZERO_COEFFS>,
-    crt_quotients: [Polynomial<MSG_NON_ZERO_COEFFS>; L],
+    message: Polynomial<MAX_MSG_NON_ZERO_COEFFS>,
+    u_global: Polynomial<MAX_MSG_NON_ZERO_COEFFS>,
+    crt_quotients: [Polynomial<MAX_MSG_NON_ZERO_COEFFS>; L],
 ) {{
-    let dec_share_agg: DecryptionSharesAggregation<MSG_NON_ZERO_COEFFS, L, T, DEC_SHARES_AGG_BIT_NOISE> = DecryptionSharesAggregation::new(
+    let dec_share_agg: DecryptionSharesAggregation<MAX_MSG_NON_ZERO_COEFFS, L, T, DEC_SHARES_AGG_BIT_NOISE> = DecryptionSharesAggregation::new(
         DEC_SHARES_AGG_CONFIGS,
         decryption_shares,
         party_ids,
@@ -101,7 +101,7 @@ fn main(
 }}"#,
             params.security_level,
             params.parameter_set,
-            params.base.n, // MSG_NON_ZERO_COEFFS (trimmed degree)
+            params.base.n, // MAX_MSG_NON_ZERO_COEFFS (trimmed degree)
             params.threshold,
             verify_call,
         );

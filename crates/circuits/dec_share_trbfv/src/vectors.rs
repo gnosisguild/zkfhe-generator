@@ -12,7 +12,10 @@ use num_bigint::BigInt;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
-use shared::commitments::compute_aggregated_commitment;
+use shared::commitments::{
+    compute_aggregated_shares_commitment_from_payload,
+    prepare_aggregated_shares_from_values_commitment_payload,
+};
 use shared::errors::ZkFheResult;
 use shared::utils::to_string_2d_vec;
 use std::sync::Arc;
@@ -262,9 +265,11 @@ impl DecShareTrBfvVectors {
             res.d_is[i] = d_i;
         }
 
-        // Compute commitments to s and e (matches circuit's compute_aggregated_commitment)
-        res.expected_s_commitment = compute_aggregated_commitment(&res.s_is);
-        res.expected_e_commitment = compute_aggregated_commitment(&res.e_is);
+        // Compute commitments to s and e (matches circuit's commitment functions)
+        let s_payload = prepare_aggregated_shares_from_values_commitment_payload(&res.s_is);
+        res.expected_s_commitment = compute_aggregated_shares_commitment_from_payload(s_payload);
+        let e_payload = prepare_aggregated_shares_from_values_commitment_payload(&res.e_is);
+        res.expected_e_commitment = compute_aggregated_shares_commitment_from_payload(e_payload);
 
         Ok(res)
     }
