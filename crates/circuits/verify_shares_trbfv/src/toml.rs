@@ -22,10 +22,13 @@ impl VerifySharesTrbfvTomlGenerator {
 }
 
 /// Complete `Prover.toml` format for Verify Shares TRBFV circuit
+/// The secret field name varies based on sample type (secret_sk vs secret_e_sm)
 #[derive(Serialize)]
 struct ProverTomlFormat {
     expected_secret_commitment: String,
-    secret_crt: Vec<serde_json::Value>, // [L] array of Polynomial<N>
+    // Using serde_json::Value to handle dynamic field names
+    #[serde(flatten)]
+    secret: serde_json::Value,
     y: Vec<Vec<Vec<serde_json::Value>>>, // [N][L][N_PARTIES+1]
     h: Vec<Vec<Vec<serde_json::Value>>>, // [L][N_PARTIES-T][N_PARTIES+1]
 }
@@ -75,22 +78,34 @@ impl TomlGenerator for VerifySharesTrbfvTomlGenerator {
             })
             .collect::<Vec<Vec<Vec<serde_json::Value>>>>();
 
-        // The circuit expects secret_crt: [Polynomial<N>; L] as input
-        // Convert secret_crt to JSON format: array of L polynomials
-        let secret_crt_json: Vec<serde_json::Value> = self
-            .vectors
-            .secret_crt
-            .iter()
-            .map(|mod_secret| {
-                serde_json::json!({
-                    "coefficients": to_string_1d_vec(mod_secret)
-                })
+        // Generate secret based on sample type:
+        // - For SK: secret_sk: Polynomial<N> (single polynomial, use first modulus since all are the same)
+        // - For ESM: secret_e_sm: [Polynomial<N>; L] (array of polynomials, one per modulus)
+        let secret_json = if self.vectors.sample_type == shared::circuit::SampleType::SecretKey {
+            // For SK: output single polynomial with field name "secret_sk"
+            serde_json::json!({
+                "secret_sk": {
+                    "coefficients": to_string_1d_vec(&self.vectors.secret_crt[0])
+                }
             })
-            .collect();
+        } else {
+            // For ESM: output array of L polynomials with field name "secret_e_sm"
+            serde_json::json!({
+                "secret_e_sm": self.vectors
+                    .secret_crt
+                    .iter()
+                    .map(|mod_secret| {
+                        serde_json::json!({
+                            "coefficients": to_string_1d_vec(mod_secret)
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+        };
 
         let toml_data = ProverTomlFormat {
             expected_secret_commitment: self.vectors.expected_secret_commitment.to_string(),
-            secret_crt: secret_crt_json,
+            secret: secret_json,
             y: y_json,
             h: h_json,
         };
@@ -123,7 +138,9 @@ mod tests {
             shared::DEFAULT_INSECURE_LAMBDA,
         )
         .unwrap();
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
+        let vectors =
+            VerifySharesTrbfvVectors::compute(&data, &params, bit_secret, SampleType::SecretKey)
+                .unwrap();
         let vectors_standard = vectors.standard_form();
 
         let generator = VerifySharesTrbfvTomlGenerator::new(vectors_standard);
@@ -142,7 +159,7 @@ mod tests {
         // Check that the file contains the expected sections
         // Note: params are now in a separate .nr constant file, not in TOML
         assert!(content.contains("expected_secret_commitment"));
-        assert!(content.contains("secret_crt"));
+        assert!(content.contains("secret_sk"));
         assert!(content.contains("y"));
         assert!(content.contains("h"));
     }
@@ -162,7 +179,9 @@ mod tests {
             shared::DEFAULT_INSECURE_LAMBDA,
         )
         .unwrap();
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
+        let vectors =
+            VerifySharesTrbfvVectors::compute(&data, &params, bit_secret, SampleType::SecretKey)
+                .unwrap();
         let vectors_standard = vectors.standard_form();
 
         let generator = VerifySharesTrbfvTomlGenerator::new(vectors_standard);
@@ -171,7 +190,7 @@ mod tests {
         // Verify the TOML string contains the expected sections
         // Note: params are now in a separate .nr constant file, not in TOML
         assert!(toml_string.contains("expected_secret_commitment"));
-        assert!(toml_string.contains("secret_crt"));
+        assert!(toml_string.contains("secret_sk"));
         assert!(toml_string.contains("y"));
         assert!(toml_string.contains("h"));
     }

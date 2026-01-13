@@ -89,11 +89,28 @@ impl MainTemplateGenerator<VerifySharesTrbfvTemplateParams> for VerifySharesTrbf
         // Note: q_j values for production are typically < 2^52, so normalized values should fit in U128.
         let verify_call = "verify_shares.verify()";
 
+        // Generate template based on secret type (SK vs ESM)
+        let (secret_param, struct_type, constructor_param) = if params.secret_type_postfix == "SK" {
+            // For SK: secret_sk: Polynomial<N> (single polynomial, no L dimension)
+            (
+                "secret_sk: Polynomial<N>".to_string(),
+                "VerifySharesSk".to_string(),
+                "secret_sk".to_string(),
+            )
+        } else {
+            // For ESM: secret_e_sm: [Polynomial<N>; L] (array of polynomials)
+            (
+                "secret_e_sm: [Polynomial<N>; L]".to_string(),
+                "VerifySharesEsm".to_string(),
+                "secret_e_sm".to_string(),
+            )
+        };
+
         let template = format!(
             r#"use lib::configs::{}::{}::{{
     L, N, VERIFY_SHARES_BIT_SHARE, {}, {},
 }};
-use lib::core::trbfv_verify_shares::VerifyShares;
+use lib::core::trbfv_verify_shares::{};
 use lib::math::polynomial::Polynomial;
 
 /// Number of parties.
@@ -103,12 +120,12 @@ pub global T: u32 = {};
 
 fn main(
     expected_secret_commitment: Field,
-    secret_crt: [Polynomial<N>; L],
+    {},
     y: [[[Field; N_PARTIES + 1]; L]; N],
     h: [[[Field; N_PARTIES + 1]; N_PARTIES - T]; L],
 ) -> pub [[Field; L]; N_PARTIES] {{
-    let verify_shares: VerifyShares<N, L, N_PARTIES, T, {}, VERIFY_SHARES_BIT_SHARE>
-         = VerifyShares::new({}, expected_secret_commitment, secret_crt, y, h);
+    let verify_shares: {}<N, L, N_PARTIES, T, {}, VERIFY_SHARES_BIT_SHARE>
+         = {}::new({}, expected_secret_commitment, {}, y, h);
 
     {}
 }}"#,
@@ -116,10 +133,15 @@ fn main(
             params.parameter_set,
             bit_secret_name,
             configs_name,
+            struct_type,
             params.num_parties,
             params.threshold,
+            secret_param,
+            struct_type,
             bit_secret_name,
+            struct_type,
             configs_name,
+            constructor_param,
             verify_call,
         );
 

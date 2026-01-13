@@ -131,7 +131,12 @@ impl Circuit for VerifySharesTrbfvCircuit {
         })?;
 
         // Compute witness vectors from the shares data
-        let vectors = VerifySharesTrbfvVectors::compute(&shares_data, selected_params, bit_secret)?;
+        let vectors = VerifySharesTrbfvVectors::compute(
+            &shares_data,
+            selected_params,
+            bit_secret,
+            self.sample_type,
+        )?;
 
         // Verify that vectors satisfy circuit constraints
         vectors.verify(
@@ -259,7 +264,7 @@ mod tests {
         // Read and verify basic structure
         let content = std::fs::read_to_string(&toml_path).unwrap();
         // Note: params are now in a separate .nr constant file
-        assert!(content.contains("secret_crt"));
+        assert!(content.contains("secret_sk"));
         assert!(content.contains("expected_secret_commitment"));
         assert!(content.contains("y"));
         assert!(content.contains("h"));

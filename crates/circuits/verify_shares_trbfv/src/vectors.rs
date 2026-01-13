@@ -11,6 +11,8 @@ use shared::commitments::compute_secret_commitment;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
+use shared::circuit::SampleType;
+
 /// Set of vectors for input validation of Verify Shares TRBFV
 #[derive(Clone, Debug)]
 pub struct VerifySharesTrbfvVectors {
@@ -29,17 +31,26 @@ pub struct VerifySharesTrbfvVectors {
     /// This can be either commit(sk_trbfv) or commit(e_sm)
     /// Uses secret_crt[0] (first modulus) for commitment computation
     pub expected_secret_commitment: BigInt,
+    /// Sample type to determine which circuit struct to use
+    pub sample_type: SampleType,
 }
 
 impl VerifySharesTrbfvVectors {
     /// Create a new `VerifySharesTrbfvVectors` with the given dimensions.
-    pub fn new(degree: usize, num_moduli: usize, num_parties: usize, threshold: usize) -> Self {
+    pub fn new(
+        degree: usize,
+        num_moduli: usize,
+        num_parties: usize,
+        threshold: usize,
+        sample_type: SampleType,
+    ) -> Self {
         let num_parity_rows = num_parties - threshold;
         VerifySharesTrbfvVectors {
             secret_crt: vec![vec![BigInt::zero(); degree]; num_moduli],
             y: vec![vec![vec![BigInt::zero(); num_parties + 1]; num_moduli]; degree],
             h: vec![vec![vec![BigInt::zero(); num_parties + 1]; num_parity_rows]; num_moduli],
             expected_secret_commitment: BigInt::zero(),
+            sample_type,
         }
     }
 
@@ -50,6 +61,7 @@ impl VerifySharesTrbfvVectors {
     /// * `data` - Sample secret key shares data
     /// * `params` - BFV parameters
     /// * `bit_secret` - Bit width for secret bounds (used for commitment computation)
+    /// * `sample_type` - Sample type (SecretKey or SmudgingNoise)
     ///
     /// # Returns
     ///
@@ -59,6 +71,7 @@ impl VerifySharesTrbfvVectors {
         data: &VerifySharesTrbfvData,
         params: &Arc<BfvParameters>,
         bit_secret: u32,
+        sample_type: SampleType,
     ) -> ZkFheResult<Self> {
         let ctx = params.ctx_at_level(0)?;
         let degree = params.degree();
@@ -154,6 +167,7 @@ impl VerifySharesTrbfvVectors {
             y,
             h,
             expected_secret_commitment,
+            sample_type,
         })
     }
 
@@ -342,6 +356,7 @@ impl VerifySharesTrbfvVectors {
             y,
             h,
             expected_secret_commitment,
+            sample_type: self.sample_type,
         }
     }
 }
@@ -369,7 +384,9 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
+        let vectors =
+            VerifySharesTrbfvVectors::compute(&data, &params, bit_secret, SampleType::SecretKey)
+                .unwrap();
         assert_eq!(vectors.secret_crt.len(), params.moduli().len());
         for mod_secret in &vectors.secret_crt {
             assert_eq!(mod_secret.len(), params.degree());
@@ -412,7 +429,9 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
+        let vectors =
+            VerifySharesTrbfvVectors::compute(&data, &params, bit_secret, SampleType::SecretKey)
+                .unwrap();
         let vectors_standard = vectors.standard_form();
 
         // Verify all values are within ZKP modulus
@@ -462,7 +481,9 @@ mod tests {
         )
         .unwrap();
 
-        let vectors = VerifySharesTrbfvVectors::compute(&data, &params, bit_secret).unwrap();
+        let vectors =
+            VerifySharesTrbfvVectors::compute(&data, &params, bit_secret, SampleType::SecretKey)
+                .unwrap();
 
         // Verify should pass for valid data
         let result = vectors.verify(&params, data.num_parties, data.threshold);
