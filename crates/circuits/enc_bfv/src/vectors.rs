@@ -16,7 +16,7 @@ use num_bigint::ToBigInt;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
-use shared::commitments::compute_message_commitment;
+use shared::commitments::{compute_message_commitment, compute_pk_bfv_commitment};
 use shared::errors::ZkFheResult;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 use std::ops::Deref;
@@ -40,6 +40,7 @@ pub struct EncBfvVectors {
     pub e1: Vec<BigInt>,
     pub u: Vec<BigInt>,
     pub message: Vec<BigInt>,
+    pub expected_pk_commitment: BigInt,
     pub expected_message_commitment: BigInt,
 }
 
@@ -71,6 +72,7 @@ impl EncBfvVectors {
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
             message: vec![BigInt::zero(); degree],
+            expected_pk_commitment: BigInt::zero(),
             expected_message_commitment: BigInt::zero(),
         }
     }
@@ -86,6 +88,7 @@ impl EncBfvVectors {
     /// * `e1_rns` - Error polynomial used in ciphertext sampled from error distribution.
     /// * `ct` - Ciphertext from fhe.rs.
     /// * `pk` - Public Key from fhe.rs.
+    /// * `bit_pk` - Bit width for packing public key coefficients for commitment computation.
     #[allow(clippy::too_many_arguments)]
     pub fn compute(
         pt: &Plaintext,
@@ -95,6 +98,7 @@ impl EncBfvVectors {
         ct: &Ciphertext,
         pk: &PublicKey,
         params: &Arc<BfvParameters>,
+        bit_pk: u32,
     ) -> ZkFheResult<EncBfvVectors> {
         // Reconstruct e1_rns in mod Q.
         let mut e0_power = e0_rns.clone();
@@ -542,6 +546,9 @@ impl EncBfvVectors {
         res.e0 = e0_vec;
         res.e1 = e1;
 
+        // Compute expected_pk_commitment from pk0is and pk1is
+        res.expected_pk_commitment = compute_pk_bfv_commitment(&res.pk0is, &res.pk1is, bit_pk);
+
         // Compute expected_message_commitment from message
         res.expected_message_commitment = compute_message_commitment(&res.message);
 
@@ -568,6 +575,13 @@ impl EncBfvVectors {
             k0is: reduce_coefficients(&self.k0is, zkp_modulus),
             u: reduce_coefficients(&self.u, zkp_modulus),
             message: reduce_coefficients(&self.message, zkp_modulus),
+            expected_pk_commitment: {
+                let mut reduced = self.expected_pk_commitment.clone() % zkp_modulus;
+                if reduced < BigInt::zero() {
+                    reduced += zkp_modulus;
+                }
+                reduced
+            },
             expected_message_commitment: {
                 let mut reduced = self.expected_message_commitment.clone() % zkp_modulus;
                 if reduced < BigInt::zero() {
@@ -595,6 +609,7 @@ impl EncBfvVectors {
             "k0is": to_string_1d_vec(&self.k0is),
             "ct0is": to_string_2d_vec(&self.ct0is),
             "ct1is": to_string_2d_vec(&self.ct1is),
+            "expected_pk_commitment": self.expected_pk_commitment.to_string(),
             "expected_message_commitment": self.expected_message_commitment.to_string(),
         })
     }
@@ -636,9 +651,11 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0);
         let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
-        // Compute vectors
+        // Compute vectors (using a default bit_pk for testing - in real usage this comes from bounds)
+        let bit_pk = 52; // Default for testing
         let vecs =
-            EncBfvVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params).unwrap();
+            EncBfvVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params, bit_pk)
+                .unwrap();
 
         let json = vecs.to_json();
 
@@ -659,6 +676,7 @@ mod tests {
             "k0is",
             "ct0is",
             "ct1is",
+            "expected_pk_commitment",
             "expected_message_commitment",
         ];
 
@@ -666,7 +684,18 @@ mod tests {
             assert!(json.get(field).is_some(), "Missing field: {}", field);
         }
 
-        // Verify expected_message_commitment is non-zero (since we have actual data)
+        // Verify commitments are non-zero (since we have actual data)
+        let pk_commitment = json
+            .get("expected_pk_commitment")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        let pk_commitment_bigint = pk_commitment.parse::<num_bigint::BigInt>().unwrap();
+        assert!(
+            !pk_commitment_bigint.is_zero(),
+            "expected_pk_commitment should not be zero"
+        );
+
         let msg_commitment = json
             .get("expected_message_commitment")
             .unwrap()

@@ -19,30 +19,12 @@ impl PkBfvTomlGenerator {
 struct ProverTomlFormat {
     pk0is: Vec<serde_json::Value>,
     pk1is: Vec<serde_json::Value>,
-    r1is: Vec<serde_json::Value>,
-    r2is: Vec<serde_json::Value>,
-    a: Vec<serde_json::Value>,
-    sk: serde_json::Value,
-    eek: serde_json::Value,
 }
 
 impl TomlGenerator for PkBfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
-        // Note: Configs (N, L, QIS, bounds, bit parameters, Configs) are now
-        // generated in a separate .nr config file, not in the TOML.
+        // Note: Configs (N, L, BIT_PK) are generated in a separate .nr config file, not in the TOML.
         let toml_data = ProverTomlFormat {
-            // a: L vectors of polynomials - convert to simple string format
-            a: self
-                .vectors
-                .a
-                .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
-                })
-                .collect(),
-
             // pk0is: L vectors of polynomials - convert to simple string format
             pk0is: self
                 .vectors
@@ -66,40 +48,6 @@ impl TomlGenerator for PkBfvTomlGenerator {
                     })
                 })
                 .collect(),
-
-            // r1is: L vectors of polynomials - convert to simple string format
-            r1is: self
-                .vectors
-                .r1is
-                .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
-                })
-                .collect(),
-
-            // r2is: L vectors of polynomials - convert to simple string format
-            r2is: self
-                .vectors
-                .r2is
-                .iter()
-                .map(|v| {
-                    serde_json::json!({
-                        "coefficients": to_string_1d_vec(v)
-                    })
-                })
-                .collect(),
-
-            // sk: single vector of polynomials - convert to simple string format
-            sk: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.sk)
-            }),
-
-            // eek: single vector of polynomials - convert to simple string format
-            eek: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.eek)
-            }),
         };
 
         Ok(toml::to_string(&toml_data)?)
@@ -133,20 +81,11 @@ mod tests {
         // Check that the file contains the expected sections
         assert!(content.contains("pk0is"));
         assert!(content.contains("pk1is"));
-        assert!(content.contains("r1is"));
-        assert!(content.contains("r2is"));
-        assert!(content.contains("a"));
-        assert!(content.contains("sk"));
-        assert!(content.contains("eek"));
+
         let toml_string = generator.to_toml_string().unwrap();
 
         // Verify the TOML string contains the expected sections
         assert!(toml_string.contains("[[pk0is]]"));
         assert!(toml_string.contains("[[pk1is]]"));
-        assert!(toml_string.contains("[[r1is]]"));
-        assert!(toml_string.contains("[[r2is]]"));
-        assert!(toml_string.contains("[[a]]"));
-        assert!(toml_string.contains("[sk]"));
-        assert!(toml_string.contains("[eek]"));
     }
 }

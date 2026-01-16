@@ -3,7 +3,7 @@
 //! This module generates a .nr config file with all circuit-specific configs
 //! (N, L, QIS, bounds, bit parameters, Configs) that can be imported in the main circuit.
 
-use crate::bounds::{VerifySharesTrbfvBounds, VerifySharesTrbfvCryptographicParameters};
+use crate::bounds::VerifySharesTrbfvCryptographicParameters;
 use crate::template::VerifySharesTrbfvTemplateParams;
 use shared::errors::ZkFheResult;
 use std::path::{Path, PathBuf};
@@ -12,21 +12,23 @@ use std::path::{Path, PathBuf};
 pub struct VerifySharesTrbfvConfigsGenerator;
 
 impl VerifySharesTrbfvConfigsGenerator {
-    /// Generate the config .nr file content
+    /// Generate the config .nr file content with both SK and ESM bit parameters
     ///
     /// # Arguments
     ///
     /// * `crypto_params` - Cryptographic parameters (moduli, plaintext modulus)
-    /// * `bounds` - Bounds for the circuit
     /// * `template_params` - Template parameters (N, L, bit widths)
+    /// * `bit_secret_sk` - The BIT_SECRET value for secret keys
+    /// * `bit_secret_esm` - The BIT_SECRET value for smudging noise
     ///
     /// # Returns
     ///
     /// The complete config file content as a string
-    pub fn generate_configs(
+    pub fn generate_configs_with_both_secret_types(
         crypto_params: &VerifySharesTrbfvCryptographicParameters,
-        bounds: &VerifySharesTrbfvBounds,
         template_params: &VerifySharesTrbfvTemplateParams,
+        bit_secret_sk: u32,
+        bit_secret_esm: u32,
     ) -> ZkFheResult<String> {
         // Format QIS array
         let qis_str = crypto_params
@@ -46,30 +48,62 @@ pub global QIS: [Field; L] = [{}];
 
 /************************************
 -------------------------------------
-verify_shares (CIRCUIT 3 - VERIFY SHARES)
+verify_shares (CIRCUIT 2a - VERIFY SHARES SK)
 -------------------------------------
 ************************************/
 
 // verify_shares - bit parameters
-pub global VERIFY_SHARES_BIT_SK: u32 = {};
 pub global VERIFY_SHARES_BIT_SHARE: u32 = {};
-
-// verify_shares - bounds
-pub global VERIFY_SHARES_SK_BOUND: Field = {};
+pub global VERIFY_SHARES_BIT_SECRET_SK: u32 = {};
 
 // verify_shares - configs
-pub global VERIFY_SHARES_CONFIGS: VerifySharesConfigs<L> =
-    VerifySharesConfigs::new(QIS, VERIFY_SHARES_SK_BOUND);
+pub global VERIFY_SHARES_CONFIGS_SK: VerifySharesConfigs<L> =
+    VerifySharesConfigs::new(QIS);
+
+/************************************
+-------------------------------------
+verify_shares (CIRCUIT 2b - VERIFY SHARES E_SM)
+-------------------------------------
+************************************/
+
+// verify_shares - bit parameters
+pub global VERIFY_SHARES_BIT_SECRET_E_SM: u32 = {};
+
+// verify_shares - configs
+pub global VERIFY_SHARES_CONFIGS_E_SM: VerifySharesConfigs<L> =
+    VerifySharesConfigs::new(QIS);
 "#,
             template_params.base.n,    // N
             template_params.base.l,    // L
             qis_str,                   // QIS array
-            template_params.bit_sk,    // VERIFY_SHARES_BIT_SK
             template_params.bit_share, // VERIFY_SHARES_BIT_SHARE
-            bounds.sk_bound,           // VERIFY_SHARES_SK_BOUND
+            bit_secret_sk,             // VERIFY_SHARES_BIT_SECRET_SK
+            bit_secret_esm,            // VERIFY_SHARES_BIT_SECRET_E_SM
         );
 
         Ok(configs)
+    }
+
+    /// Generate the config .nr file content (backwards compatibility)
+    ///
+    /// # Arguments
+    ///
+    /// * `crypto_params` - Cryptographic parameters (moduli, plaintext modulus)
+    /// * `template_params` - Template parameters (N, L, bit widths)
+    ///
+    /// # Returns
+    ///
+    /// The complete config file content as a string
+    pub fn generate_configs(
+        crypto_params: &VerifySharesTrbfvCryptographicParameters,
+        template_params: &VerifySharesTrbfvTemplateParams,
+    ) -> ZkFheResult<String> {
+        Self::generate_configs_with_both_secret_types(
+            crypto_params,
+            template_params,
+            template_params.bit_secret,
+            template_params.bit_secret,
+        )
     }
 
     /// Generate and write the config file to the output directory
@@ -87,12 +121,11 @@ pub global VERIFY_SHARES_CONFIGS: VerifySharesConfigs<L> =
     /// Path to the generated config file
     pub fn generate_configs_file(
         crypto_params: &VerifySharesTrbfvCryptographicParameters,
-        bounds: &VerifySharesTrbfvBounds,
         template_params: &VerifySharesTrbfvTemplateParams,
         output_dir: &Path,
         filename: &str,
     ) -> ZkFheResult<PathBuf> {
-        let content = Self::generate_configs(crypto_params, bounds, template_params)?;
+        let content = Self::generate_configs(crypto_params, template_params)?;
         let output_path = output_dir.join(filename);
         std::fs::write(&output_path, content)?;
         Ok(output_path)

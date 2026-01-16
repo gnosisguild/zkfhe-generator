@@ -17,6 +17,7 @@ impl PkAggTrBfvTomlGenerator {
 /// Complete `Prover.toml` format
 #[derive(Serialize)]
 struct ProverTomlFormat {
+    expected_pk_trbfv_commitments: Vec<String>,
     pk0: Vec<Vec<serde_json::Value>>,
     pk1: Vec<Vec<serde_json::Value>>,
     pk0_agg: Vec<serde_json::Value>,
@@ -80,7 +81,16 @@ impl TomlGenerator for PkAggTrBfvTomlGenerator {
             })
             .collect();
 
+        // Convert expected_pk_trbfv_commitments to strings
+        let expected_pk_trbfv_commitments: Vec<String> = self
+            .vectors
+            .expected_pk_trbfv_commitments
+            .iter()
+            .map(|c| c.to_string())
+            .collect();
+
         let toml_data = ProverTomlFormat {
+            expected_pk_trbfv_commitments,
             pk0: pk0_json,
             pk1: pk1_json,
             pk0_agg: pk0_agg_json,
@@ -101,10 +111,14 @@ mod tests {
 
     #[test]
     fn test_toml_generation_and_structure() {
-        let params = test_parameters_trbfv();
+        use crate::bounds::PkAggTrBfvCryptographicParameters;
+        let params: std::sync::Arc<fhe::bfv::BfvParameters> = test_parameters_trbfv();
 
         let data = generate_sample_pk_aggregation(&params, None).unwrap();
-        let vectors = PkAggTrBfvVectors::compute(&data, &params).unwrap();
+        let crypto_params = PkAggTrBfvCryptographicParameters::compute(&params, 0).unwrap();
+        let bit_pk =
+            shared::template::calculate_bit_width(&crypto_params.pk_bound.to_string()).unwrap();
+        let vectors = PkAggTrBfvVectors::compute(&data, &params, bit_pk).unwrap();
         let vectors_standard = vectors.standard_form();
 
         let generator = PkAggTrBfvTomlGenerator::new(vectors_standard);
@@ -116,6 +130,7 @@ mod tests {
         assert_eq!(output_path.file_name().unwrap(), "Prover.toml");
 
         let content = std::fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains("expected_pk_trbfv_commitments"));
         assert!(content.contains("pk0"));
         assert!(content.contains("pk1"));
         assert!(content.contains("pk0_agg"));

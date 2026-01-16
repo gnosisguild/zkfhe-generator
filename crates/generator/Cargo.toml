@@ -18,13 +18,13 @@ path = "src/main.rs"
 
 [dependencies]
 shared = { package = "zkfhe-shared", path = "../shared" }
-greco = { package = "zkfhe-greco", path = "../circuits/enc_trbfv" }
+greco = { package = "zkfhe-greco", path = "../circuits/greco" }
+pk_trbfv = { package = "zkfhe-pk-trbfv", path = "../circuits/pk_trbfv" }
 pk_bfv = { package = "zkfhe-pk-bfv", path = "../circuits/pk_bfv" }
 pk_agg_trbfv = { package = "zkfhe-pk-agg-trbfv", path = "../circuits/pk_agg_trbfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "../circuits/dec_share_trbfv" }
 dec_share_agg_trbfv = { package = "zkfhe-dec-share-agg-trbfv", path = "../circuits/dec_share_agg_trbfv" }
 dec_bfv = { package = "zkfhe-dec-bfv", path = "../circuits/dec_bfv" }
-dec_bfv_no_hom_add = { package = "zkfhe-dec-bfv-no-hom-add", path = "../circuits/dec_bfv_no_hom_add" }
 verify_shares_trbfv = { package = "zkfhe-verify-shares-trbfv", path = "../circuits/verify_shares_trbfv" }
 enc_bfv = { package = "zkfhe-enc-bfv", path = "../circuits/enc_bfv" }
 crypto_params = { package = "zkfhe-crypto-params", path = "../crypto_params" }

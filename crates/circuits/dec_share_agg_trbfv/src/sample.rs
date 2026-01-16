@@ -192,11 +192,33 @@ pub fn generate_sample_decryption_share_aggregation(
     //     })
     //     .collect();
 
-    let messages: Vec<Vec<u64>> = vec![
-        vec![2, 1, 5, 0, 1], // msg1
-        vec![3, 0, 3, 2, 3], // msg2
-        vec![4, 6, 1, 0, 1], // msg3
+    // We want to simulate the CRISP 80 non-zero coefficients in the message.
+    // Pattern: concatenate msg1, msg2, msg3 (27 non-zero coefficients total, all non-zero)
+    let pattern: Vec<u64> = vec![
+        2, 1, 5, 2, 1, 2, 3, 2, 4, // msg1
+        3, 3, 3, 2, 3, 3, 1, 2, 3, // msg2
+        4, 6, 1, 5, 1, 1, 2, 1, 2, // msg3
     ];
+
+    // Repeat pattern to get exactly 80 non-zero coefficients
+    // Pattern has 27 non-zero: 2 full repetitions (54) + 26 more = 80
+    let mut message: Vec<u64> = Vec::new();
+    for _ in 0..2 {
+        message.extend_from_slice(&pattern);
+    }
+    // Add first 26 coefficients from pattern to reach exactly 80 non-zero
+    message.extend_from_slice(&pattern[..26]);
+
+    // Pad with zeros to reach polynomial degree
+    let degree = trbfv_params.degree();
+    while message.len() < degree {
+        message.push(0);
+    }
+    if message.len() > degree {
+        message.truncate(degree);
+    }
+
+    let messages: Vec<Vec<u64>> = vec![message];
 
     let numbers_encrypted: Vec<Ciphertext> = messages
         .iter()

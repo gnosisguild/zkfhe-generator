@@ -6,7 +6,7 @@ use crate::toml::PkBfvTomlGenerator;
 use crate::vectors::PkBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
-use shared::circuit::{CiphernodesConfig, ParameterType};
+use shared::circuit::ParameterType;
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
@@ -29,7 +29,7 @@ impl Circuit for PkBfvCircuit {
     }
 
     fn description(&self) -> &'static str {
-        "Public Key (Threshold) BFV zero-knowledge proof circuit for BFV homomorphic public key"
+        "BFV Public Key commitment zero-knowledge proof circuit for BFV homomorphic public key"
     }
 
     fn parameter_type(&self) -> ParameterType {
@@ -42,42 +42,29 @@ impl Circuit for PkBfvCircuit {
 
     fn generate_toml(
         &self,
-        trbfv_params: &Arc<BfvParameters>,
+        _trbfv_params: &Arc<BfvParameters>,
         bfv_params: &Arc<BfvParameters>,
         output_dir: &Path,
-        _ciphernodes_config: Option<&CiphernodesConfig>,
+        _ciphernodes_config: Option<&shared::circuit::CiphernodesConfig>,
     ) -> Result<(), shared::errors::ZkFheError> {
-        let selected_params = if self.parameter_type == ParameterType::Trbfv {
-            trbfv_params
-        } else {
-            bfv_params
-        };
+        let selected_params = bfv_params;
 
-        // Generate bounds and vectors directly
+        // Generate bounds and vectors directly for BFV Public Key
         let (crypto_params, bounds) = PkBfvBounds::compute(selected_params, 0)?;
-        let encryption_data =
-            generate_sample_encryption(trbfv_params, bfv_params, self.parameter_type).map_err(
-                |e| shared::errors::ZkFheError::Bfv {
-                    message: e.to_string(),
-                },
-            )?;
+        let encryption_data = generate_sample_encryption(bfv_params).map_err(|e| {
+            shared::errors::ZkFheError::Bfv {
+                message: e.to_string(),
+            }
+        })?;
 
-        let vectors: PkBfvVectors = PkBfvVectors::compute(
-            &encryption_data.a,
-            &encryption_data.e_rns,
-            &encryption_data.sk_rns,
-            &encryption_data.public_key,
-            selected_params,
-        )?;
+        let vectors: PkBfvVectors =
+            PkBfvVectors::compute(&encryption_data.public_key, selected_params)?;
 
         let vectors_standard = vectors.standard_form();
 
         // Generate template params for config file generation
         let bounds_data = PkBfvBoundsData {
-            eek_bound: bounds.eek_bound.to_string(),
-            sk_bound: bounds.sk_bound.to_string(),
-            r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
-            r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+            pk_bound: bounds.pk_bound.to_string(),
         };
 
         // Determine security level based on lambda: "production" if lambda >= 80, "insecure" otherwise
@@ -98,7 +85,7 @@ impl Circuit for PkBfvCircuit {
             security_level.to_string(),
         )?;
 
-        // Generate config .nr file (named after parameter set: trbfv.nr or bfv.nr)
+        // Generate config .nr file (named after parameter set: bfv.nr)
         let configs_filename = format!("{}.nr", self.parameter_type().as_str());
         PkBfvConfigsGenerator::generate_configs_file(
             &crypto_params,

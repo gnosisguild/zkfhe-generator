@@ -3,7 +3,7 @@ name = "zkfhe-pk-bfv"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "(Threshold) BFV Public Key circuit parameter generation in Rust"
+description = "BFV Public Key commitment circuit parameter generation in Rust"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -29,3 +29,4 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 anyhow = { workspace = true }
 tempfile = { workspace = true }
+
