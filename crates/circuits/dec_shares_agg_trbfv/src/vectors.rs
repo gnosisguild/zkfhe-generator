@@ -16,7 +16,7 @@ use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub struct DecShareAggTrBfvVectors {
+pub struct DecSharesAggTrBfvVectors {
     /// Decryption shares from T+1 parties (per modulus, per party)
     pub decryption_shares: Vec<Vec<Vec<BigInt>>>, // [party][modulus][coeff]
     /// Party IDs (1-based: 1, 2, ..., T+1)
@@ -29,9 +29,9 @@ pub struct DecShareAggTrBfvVectors {
     pub crt_quotients: Vec<Vec<BigInt>>, // [modulus][coeff]
 }
 
-impl DecShareAggTrBfvVectors {
+impl DecSharesAggTrBfvVectors {
     pub fn new(num_moduli: usize, degree: usize, threshold: usize) -> Self {
-        DecShareAggTrBfvVectors {
+        DecSharesAggTrBfvVectors {
             decryption_shares: vec![vec![vec![BigInt::zero(); degree]; num_moduli]; threshold + 1],
             party_ids: vec![BigInt::zero(); threshold + 1],
             message: vec![BigInt::zero(); degree],
@@ -251,7 +251,7 @@ impl DecShareAggTrBfvVectors {
             crt_quotients.push(r_m_coeffs);
         }
 
-        Ok(DecShareAggTrBfvVectors {
+        Ok(DecSharesAggTrBfvVectors {
             decryption_shares,
             party_ids,
             message,
@@ -262,7 +262,7 @@ impl DecShareAggTrBfvVectors {
 
     pub fn standard_form(&self) -> Self {
         let zkp_modulus = &shared::constants::get_zkp_modulus();
-        let result = DecShareAggTrBfvVectors {
+        let result = DecSharesAggTrBfvVectors {
             decryption_shares: reduce_coefficients_3d(&self.decryption_shares, zkp_modulus),
             party_ids: reduce_coefficients(&self.party_ids, zkp_modulus),
             message: reduce_coefficients(&self.message, zkp_modulus),
@@ -499,7 +499,7 @@ impl DecShareAggTrBfvVectors {
             return self.clone();
         }
 
-        DecShareAggTrBfvVectors {
+        DecSharesAggTrBfvVectors {
             decryption_shares: self
                 .decryption_shares
                 .iter()
@@ -669,7 +669,7 @@ mod tests {
         .unwrap();
 
         // Compute vectors
-        let vecs = DecShareAggTrBfvVectors::compute(
+        let vecs = DecSharesAggTrBfvVectors::compute(
             &decryption_data.d_share_polys,
             &decryption_data.party_ids,
             &decryption_data.message,

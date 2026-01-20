@@ -4,9 +4,11 @@
 //! It generates a template with the correct parameter types and function signature
 //! based on the Secret Key Shares circuit parameters.
 
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
+use parity_matrix::matrix::{ParityMatrixConfig, build_generator_matrix, null_space};
 use shared::errors::ZkFheResult;
 use shared::template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_width};
+use shared::utils::bigint_to_field;
 
 /// Verify Shares TRBFV bounds data for template parameter calculation
 #[derive(Debug, Clone)]
@@ -39,6 +41,8 @@ pub struct VerifySharesTrbfvTemplateParams {
     pub security_level: String,
     /// Secret type postfix ("SK" or "ESM") for config names
     pub secret_type_postfix: String,
+    /// Bounds data containing moduli for parity matrix generation
+    pub bounds_data: VerifySharesTrbfvBoundsData,
 }
 
 impl VerifySharesTrbfvTemplateParams {
@@ -71,6 +75,7 @@ impl VerifySharesTrbfvTemplateParams {
             parameter_set,
             security_level,
             secret_type_postfix: String::new(), // Will be set by caller
+            bounds_data: bounds.clone(),
         })
     }
 }
@@ -106,6 +111,46 @@ impl MainTemplateGenerator<VerifySharesTrbfvTemplateParams> for VerifySharesTrbf
             )
         };
 
+        // Generate parity matrix for each modulus
+        // h[mod_idx][row][col] where size is [L][N_PARTIES-T][N_PARTIES+1]
+        let mut parity_matrix_strings = Vec::new();
+        for &q_j in &params.bounds_data.moduli {
+            let config = ParityMatrixConfig {
+                q: BigUint::from(q_j),
+                t: params.threshold,
+                n: params.num_parties,
+            };
+
+            let g = build_generator_matrix(config.clone()).map_err(|e| {
+                shared::errors::ZkFheError::Bfv {
+                    message: format!("Failed to build generator matrix: {:?}", e),
+                }
+            })?;
+
+            let h_mod = null_space(&g, &config.q).map_err(|e| shared::errors::ZkFheError::Bfv {
+                message: format!("Failed to compute null space: {:?}", e),
+            })?;
+
+            // Convert to Field values and format as Noir array
+            let mut modulus_rows = Vec::new();
+            for row in &h_mod {
+                let mut row_values = Vec::new();
+                for val in row {
+                    // Convert BigUint to BigInt (non-negative, so safe)
+                    let bigint_val = BigInt::from(val.clone());
+                    let field_val = bigint_to_field(&bigint_val);
+                    row_values.push(format!("{}", field_val));
+                }
+                modulus_rows.push(format!("[{}]", row_values.join(", ")));
+            }
+            parity_matrix_strings.push(format!("[{}]", modulus_rows.join(",\n        ")));
+        }
+
+        let parity_matrix_constant = format!(
+            "pub global H: [[[Field; N_PARTIES + 1]; N_PARTIES - T]; L] = [\n    {}];",
+            parity_matrix_strings.join(",\n    ")
+        );
+
         let template = format!(
             r#"use lib::configs::{}::{}::{{
     L, N, VERIFY_SHARES_BIT_SHARE, {}, {},
@@ -117,15 +162,17 @@ use lib::math::polynomial::Polynomial;
 pub global N_PARTIES: u32 = {};
 /// Threshold.
 pub global T: u32 = {};
+/// Parity check matrix for each modulus.
+/// H[modulus_idx][row][col] where size is [L][N_PARTIES-T][N_PARTIES+1]
+{}
 
 fn main(
-    expected_secret_commitment: Field,
+    expected_secret_commitment: pub Field,
     {},
     y: [[[Field; N_PARTIES + 1]; L]; N],
-    h: [[[Field; N_PARTIES + 1]; N_PARTIES - T]; L],
 ) -> pub [[Field; L]; N_PARTIES] {{
     let verify_shares: {}<N, L, N_PARTIES, T, {}, VERIFY_SHARES_BIT_SHARE>
-         = {}::new({}, expected_secret_commitment, {}, y, h);
+         = {}::new({}, expected_secret_commitment, {}, y, H);
 
     {}
 }}"#,
@@ -136,6 +183,7 @@ fn main(
             struct_type,
             params.num_parties,
             params.threshold,
+            parity_matrix_constant,
             secret_param,
             struct_type,
             bit_secret_name,

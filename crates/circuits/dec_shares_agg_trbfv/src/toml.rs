@@ -2,20 +2,20 @@
 //!
 //! This module contains the TOML generation logic specific to the Decryption Share Aggregation TRBFV circuit.
 
-use crate::vectors::DecShareAggTrBfvVectors;
+use crate::vectors::DecSharesAggTrBfvVectors;
 use serde::Serialize;
 use shared::errors::ZkFheResult;
 use shared::toml::TomlGenerator;
 use shared::utils::to_string_1d_vec;
 
-/// Generator for Decryption Share Aggregation TRBFV circuit TOML files
-pub struct DecShareAggTrBfvTomlGenerator {
-    vectors: DecShareAggTrBfvVectors,
+/// Generator for Decryption Shares Aggregation TRBFV circuit TOML files
+pub struct DecSharesAggTrBfvTomlGenerator {
+    vectors: DecSharesAggTrBfvVectors,
 }
 
-impl DecShareAggTrBfvTomlGenerator {
+impl DecSharesAggTrBfvTomlGenerator {
     /// Create a new TOML generator with bounds and vectors
-    pub fn new(vectors: DecShareAggTrBfvVectors) -> Self {
+    pub fn new(vectors: DecSharesAggTrBfvVectors) -> Self {
         Self { vectors }
     }
 }
@@ -30,7 +30,7 @@ struct ProverTomlFormat {
     party_ids: Vec<String>,
 }
 
-impl TomlGenerator for DecShareAggTrBfvTomlGenerator {
+impl TomlGenerator for DecSharesAggTrBfvTomlGenerator {
     fn to_toml_string(&self) -> ZkFheResult<String> {
         // Format decryption_shares as [party][modulus] structure
         let decryption_shares: Vec<Vec<serde_json::Value>> = self
@@ -82,15 +82,15 @@ impl TomlGenerator for DecShareAggTrBfvTomlGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vectors::DecShareAggTrBfvVectors;
+    use crate::vectors::DecSharesAggTrBfvVectors;
     use tempfile::TempDir;
 
     #[test]
     fn test_toml_generation_and_structure() {
         // Create empty vectors for testing
-        let vectors = DecShareAggTrBfvVectors::new(1, 512, 2);
+        let vectors = DecSharesAggTrBfvVectors::new(1, 512, 2);
 
-        let generator = DecShareAggTrBfvTomlGenerator::new(vectors);
+        let generator = DecSharesAggTrBfvTomlGenerator::new(vectors);
 
         // Create a temporary directory for testing
         let temp_dir = TempDir::new().unwrap();

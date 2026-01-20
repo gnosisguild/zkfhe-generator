@@ -146,12 +146,12 @@ use lib::core::bfv_enc::EncryptionBfv;
 use lib::math::polynomial::Polynomial;
 
 fn main(
-    expected_pk_commitment: Field,
-    expected_message_commitment: Field,
+    expected_pk_commitment: pub Field,
+    expected_message_commitment: pub Field,
     pk0is: [Polynomial<N>; L],
     pk1is: [Polynomial<N>; L],
-    ct0is: [Polynomial<N>; L],
-    ct1is: [Polynomial<N>; L],
+    ct0is: pub [Polynomial<N>; L],
+    ct1is: pub [Polynomial<N>; L],
     u: Polynomial<N>,
     e0: Polynomial<N>,
     e0is: [Polynomial<N>; L],
@@ -162,7 +162,7 @@ fn main(
     r2is: [Polynomial<N - 1>; L],
     p1is: [Polynomial<(2 * N) - 1>; L],
     p2is: [Polynomial<N - 1>; L],
-) -> pub bool {{
+) {{
     let enc_bfv: EncryptionBfv<
         N,
         L,
@@ -195,7 +195,7 @@ fn main(
         p1is,
         p2is,
     );
-    enc_bfv.verify()
+    enc_bfv.verify();
 }}"#,
             params.security_level,
             params.parameter_set,

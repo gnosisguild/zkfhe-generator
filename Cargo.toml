@@ -10,7 +10,7 @@ members = [
     "crates/circuits/enc_bfv",
     "crates/circuits/dec_share_trbfv",
     "crates/circuits/dec_bfv",
-    "crates/circuits/dec_share_agg_trbfv",
+    "crates/circuits/dec_shares_agg_trbfv",
     "crates/crypto_params",
     "crates/parity_matrix"
 ]
@@ -34,7 +34,7 @@ pk_bfv = { package = "zkfhe-pk-bfv", path = "./crates/circuits/pk_bfv" }
 verify_shares_trbfv = { package = "zkfhe-verify-shares-trbfv", path = "./crates/circuits/verify_shares_trbfv" }
 enc_bfv = { package = "zkfhe-enc-bfv", path = "./crates/circuits/enc_bfv" }
 dec_share_trbfv = { package = "zkfhe-dec-share-trbfv", path = "./crates/circuits/dec_share_trbfv" }
-dec_share_agg_trbfv = { package = "zkfhe-dec-share-agg-trbfv", path = "./crates/circuits/dec_share_agg_trbfv" }
+dec_shares_agg_trbfv = { package = "zkfhe-dec-shares-agg-trbfv", path = "./crates/circuits/dec_shares_agg_trbfv" }
 dec_bfv = { package = "zkfhe-dec-bfv", path = "./crates/circuits/dec_bfv" }
 generator = { package = "zkfhe-generator", path = "./crates/generator" }
 shared = { package = "zkfhe-shared", path = "./crates/shared" }
