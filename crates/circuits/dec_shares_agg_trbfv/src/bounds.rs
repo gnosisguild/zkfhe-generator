@@ -10,9 +10,9 @@ use num_traits::ToPrimitive;
 use shared::errors::{ZkFheError, ZkFheResult};
 use std::sync::Arc;
 
-/// Cryptographic parameters for Decryption Share Aggregation TRBFV circuit
+/// Cryptographic parameters for Decryption Shares Aggregation TRBFV circuit
 #[derive(Clone, Debug)]
-pub struct DecShareAggTrBfvCryptographicParameters {
+pub struct DecSharesAggTrBfvCryptographicParameters {
     pub moduli: Vec<u64>,
     pub plaintext_modulus: u64,
     pub q_inverse_mod_t: u64,
@@ -20,14 +20,14 @@ pub struct DecShareAggTrBfvCryptographicParameters {
     pub t_inv_mod_q: BigUint,
 }
 
-/// Bounds for Decryption Share Aggregation TRBFV circuit
+/// Bounds for Decryption Shares Aggregation TRBFV circuit
 #[derive(Clone, Debug)]
-pub struct DecShareAggTrBfvBounds {
+pub struct DecSharesAggTrBfvBounds {
     pub delta: BigUint,
     pub delta_half: BigUint,
 }
 
-impl DecShareAggTrBfvBounds {
+impl DecSharesAggTrBfvBounds {
     /// Compute bounds and cryptographic parameters from BFV parameters
     ///
     /// # Arguments
@@ -39,7 +39,7 @@ impl DecShareAggTrBfvBounds {
     pub fn compute(
         params: &Arc<BfvParameters>,
         level: usize,
-    ) -> ZkFheResult<(DecShareAggTrBfvCryptographicParameters, Self)> {
+    ) -> ZkFheResult<(DecSharesAggTrBfvCryptographicParameters, Self)> {
         let ctx = params.ctx_at_level(level)?;
 
         // Compute Q = product of all moduli
@@ -133,7 +133,7 @@ impl DecShareAggTrBfvBounds {
                 })?
         };
 
-        let crypto_params = DecShareAggTrBfvCryptographicParameters {
+        let crypto_params = DecSharesAggTrBfvCryptographicParameters {
             moduli: ctx.moduli().to_vec(),
             plaintext_modulus: params.plaintext(),
             q_inverse_mod_t,
@@ -141,13 +141,13 @@ impl DecShareAggTrBfvBounds {
             t_inv_mod_q,
         };
 
-        let bounds = DecShareAggTrBfvBounds { delta, delta_half };
+        let bounds = DecSharesAggTrBfvBounds { delta, delta_half };
 
         Ok((crypto_params, bounds))
     }
 }
 
-impl DecShareAggTrBfvCryptographicParameters {
+impl DecSharesAggTrBfvCryptographicParameters {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "qis": self.moduli,
@@ -159,7 +159,7 @@ impl DecShareAggTrBfvCryptographicParameters {
     }
 }
 
-impl DecShareAggTrBfvBounds {
+impl DecSharesAggTrBfvBounds {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "delta": self.delta.to_string(),
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn test_bounds_computation() {
         let params = test_parameters_trbfv();
-        let (crypto_params, bounds) = DecShareAggTrBfvBounds::compute(&params, 0).unwrap();
+        let (crypto_params, bounds) = DecSharesAggTrBfvBounds::compute(&params, 0).unwrap();
 
         assert_eq!(crypto_params.moduli.len(), 2);
         assert!(bounds.delta > BigUint::from(0u64));

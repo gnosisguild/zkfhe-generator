@@ -3,15 +3,15 @@
 //! This module generates a .nr config file with all circuit-specific configs
 //! (N, L, QIS, bounds, bit parameters, Configs) that can be imported in the main circuit.
 
-use crate::bounds::DecShareAggTrBfvCryptographicParameters;
-use crate::template::DecShareAggTrBfvTemplateParams;
+use crate::bounds::DecSharesAggTrBfvCryptographicParameters;
+use crate::template::DecSharesAggTrBfvTemplateParams;
 use shared::errors::ZkFheResult;
 use std::path::{Path, PathBuf};
 
 /// Generator for Decryption Share Aggregation TRBFV circuit config files
-pub struct DecShareAggTrBfvConfigsGenerator;
+pub struct DecSharesAggTrBfvConfigsGenerator;
 
-impl DecShareAggTrBfvConfigsGenerator {
+impl DecSharesAggTrBfvConfigsGenerator {
     /// Generate the config .nr file content
     ///
     /// # Arguments
@@ -25,8 +25,8 @@ impl DecShareAggTrBfvConfigsGenerator {
     ///
     /// The complete config file content as a string
     pub fn generate_configs(
-        crypto_params: &DecShareAggTrBfvCryptographicParameters,
-        template_params: &DecShareAggTrBfvTemplateParams,
+        crypto_params: &DecSharesAggTrBfvCryptographicParameters,
+        template_params: &DecSharesAggTrBfvTemplateParams,
         _parameter_type: &str,
     ) -> ZkFheResult<String> {
         // Format QIS array
@@ -38,7 +38,7 @@ impl DecShareAggTrBfvConfigsGenerator {
             .join(", ");
 
         let configs = format!(
-            r#"use crate::core::trbfv_dec_shares_agg::Configs as DecShareAggTrBfvConfigs;
+            r#"use crate::core::trbfv_dec_shares_agg::Configs as DecSharesAggTrBfvConfigs;
 
 // Global configs for Decryption Share Aggregation TRBFV circuit
 pub global L: u32 = {};
@@ -48,15 +48,15 @@ pub global Q_INVERSE_MOD_T: Field = {};
 
 /************************************
 -------------------------------------
-dec_share_agg_trbfv (CIRCUIT 7 - DECRYPTION SHARE AGGREGATION TRBFV)
+dec_shares_agg_trbfv (CIRCUIT 7 - DECRYPTION SHARES AGGREGATION TRBFV)
 -------------------------------------
 ************************************/
 
-// dec_share_agg_trbfv - bit parameters
+// dec_shares_agg_trbfv - bit parameters
 pub global DEC_SHARES_AGG_BIT_NOISE: u32 = {};
 
-// dec_share_agg_trbfv - configs
-pub global DEC_SHARES_AGG_CONFIGS: DecShareAggTrBfvConfigs<L> = DecShareAggTrBfvConfigs::new(
+// dec_shares_agg_trbfv - configs
+pub global DEC_SHARES_AGG_CONFIGS: DecSharesAggTrBfvConfigs<L> = DecSharesAggTrBfvConfigs::new(
     QIS,
     PLAINTEXT_MODULUS,
     Q_INVERSE_MOD_T,
@@ -87,8 +87,8 @@ pub global DEC_SHARES_AGG_CONFIGS: DecShareAggTrBfvConfigs<L> = DecShareAggTrBfv
     ///
     /// Path to the generated config file
     pub fn generate_configs_file(
-        crypto_params: &DecShareAggTrBfvCryptographicParameters,
-        template_params: &DecShareAggTrBfvTemplateParams,
+        crypto_params: &DecSharesAggTrBfvCryptographicParameters,
+        template_params: &DecSharesAggTrBfvTemplateParams,
         output_dir: &Path,
         filename: &str,
         parameter_type: &str,

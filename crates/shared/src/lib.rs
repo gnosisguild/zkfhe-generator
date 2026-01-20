@@ -12,6 +12,7 @@
 //! - **`validation`**: Parameter validation utilities for ensuring correct configurations
 
 // Core modules
+pub mod aggregation;
 pub mod circuit;
 pub mod commitments;
 pub mod constants;
@@ -22,6 +23,10 @@ pub mod toml;
 pub mod utils;
 
 // Re-export commonly used items for convenience
+pub use aggregation::{
+    CommitmentParams, WrapperTemplateGenerator, WrapperTemplateParams, get_n_proofs,
+    get_n_public_inputs,
+};
 pub use circuit::{CiphernodesConfig, Circuit, ParameterType, SampleType, SecurityLevel};
 pub use constants::{DEFAULT_INSECURE_LAMBDA, DEFAULT_SECURE_LAMBDA, ZKP_MODULUS, get_zkp_modulus};
 pub use errors::{BfvError, CircuitError, TomlError, ValidationError, ZkFheError, ZkFheResult};

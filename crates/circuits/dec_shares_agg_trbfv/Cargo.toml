@@ -1,5 +1,5 @@
 [package]
-name = "zkfhe-dec-share-agg-trbfv"
+name = "zkfhe-dec-shares-agg-trbfv"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -101,6 +101,14 @@ enum Commands {
         #[arg(long)]
         main: bool,
 
+        /// Generate wrapper circuit template
+        ///
+        /// When enabled, generates a wrapper.nr file that aggregates multiple proofs
+        /// and their commitments. The wrapper is parameterized by N_PROOFS (circuit-specific)
+        /// and N_PUBLIC_INPUTS (extracted from the circuit's pub input/output parameters).
+        #[arg(long)]
+        wrapper: bool,
+
         /// Sample type for share_row generation (dec-bfv circuits only)
         ///
         /// This option is applicable to:
@@ -247,9 +255,11 @@ fn get_circuit(
                 dec_share_trbfv::circuit::DecShareTrBfvCircuit::new(parameter_type, lambda);
             Ok(Box::new(circuit))
         }
-        "dec-share-agg-trbfv" => {
-            let circuit =
-                dec_share_agg_trbfv::circuit::DecShareAggTrBfvCircuit::new(parameter_type, lambda);
+        "dec-shares-agg-trbfv" => {
+            let circuit = dec_shares_agg_trbfv::circuit::DecSharesAggTrBfvCircuit::new(
+                parameter_type,
+                lambda,
+            );
             Ok(Box::new(circuit))
         }
         "dec-bfv" => {
@@ -277,7 +287,7 @@ pub fn get_supported_parameter_types_per_circuit(circuit_name: &str) -> Vec<Para
         "enc-bfv" => vec![ParameterType::Bfv],
         "pk-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-share-trbfv" => vec![ParameterType::Trbfv],
-        "dec-share-agg-trbfv" => vec![ParameterType::Trbfv],
+        "dec-shares-agg-trbfv" => vec![ParameterType::Trbfv],
         "dec-bfv" => vec![ParameterType::Bfv],
         "verify-shares-trbfv" => vec![ParameterType::Trbfv],
         // Future circuits can support different parameter types
@@ -379,6 +389,7 @@ fn generate_circuit_params(
     verbose: bool,
     output_dir: &Path,
     generate_main: bool,
+    generate_wrapper: bool,
     sample_type: SampleType,
     num_parties: Option<usize>,
     num_honest_parties: Option<usize>,
@@ -707,6 +718,107 @@ fn generate_circuit_params(
         println!("✅ main.nr template generated successfully");
     }
 
+    // Generate wrapper template if requested
+    if generate_wrapper {
+        println!("📄 Generating wrapper.nr template...");
+
+        // Prepare commitment params for dynamic calculation
+        let n = if circuit.parameter_type() == ParameterType::Trbfv {
+            trbfv_params.degree()
+        } else {
+            bfv_params.degree()
+        };
+
+        let l = if circuit.parameter_type() == ParameterType::Trbfv {
+            trbfv_params.moduli().len()
+        } else {
+            bfv_params.moduli().len()
+        };
+
+        let l_trbfv = trbfv_params.moduli().len();
+
+        let num_parties = ciphernodes_config
+            .as_ref()
+            .map(|c| c.num_parties)
+            .unwrap_or_else(|| shared::CiphernodesConfig::defaults().num_parties);
+
+        let num_honest_parties = ciphernodes_config
+            .as_ref()
+            .map(|c| c.num_honest_parties)
+            .unwrap_or_else(|| shared::CiphernodesConfig::defaults().num_honest_parties);
+
+        let threshold = ciphernodes_config
+            .as_ref()
+            .map(|c| c.threshold)
+            .or_else(|| Some(shared::CiphernodesConfig::defaults().threshold));
+
+        // For dec-shares-agg-trbfv, we need to calculate MAX_MSG_NON_ZERO_COEFFS (trimmed degree)
+        let max_msg_non_zero_coeffs = if circuit_name.to_lowercase() == "dec-shares-agg-trbfv"
+            || circuit_name.to_lowercase() == "dec_shares_agg_trbfv"
+        {
+            use dec_shares_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
+            use dec_shares_agg_trbfv::vectors::DecSharesAggTrBfvVectors;
+
+            let decryption_data = generate_sample_decryption_share_aggregation(
+                &trbfv_params,
+                ciphernodes_config.as_ref(),
+                circuit.security_parameter(),
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to generate sample data for wrapper: {e}"))?;
+
+            let vectors = DecSharesAggTrBfvVectors::compute(
+                &decryption_data.d_share_polys,
+                &decryption_data.party_ids,
+                &decryption_data.message,
+                &trbfv_params,
+                decryption_data.threshold,
+                decryption_data.num_parties,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to compute vectors for wrapper: {e}"))?;
+
+            let vectors_standard = vectors.standard_form();
+            Some(vectors_standard.count_nonzero_message_coefficients())
+        } else {
+            None
+        };
+
+        let commitment_params = shared::aggregation::CommitmentParams {
+            n: Some(n),
+            l: Some(l),
+            l_trbfv: Some(l_trbfv),
+            num_parties: Some(num_parties),
+            num_honest_parties: Some(num_honest_parties),
+            threshold,
+            max_msg_non_zero_coeffs,
+        };
+
+        // Get N_PUBLIC_INPUTS from circuit-specific mapping (with dynamic params)
+        let public_inputs =
+            shared::aggregation::get_n_public_inputs(circuit_name, Some(&commitment_params))
+                .map_err(|e| anyhow::anyhow!("Failed to calculate N_PUBLIC_INPUTS: {e}"))?;
+
+        // Get N_PROOFS from circuit-specific mapping
+        let n_proofs = shared::aggregation::get_n_proofs(circuit_name);
+
+        println!(
+            "📊 Wrapper parameters: N_PROOFS={}, N_PUBLIC_INPUTS={}",
+            n_proofs, public_inputs
+        );
+
+        // Generate wrapper template
+        let wrapper_params = shared::aggregation::WrapperTemplateParams {
+            n_proofs,
+            public_inputs,
+        };
+
+        let wrapper_generator = shared::aggregation::WrapperTemplateGenerator;
+        wrapper_generator
+            .generate_wrapper_file(&wrapper_params, output_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to generate wrapper template: {e}"))?;
+
+        println!("✅ wrapper.nr template generated successfully");
+    }
+
     println!("\n🎉 Generation complete!");
     println!("📁 Output directory: {}", output_dir.display());
 
@@ -971,21 +1083,21 @@ fn generate_main_template(
             let template_generator = DecShareTrBfvMainTemplate;
             template_generator.generate_main_file(&dec_share_trbfv_template_params, output_dir)?;
         }
-        "dec-share-agg-trbfv" => {
-            use dec_share_agg_trbfv::bounds::DecShareAggTrBfvBounds;
-            use dec_share_agg_trbfv::configs::DecShareAggTrBfvConfigsGenerator;
-            use dec_share_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
-            use dec_share_agg_trbfv::template::{
-                DecShareAggTrBfvMainTemplate, DecShareAggTrBfvTemplateParams,
+        "dec-shares-agg-trbfv" => {
+            use dec_shares_agg_trbfv::bounds::DecSharesAggTrBfvBounds;
+            use dec_shares_agg_trbfv::configs::DecSharesAggTrBfvConfigsGenerator;
+            use dec_shares_agg_trbfv::sample::generate_sample_decryption_share_aggregation;
+            use dec_shares_agg_trbfv::template::{
+                DecSharesAggTrBfvMainTemplate, DecSharesAggTrBfvTemplateParams,
             };
-            use dec_share_agg_trbfv::vectors::DecShareAggTrBfvVectors;
+            use dec_shares_agg_trbfv::vectors::DecSharesAggTrBfvVectors;
 
-            let (crypto_params, bounds) = DecShareAggTrBfvBounds::compute(trbfv_params, 0)
+            let (crypto_params, bounds) = DecSharesAggTrBfvBounds::compute(trbfv_params, 0)
                 .map_err(|e| {
-                    anyhow::anyhow!("Failed to compute dec-share-agg-trbfv bounds: {e:?}")
+                    anyhow::anyhow!("Failed to compute dec-shares-agg-trbfv bounds: {e:?}")
                 })?;
 
-            let bounds_data = dec_share_agg_trbfv::template::DecShareAggTrBfvBoundsData {
+            let bounds_data = dec_shares_agg_trbfv::template::DecSharesAggTrBfvBoundsData {
                 delta: bounds.delta.to_string(),
                 delta_half: bounds.delta_half.to_string(),
             };
@@ -1004,7 +1116,7 @@ fn generate_main_template(
             )
             .map_err(|e| anyhow::anyhow!("Failed to generate sample data: {e:?}"))?;
 
-            let vectors = DecShareAggTrBfvVectors::compute(
+            let vectors = DecSharesAggTrBfvVectors::compute(
                 &decryption_data.d_share_polys,
                 &decryption_data.party_ids,
                 &decryption_data.message,
@@ -1025,31 +1137,32 @@ fn generate_main_template(
                 "insecure"
             };
 
-            let dec_share_agg_trbfv_template_params = DecShareAggTrBfvTemplateParams::from_bounds(
-                BaseTemplateParams::new(trimmed_degree, l, circuit_type),
-                threshold as u32,
-                &bounds_data,
-                circuit.parameter_type().as_str().to_string(),
-                security_level.to_string(),
-                num_parties as u32,
-            )?;
+            let dec_shares_agg_trbfv_template_params =
+                DecSharesAggTrBfvTemplateParams::from_bounds(
+                    BaseTemplateParams::new(trimmed_degree, l, circuit_type),
+                    threshold as u32,
+                    &bounds_data,
+                    circuit.parameter_type().as_str().to_string(),
+                    security_level.to_string(),
+                    num_parties as u32,
+                )?;
 
             // Generate config .nr file (named after parameter set: trbfv.nr)
             let configs_filename = format!("{}.nr", circuit.parameter_type().as_str());
-            DecShareAggTrBfvConfigsGenerator::generate_configs_file(
+            DecSharesAggTrBfvConfigsGenerator::generate_configs_file(
                 &crypto_params,
-                &dec_share_agg_trbfv_template_params,
+                &dec_shares_agg_trbfv_template_params,
                 output_dir,
                 &configs_filename,
                 circuit.parameter_type().as_str(),
             )
             .map_err(|e| {
-                anyhow::anyhow!("Failed to generate dec-share-agg-trbfv configs file: {e:?}")
+                anyhow::anyhow!("Failed to generate dec-shares-agg-trbfv configs file: {e:?}")
             })?;
 
-            let template_generator = DecShareAggTrBfvMainTemplate;
+            let template_generator = DecSharesAggTrBfvMainTemplate;
             template_generator
-                .generate_main_file(&dec_share_agg_trbfv_template_params, output_dir)?;
+                .generate_main_file(&dec_shares_agg_trbfv_template_params, output_dir)?;
         }
         "dec-bfv" => {
             use dec_bfv::template::{DecBfvMainTemplate, DecBfvTemplateParams};
@@ -1241,6 +1354,7 @@ fn main() -> anyhow::Result<()> {
             verbose,
             output,
             main,
+            wrapper,
             sample_type,
             num_parties,
             num_honest_parties,
@@ -1291,6 +1405,7 @@ fn main() -> anyhow::Result<()> {
                 verbose,
                 &output,
                 main,
+                wrapper,
                 effective_sample_type,
                 num_parties,
                 num_honest_parties,
@@ -1315,7 +1430,7 @@ fn main() -> anyhow::Result<()> {
                     "  • dec-share-trbfv   - Decryption Share TRBFV circuit implementation (supports trbfv)"
                 );
                 println!(
-                    "  • dec-share-agg-trbfv   - Decryption Share Aggregation TRBFV circuit implementation (supports trbfv)"
+                    "  • dec-shares-agg-trbfv   - Decryption Shares Aggregation TRBFV circuit implementation (supports trbfv)"
                 );
                 println!("  • dec-bfv   - BFV Decryption circuit implementation (supports bfv)");
                 println!(

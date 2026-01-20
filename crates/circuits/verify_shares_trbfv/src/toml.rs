@@ -23,6 +23,7 @@ impl VerifySharesTrbfvTomlGenerator {
 
 /// Complete `Prover.toml` format for Verify Shares TRBFV circuit
 /// The secret field name varies based on sample type (secret_sk vs secret_e_sm)
+/// Note: The parity matrix H is now in the template as a global constant, not in Prover.toml
 #[derive(Serialize)]
 struct ProverTomlFormat {
     expected_secret_commitment: String,
@@ -30,7 +31,6 @@ struct ProverTomlFormat {
     #[serde(flatten)]
     secret: serde_json::Value,
     y: Vec<Vec<Vec<serde_json::Value>>>, // [N][L][N_PARTIES+1]
-    h: Vec<Vec<Vec<serde_json::Value>>>, // [L][N_PARTIES-T][N_PARTIES+1]
 }
 
 impl TomlGenerator for VerifySharesTrbfvTomlGenerator {
@@ -56,27 +56,8 @@ impl TomlGenerator for VerifySharesTrbfvTomlGenerator {
             })
             .collect::<Vec<Vec<Vec<serde_json::Value>>>>();
 
-        // Convert h to JSON format: [L][N_PARTIES-T][N_PARTIES+1]
-        // Each element is a Field value
-        let h_strings: Vec<Vec<Vec<String>>> = self
-            .vectors
-            .h
-            .iter()
-            .map(|modulus| modulus.iter().map(|row| to_string_1d_vec(row)).collect())
-            .collect();
-        let h_json: Vec<Vec<Vec<serde_json::Value>>> = h_strings
-            .iter()
-            .map(|modulus| {
-                modulus
-                    .iter()
-                    .map(|row| {
-                        row.iter()
-                            .map(|val| serde_json::json!(val))
-                            .collect::<Vec<serde_json::Value>>()
-                    })
-                    .collect::<Vec<Vec<serde_json::Value>>>()
-            })
-            .collect::<Vec<Vec<Vec<serde_json::Value>>>>();
+        // Note: Parity matrix H is now generated in the template as a global constant,
+        // so it's no longer included in Prover.toml
 
         // Generate secret based on sample type:
         // - For SK: secret_sk: Polynomial<N> (single polynomial, use first modulus since all are the same)
@@ -107,7 +88,6 @@ impl TomlGenerator for VerifySharesTrbfvTomlGenerator {
             expected_secret_commitment: self.vectors.expected_secret_commitment.to_string(),
             secret: secret_json,
             y: y_json,
-            h: h_json,
         };
 
         Ok(toml::to_string(&toml_data)?)
@@ -158,10 +138,10 @@ mod tests {
 
         // Check that the file contains the expected sections
         // Note: params are now in a separate .nr constant file, not in TOML
+        // Note: parity matrix H is now in the template as a global constant, not in TOML
         assert!(content.contains("expected_secret_commitment"));
         assert!(content.contains("secret_sk"));
         assert!(content.contains("y"));
-        assert!(content.contains("h"));
     }
 
     #[test]
@@ -189,9 +169,9 @@ mod tests {
 
         // Verify the TOML string contains the expected sections
         // Note: params are now in a separate .nr constant file, not in TOML
+        // Note: parity matrix H is now in the template as a global constant, not in TOML
         assert!(toml_string.contains("expected_secret_commitment"));
         assert!(toml_string.contains("secret_sk"));
         assert!(toml_string.contains("y"));
-        assert!(toml_string.contains("h"));
     }
 }

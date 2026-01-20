@@ -1,9 +1,9 @@
-use crate::bounds::DecShareAggTrBfvBounds;
-use crate::configs::DecShareAggTrBfvConfigsGenerator;
+use crate::bounds::DecSharesAggTrBfvBounds;
+use crate::configs::DecSharesAggTrBfvConfigsGenerator;
 use crate::sample::generate_sample_decryption_share_aggregation;
-use crate::template::{DecShareAggTrBfvBoundsData, DecShareAggTrBfvTemplateParams};
-use crate::toml::DecShareAggTrBfvTomlGenerator;
-use crate::vectors::DecShareAggTrBfvVectors;
+use crate::template::{DecSharesAggTrBfvBoundsData, DecSharesAggTrBfvTemplateParams};
+use crate::toml::DecSharesAggTrBfvTomlGenerator;
+use crate::vectors::DecSharesAggTrBfvVectors;
 use fhe::bfv::BfvParameters;
 use shared::Circuit;
 use shared::circuit::{CiphernodesConfig, ParameterType};
@@ -11,10 +11,10 @@ use shared::template::BaseTemplateParams;
 use shared::toml::TomlGenerator;
 use std::path::Path;
 use std::sync::Arc;
-shared::circuit_struct!(DecShareAggTrBfvCircuit);
+shared::circuit_struct!(DecSharesAggTrBfvCircuit);
 
-impl DecShareAggTrBfvCircuit {
-    /// Create a new DecShareAggTrBfvCircuit with the specified parameter type and security parameter
+impl DecSharesAggTrBfvCircuit {
+    /// Create a new DecSharesAggTrBfvCircuit with the specified parameter type and security parameter
     pub fn new(parameter_type: ParameterType, lambda: usize) -> Self {
         Self {
             parameter_type,
@@ -23,9 +23,9 @@ impl DecShareAggTrBfvCircuit {
     }
 }
 
-impl Circuit for DecShareAggTrBfvCircuit {
+impl Circuit for DecSharesAggTrBfvCircuit {
     fn name(&self) -> &'static str {
-        "dec-share-agg-trbfv"
+        "dec-shares-agg-trbfv"
     }
 
     fn description(&self) -> &'static str {
@@ -58,13 +58,13 @@ impl Circuit for DecShareAggTrBfvCircuit {
         })?;
 
         let (crypto_params, bounds) =
-            DecShareAggTrBfvBounds::compute(trbfv_params, 0).map_err(|e| {
+            DecSharesAggTrBfvBounds::compute(trbfv_params, 0).map_err(|e| {
                 shared::errors::ZkFheError::Bfv {
                     message: e.to_string(),
                 }
             })?;
 
-        let vectors = DecShareAggTrBfvVectors::compute(
+        let vectors = DecSharesAggTrBfvVectors::compute(
             &decryption_data.d_share_polys,
             &decryption_data.party_ids,
             &decryption_data.message,
@@ -87,7 +87,7 @@ impl Circuit for DecShareAggTrBfvCircuit {
         );
 
         // Create bounds data for template
-        let bounds_data = DecShareAggTrBfvBoundsData {
+        let bounds_data = DecSharesAggTrBfvBoundsData {
             delta: bounds.delta.to_string(),
             delta_half: bounds.delta_half.to_string(),
         };
@@ -106,7 +106,7 @@ impl Circuit for DecShareAggTrBfvCircuit {
             "insecure"
         };
 
-        let template_params = DecShareAggTrBfvTemplateParams::from_bounds(
+        let template_params = DecSharesAggTrBfvTemplateParams::from_bounds(
             BaseTemplateParams::new(nonzero_count, trbfv_params.moduli().len(), self.name()),
             threshold as u32,
             &bounds_data,
@@ -117,7 +117,7 @@ impl Circuit for DecShareAggTrBfvCircuit {
 
         // Generate config .nr file (named after parameter set: trbfv.nr)
         let configs_filename = format!("{}.nr", self.parameter_type().as_str());
-        DecShareAggTrBfvConfigsGenerator::generate_configs_file(
+        DecSharesAggTrBfvConfigsGenerator::generate_configs_file(
             &crypto_params,
             &template_params,
             output_dir,
@@ -126,7 +126,7 @@ impl Circuit for DecShareAggTrBfvCircuit {
         )?;
 
         // Create TOML generator and generate file
-        let toml_generator = DecShareAggTrBfvTomlGenerator::new(vectors_trimmed);
+        let toml_generator = DecSharesAggTrBfvTomlGenerator::new(vectors_trimmed);
         toml_generator.generate_toml(output_dir)?;
 
         Ok(())

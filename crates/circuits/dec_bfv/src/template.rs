@@ -66,7 +66,7 @@ use lib::math::polynomial::Polynomial;
 pub global H: u32 = {};
 
 fn main(
-    expected_commitments: [[Field; L_TRBFV]; H],
+    expected_commitments: pub [[Field; L_TRBFV]; H],
     decrypted_shares: [[Polynomial<N>; L_TRBFV]; H],
 ) -> pub Field {{
     let circuit: BfvDecCommitVerify<N, L_TRBFV, H, {}> =

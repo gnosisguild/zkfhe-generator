@@ -7,19 +7,19 @@
 use shared::errors::ZkFheResult;
 use shared::template::{BaseTemplateParams, MainTemplateGenerator, calculate_bit_width};
 
-/// Decryption Share Aggregation TRBFV bounds data for template parameter calculation
+/// Decryption Shares Aggregation TRBFV bounds data for template parameter calculation
 #[derive(Debug, Clone)]
-pub struct DecShareAggTrBfvBoundsData {
+pub struct DecSharesAggTrBfvBoundsData {
     pub delta: String,
     pub delta_half: String,
 }
 
-/// Decryption Share Aggregation TRBFV-specific template parameters
+/// Decryption Shares Aggregation TRBFV-specific template parameters
 ///
-/// This structure contains the parameters specific to the Decryption Share Aggregation TRBFV circuit,
+/// This structure contains the parameters specific to the Decryption Shares Aggregation TRBFV circuit,
 /// extending the base parameters with circuit-specific bit-widths and bounds.
 #[derive(Debug, Clone)]
-pub struct DecShareAggTrBfvTemplateParams {
+pub struct DecSharesAggTrBfvTemplateParams {
     /// Base parameters (N, L, circuit_type)
     pub base: BaseTemplateParams,
     /// Threshold value T
@@ -34,11 +34,11 @@ pub struct DecShareAggTrBfvTemplateParams {
     pub num_parties: u32,
 }
 
-impl DecShareAggTrBfvTemplateParams {
+impl DecSharesAggTrBfvTemplateParams {
     pub fn from_bounds(
         base: BaseTemplateParams,
         threshold: u32,
-        bounds: &DecShareAggTrBfvBoundsData,
+        bounds: &DecSharesAggTrBfvBoundsData,
         parameter_set: String,
         security_level: String,
         num_parties: u32,
@@ -57,11 +57,11 @@ impl DecShareAggTrBfvTemplateParams {
     }
 }
 
-/// Generator for Decryption Share Aggregation TRBFV circuit main.nr templates
-pub struct DecShareAggTrBfvMainTemplate;
+/// Generator for Decryption Shares Aggregation TRBFV circuit main.nr templates
+pub struct DecSharesAggTrBfvMainTemplate;
 
-impl MainTemplateGenerator<DecShareAggTrBfvTemplateParams> for DecShareAggTrBfvMainTemplate {
-    fn generate_template(&self, params: &DecShareAggTrBfvTemplateParams) -> ZkFheResult<String> {
+impl MainTemplateGenerator<DecSharesAggTrBfvTemplateParams> for DecSharesAggTrBfvMainTemplate {
+    fn generate_template(&self, params: &DecSharesAggTrBfvTemplateParams) -> ZkFheResult<String> {
         // Determine which verification function to use based on security level
         let verify_call = if params.security_level == "production" {
             "dec_share_agg.verify()"
@@ -82,9 +82,9 @@ pub global MAX_MSG_NON_ZERO_COEFFS: u32 = {};
 pub global T: u32 = {};
 
 fn main(
-    decryption_shares: [[Polynomial<MAX_MSG_NON_ZERO_COEFFS>; L]; T + 1],
-    party_ids: [Field; T + 1],
-    message: Polynomial<MAX_MSG_NON_ZERO_COEFFS>,
+    decryption_shares: pub [[Polynomial<MAX_MSG_NON_ZERO_COEFFS>; L]; T + 1],
+    party_ids: pub [Field; T + 1],
+    message: pub Polynomial<MAX_MSG_NON_ZERO_COEFFS>,
     u_global: Polynomial<MAX_MSG_NON_ZERO_COEFFS>,
     crt_quotients: [Polynomial<MAX_MSG_NON_ZERO_COEFFS>; L],
 ) {{

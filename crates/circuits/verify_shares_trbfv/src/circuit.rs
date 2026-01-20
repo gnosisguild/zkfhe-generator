@@ -267,7 +267,6 @@ mod tests {
         assert!(content.contains("secret_sk"));
         assert!(content.contains("expected_secret_commitment"));
         assert!(content.contains("y"));
-        assert!(content.contains("h"));
 
         // Verify config file was generated (named after parameter set)
         let configs_path = temp_dir.path().join("trbfv.nr");
