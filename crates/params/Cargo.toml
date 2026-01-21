@@ -1,0 +1,25 @@
+[package]
+name = "zkfhe-params"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Preset definitions, constants, builders and encoding for BFV parameters"
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fhe = { workspace = true }
+num-bigint = { workspace = true }
+thiserror = { workspace = true }
+shared = { package = "zkfhe-shared", path = "../shared" }
+alloy-dyn-abi = { workspace = true, optional = true }
+alloy-primitives = { workspace = true, optional = true }
+
+[features]
+default = []
+abi-encoding = ["dep:alloy-dyn-abi", "dep:alloy-primitives"]
