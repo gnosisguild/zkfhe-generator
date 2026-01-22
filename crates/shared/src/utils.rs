@@ -11,7 +11,6 @@ use fhe::bfv::BfvParametersBuilder;
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_traits::Zero;
-use polynomial::reduce_coefficients_3d;
 use safe::SafeSponge;
 use std::sync::Arc;
 
@@ -33,17 +32,6 @@ pub fn to_string_3d_vec(vec: &[Vec<Vec<BigInt>>]) -> Vec<Vec<Vec<String>>> {
 /// Convert a 4D vector of BigInt to a vector of vectors of vectors of vectors of strings
 pub fn to_string_4d_vec(vec: &[Vec<Vec<Vec<BigInt>>>]) -> Vec<Vec<Vec<Vec<String>>>> {
     vec.iter().map(|d1| to_string_3d_vec(d1)).collect()
-}
-
-/// Reduce 4D coefficients modulo zkp_modulus
-pub fn reduce_coefficients_4d(
-    coeffs: &[Vec<Vec<Vec<BigInt>>>],
-    zkp_modulus: &BigInt,
-) -> Vec<Vec<Vec<Vec<BigInt>>>> {
-    coeffs
-        .iter()
-        .map(|d1| reduce_coefficients_3d(d1, zkp_modulus))
-        .collect()
 }
 
 /// Exact variance string for Uniform(-B..B): Var = B(B+1)/3 (exact)
