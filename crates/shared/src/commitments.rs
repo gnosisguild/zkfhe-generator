@@ -7,6 +7,44 @@ use ark_ff::PrimeField;
 use num_bigint::BigInt;
 use num_traits::Zero;
 
+/// Prepare the payload for shares party-modulus commitment.
+/// This matches the Noir `prepare_shares_party_modulus_commitment_payload` function exactly.
+/// Used in C2 (verify shares circuit).
+/// Returns N field elements (shares for each coefficient) plus party_idx and mod_idx.
+pub fn prepare_shares_party_modulus_commitment_payload(
+    y: &[Vec<Vec<BigInt>>],
+    party_idx: usize,
+    mod_idx: usize,
+) -> Vec<Field> {
+    let mut inputs = Vec::new();
+
+    // Add shares y[coeff_idx][mod_idx][party_idx + 1] for each coefficient
+    for coeff_y in y {
+        let share_value = &coeff_y[mod_idx][party_idx + 1];
+        inputs.push(crate::utils::bigint_to_field(share_value));
+    }
+
+    // Include party_idx and mod_idx in the hash
+    inputs.push(Field::from(party_idx as u64));
+    inputs.push(Field::from(mod_idx as u64));
+
+    inputs
+}
+
+/// Prepare the payload for L polynomials from values commitment.
+/// This matches the Noir `prepare_l_polynomial_commitment_payload` function exactly.
+/// Used in C1, C2, C4.
+/// Flattens values directly without bit packing.
+pub fn prepare_l_polynomial_commitment_payload(
+    l_polynomials: &[Vec<BigInt>],
+    bit: u32,
+) -> Vec<Field> {
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, l_polynomials, bit);
+
+    inputs
+}
+
 /// Compute a commitment to two polynomial components by flattening them and hashing.
 /// This matches the Noir `commitment_payload` and `generate_challenge` functions exactly.
 /// Can be used for any polynomials in Greco as they all have the same length.
@@ -137,13 +175,43 @@ pub fn compute_sk_commitment(sk: &[BigInt], bit_sk: u32) -> BigInt {
     BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
 }
 
-/// Compute a commitment to the secret (either sk_trbfv or e_sm).
+/// Compute a commitment to the secret (secret key).
 /// This matches the Noir `compute_secret_commitment` function exactly.
-/// Used in C1, C2.
-pub fn compute_secret_commitment(secret: &[BigInt], bit_secret: u32) -> BigInt {
+/// Used in C2a.
+pub fn compute_secret_sk_commitment(secret: &[BigInt], bit_secret: u32) -> BigInt {
     // Step 1: Flatten secret (matches prepare_single_polynomial_commitment_payload in Noir)
     let mut inputs: Vec<Field> = Vec::new();
     inputs = flatten(inputs, &[secret.to_vec()], bit_secret);
+
+    // Step 2: Hash using SafeSponge (matches compute_secret_commitment in Noir)
+    // Domain separator - "PVSS_secret" (must match C1 and C2)
+    let domain_separator: [u8; 64] = [
+        0x50, 0x56, 0x53, 0x53, 0x5f, 0x73, 0x65, 0x63, 0x72, 0x65, 0x74, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+    ];
+
+    // IO Pattern: ABSORB(input_size), SQUEEZE(1)
+    let input_size = inputs.len() as u32;
+    let io_pattern = [0x80000000 | input_size, 0x00000001];
+
+    let commitment = compute_safe(domain_separator, inputs, io_pattern);
+
+    // Convert Field to BigInt
+    let commitment_field = commitment[0];
+    let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
+    BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
+}
+
+/// Compute a commitment to the smudging noise (e_sm).
+/// This matches the Noir `compute_secret_commitment` function exactly.
+/// Used in C2b.
+pub fn compute_secret_e_sm_commitment(secret: &[Vec<BigInt>], bit_secret: u32) -> BigInt {
+    // Step 1: Flatten secret (matches prepare_single_polynomial_commitment_payload in Noir)
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, secret, bit_secret);
 
     // Step 2: Hash using SafeSponge (matches compute_secret_commitment in Noir)
     // Domain separator - "PVSS_secret" (must match C1 and C2)
@@ -236,30 +304,6 @@ pub fn compute_message_commitment(message: &[BigInt]) -> BigInt {
     let commitment_field = commitment[0];
     let commitment_bytes = commitment_field.into_bigint().to_bytes_le();
     BigInt::from_bytes_le(num_bigint::Sign::Plus, &commitment_bytes)
-}
-
-/// Prepare the payload for shares party-modulus commitment.
-/// This matches the Noir `prepare_shares_party_modulus_commitment_payload` function exactly.
-/// Used in C2 (verify shares circuit).
-/// Returns N field elements (shares for each coefficient) plus party_idx and mod_idx.
-pub fn prepare_shares_party_modulus_commitment_payload(
-    y: &[Vec<Vec<BigInt>>],
-    party_idx: usize,
-    mod_idx: usize,
-) -> Vec<Field> {
-    let mut inputs = Vec::new();
-
-    // Add shares y[coeff_idx][mod_idx][party_idx + 1] for each coefficient
-    for coeff_y in y {
-        let share_value = &coeff_y[mod_idx][party_idx + 1];
-        inputs.push(crate::utils::bigint_to_field(share_value));
-    }
-
-    // Include party_idx and mod_idx in the hash
-    inputs.push(Field::from(party_idx as u64));
-    inputs.push(Field::from(mod_idx as u64));
-
-    inputs
 }
 
 /// Compute a commitment to shares for a specific party and modulus.
@@ -389,24 +433,6 @@ pub fn compute_greco_challenge_commitment(
             BigInt::from_bytes_le(num_bigint::Sign::Plus, &challenge_bytes)
         })
         .collect()
-}
-
-/// Prepare the payload for aggregated shares from values commitment.
-/// This matches the Noir `prepare_aggregated_shares_from_values_commitment_payload` function exactly.
-/// Used in C6 (dec_share_trbfv circuit).
-/// Flattens values directly without bit packing.
-pub fn prepare_aggregated_shares_from_values_commitment_payload(
-    values: &[Vec<BigInt>],
-) -> Vec<Field> {
-    let mut inputs = Vec::new();
-
-    for value in values {
-        for coeff in value {
-            inputs.push(crate::utils::bigint_to_field(coeff));
-        }
-    }
-
-    inputs
 }
 
 /// Compute aggregated shares commitment from payload.

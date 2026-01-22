@@ -24,7 +24,7 @@ struct ProverTomlFormat {
     a: Vec<serde_json::Value>,
     sk: serde_json::Value,
     eek: serde_json::Value,
-    e_sm: serde_json::Value,
+    e_sm: Vec<serde_json::Value>,
 }
 
 impl TomlGenerator for PkTrBfvTomlGenerator {
@@ -103,11 +103,17 @@ impl TomlGenerator for PkTrBfvTomlGenerator {
             }),
 
             // e_sm: smudging noise polynomial - convert to simple string format
-            e_sm: serde_json::json!({
-                "coefficients": to_string_1d_vec(&self.vectors.e_sm)
-            }),
+            e_sm: self
+                .vectors
+                .e_sm
+                .iter()
+                .map(|v| {
+                    serde_json::json!({
+                        "coefficients": to_string_1d_vec(v)
+                    })
+                })
+                .collect(),
         };
-
         Ok(toml::to_string(&toml_data)?)
     }
 }
@@ -155,6 +161,6 @@ mod tests {
         assert!(toml_string.contains("[[a]]"));
         assert!(toml_string.contains("[sk]"));
         assert!(toml_string.contains("[eek]"));
-        assert!(toml_string.contains("[e_sm]"));
+        assert!(toml_string.contains("[[e_sm]]"));
     }
 }

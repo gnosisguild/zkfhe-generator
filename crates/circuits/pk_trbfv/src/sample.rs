@@ -66,14 +66,14 @@ pub fn generate_sample_encryption(
     let share_manager = ShareManager::new(num_parties, threshold, trbfv_params.clone());
 
     // Generate smudging error coefficients
-    let e_sm_coeffs = trbfv
+    let esi_coeffs = trbfv
         .generate_smudging_error(num_ciphertexts, lambda, &mut rng)
         .map_err(|e| format!("Failed to generate smudging error: {:?}", e))?;
 
     // Convert to polynomial in RNS representation
     // bigints_to_poly returns Zeroizing<Poly>, we need to clone the inner Poly
     let e_sm_rns_zeroizing = share_manager
-        .bigints_to_poly(&e_sm_coeffs)
+        .bigints_to_poly(&esi_coeffs)
         .map_err(|e| format!("Failed to convert smudging error to poly: {:?}", e))?;
     let e_sm_rns = e_sm_rns_zeroizing.deref().clone();
 

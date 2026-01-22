@@ -13,8 +13,7 @@ use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
 use shared::commitments::{
-    compute_aggregated_shares_commitment_from_payload,
-    prepare_aggregated_shares_from_values_commitment_payload,
+    compute_aggregated_shares_commitment_from_payload, prepare_l_polynomial_commitment_payload,
 };
 use shared::errors::ZkFheResult;
 use shared::utils::to_string_2d_vec;
@@ -79,12 +78,16 @@ impl DecShareTrBfvVectors {
     /// * `e_rns` - Aggregated sum of noise e = Σe_i (in RNS representation).
     /// * `d_share_rns` - Computed decryption share d (in RNS representation).
     /// * `params` - BFV parameters.
+    /// * `bit_s` - Bit width for shares bounds (used for commitment computation).
+    /// * `bit_e` - Bit width for noise bounds (used for commitment computation).
     pub fn compute(
         ct: &Ciphertext,
         s_rns: &Poly,
         e_rns: &Poly,
         d_share_rns: &Poly,
         params: &Arc<BfvParameters>,
+        bit_s: u32,
+        bit_e: u32,
     ) -> ZkFheResult<DecShareTrBfvVectors> {
         let ctx = params.ctx_at_level(ct.level)?;
         let n: u64 = ctx.degree as u64;
@@ -266,9 +269,9 @@ impl DecShareTrBfvVectors {
         }
 
         // Compute commitments to s and e (matches circuit's commitment functions)
-        let s_payload = prepare_aggregated_shares_from_values_commitment_payload(&res.s_is);
+        let s_payload = prepare_l_polynomial_commitment_payload(&res.s_is, bit_s);
         res.expected_s_commitment = compute_aggregated_shares_commitment_from_payload(s_payload);
-        let e_payload = prepare_aggregated_shares_from_values_commitment_payload(&res.e_is);
+        let e_payload = prepare_l_polynomial_commitment_payload(&res.e_is, bit_e);
         res.expected_e_commitment = compute_aggregated_shares_commitment_from_payload(e_payload);
 
         Ok(res)
@@ -358,6 +361,16 @@ mod tests {
         )
         .unwrap();
 
+        // Compute bounds to get bit_s and bit_e
+        use crate::bounds::DecShareTrBfvBounds;
+        let (_, bounds) = DecShareTrBfvBounds::compute(&params, 0).unwrap();
+        let mut bit_r2 = 0;
+        for bound in &bounds.r2_bounds {
+            bit_r2 = bit_r2.max(shared::template::calculate_bit_width(&bound.to_string()).unwrap());
+        }
+        let bit_s = bit_r2;
+        let bit_e = bit_r2;
+
         // Compute vectors
         let vecs = DecShareTrBfvVectors::compute(
             &decryption_data.ciphertext,
@@ -365,6 +378,8 @@ mod tests {
             &decryption_data.e_rns,
             &decryption_data.d_share_rns,
             &params,
+            bit_s,
+            bit_e,
         )
         .unwrap();
 
