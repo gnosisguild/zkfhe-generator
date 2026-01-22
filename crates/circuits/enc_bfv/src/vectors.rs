@@ -89,6 +89,7 @@ impl EncBfvVectors {
     /// * `ct` - Ciphertext from fhe.rs.
     /// * `pk` - Public Key from fhe.rs.
     /// * `bit_pk` - Bit width for packing public key coefficients for commitment computation.
+    /// * `bit_msg` - Bit width for packing message coefficients for commitment computation.
     #[allow(clippy::too_many_arguments)]
     pub fn compute(
         pt: &Plaintext,
@@ -99,6 +100,7 @@ impl EncBfvVectors {
         pk: &PublicKey,
         params: &Arc<BfvParameters>,
         bit_pk: u32,
+        bit_msg: u32,
     ) -> ZkFheResult<EncBfvVectors> {
         // Reconstruct e1_rns in mod Q.
         let mut e0_power = e0_rns.clone();
@@ -550,7 +552,7 @@ impl EncBfvVectors {
         res.expected_pk_commitment = compute_pk_bfv_commitment(&res.pk0is, &res.pk1is, bit_pk);
 
         // Compute expected_message_commitment from message
-        res.expected_message_commitment = compute_message_commitment(&res.message);
+        res.expected_message_commitment = compute_message_commitment(&res.message, bit_msg);
 
         Ok(res)
     }
@@ -653,9 +655,11 @@ mod tests {
 
         // Compute vectors (using a default bit_pk for testing - in real usage this comes from bounds)
         let bit_pk = 52; // Default for testing
-        let vecs =
-            EncBfvVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params, bit_pk)
-                .unwrap();
+        let bit_msg = 55; // Default for testing
+        let vecs = EncBfvVectors::compute(
+            &pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params, bit_pk, bit_msg,
+        )
+        .unwrap();
 
         let json = vecs.to_json();
 

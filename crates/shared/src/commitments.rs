@@ -1,7 +1,6 @@
 use crate::packing::flatten;
 use crate::utils::compute_safe;
 use ark_bn254::Fr as Field;
-use ark_bn254::Fr as FieldElement;
 use ark_ff::BigInteger;
 use ark_ff::PrimeField;
 use num_bigint::BigInt;
@@ -279,10 +278,11 @@ pub fn compute_aggregated_commitment(values: &[Vec<BigInt>]) -> BigInt {
 }
 
 /// Compute a commitment to the message polynomial.
-pub fn compute_message_commitment(message: &[BigInt]) -> BigInt {
+pub fn compute_message_commitment(message: &[BigInt], bit_msg: u32) -> BigInt {
     // Convert message coefficients to Field (matches compute_message_commitment in Noir)
     // In Noir, message.coefficients[i] are Field values, so we convert BigInt to Field
-    let inputs: Vec<FieldElement> = message.iter().map(crate::utils::bigint_to_field).collect();
+    let mut inputs: Vec<Field> = Vec::new();
+    inputs = flatten(inputs, &[message.to_vec()], bit_msg);
 
     // Step 2: Hash using SafeSponge (matches compute_message_commitment in Noir)
     // Domain separator - "PVSS_sh_pm" (must match SK shares circuit)

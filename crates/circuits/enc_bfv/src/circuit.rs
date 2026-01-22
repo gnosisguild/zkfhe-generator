@@ -104,6 +104,8 @@ impl Circuit for EncBfvCircuit {
 
         // Calculate bit_pk from bounds for commitment computation
         let bit_pk = shared::template::calculate_bit_width(&bounds.pk_bounds[0].to_string())?;
+        // Calculate bit_msg from bounds for commitment computation
+        let bit_msg = shared::template::calculate_bit_width(&bounds.msg_bound.to_string())?;
 
         // Compute witness vectors from the encryption data
         let vectors = EncBfvVectors::compute(
@@ -115,6 +117,7 @@ impl Circuit for EncBfvCircuit {
             &encryption_data.public_key,
             selected_params,
             bit_pk,
+            bit_msg,
         )?;
 
         let vectors_standard = vectors.standard_form();
