@@ -16,7 +16,7 @@ use num_bigint::ToBigInt;
 use num_traits::Zero;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
-use shared::commitments::{compute_message_commitment, compute_pk_bfv_commitment};
+use shared::commitments::{compute_pk_bfv_commitment, compute_spm_commitment_from_message};
 use shared::errors::ZkFheResult;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 use std::ops::Deref;
@@ -552,7 +552,8 @@ impl EncBfvVectors {
         res.expected_pk_commitment = compute_pk_bfv_commitment(&res.pk0is, &res.pk1is, bit_pk);
 
         // Compute expected_message_commitment from message
-        res.expected_message_commitment = compute_message_commitment(&res.message, bit_msg);
+        res.expected_message_commitment =
+            compute_spm_commitment_from_message(&res.message, bit_msg);
 
         Ok(res)
     }
