@@ -3,13 +3,13 @@
 //! This module handles the computation of valid ranges for polynomial coefficients
 //! and validation that input vectors stay within these bounds.
 
-use polynomial::{reduce_and_center_scalar, reduce_scalar};
 use fhe::bfv::BfvParameters;
 use fhe::bfv::SecretKey;
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_bigint::ToBigInt;
 use num_traits::{Signed, ToPrimitive};
+use polynomial::{reduce_and_center_scalar, reduce_scalar};
 use shared::constants::get_zkp_modulus;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
