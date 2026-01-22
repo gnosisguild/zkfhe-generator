@@ -158,8 +158,8 @@ impl PkAggTrBfvVectors {
 
     /// Convert to standard form (reduce modulo ZKP modulus)
     pub fn standard_form(self) -> Self {
-        use bigint_poly::reduce_coefficients_2d;
-        use bigint_poly::reduce_coefficients_3d;
+        use polynomial::reduce_coefficients_2d;
+        use polynomial::reduce_coefficients_3d;
         use shared::constants::get_zkp_modulus;
         let zkp_modulus = get_zkp_modulus();
 

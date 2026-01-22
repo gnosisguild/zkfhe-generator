@@ -4,7 +4,7 @@
 //! input validation vectors required for proving correct decryption share computation
 //! in zero-knowledge for threshold BFV.
 
-use bigint_poly::*;
+use ::polynomial::*;
 use fhe::bfv::{BfvParameters, Ciphertext};
 use fhe_math::rq::{Poly, Representation};
 use itertools::izip;
@@ -184,7 +184,7 @@ impl DecShareTrBfvVectors {
 
                 // Check whether d_i_hat mod R_qi (the ring) is equal to d_i
                 let mut d_i_hat_mod_rqi = d_i_hat.clone();
-                reduce_in_ring(&mut d_i_hat_mod_rqi, &cyclo, &qi_bigint);
+                reduce_in_ring(&mut d_i_hat_mod_rqi, &cyclo, &qi_bigint).unwrap();
                 assert_eq!(&d_i, &d_i_hat_mod_rqi);
 
                 // Compute numerator = d_i - d_i_hat (in Z)

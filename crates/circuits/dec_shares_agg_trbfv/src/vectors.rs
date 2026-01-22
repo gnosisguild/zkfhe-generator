@@ -4,7 +4,7 @@
 //! input validation vectors required for proving correct decryption share aggregation
 //! in zero-knowledge for threshold BFV.
 
-use bigint_poly::{reduce_coefficients, reduce_coefficients_2d, reduce_coefficients_3d};
+use polynomial::{reduce_coefficients, reduce_coefficients_2d, reduce_coefficients_3d};
 use fhe::bfv::BfvParameters;
 use fhe::trbfv::shamir::ShamirSecretSharing;
 use fhe_math::rq::{Poly, Representation};

@@ -3,7 +3,7 @@
 //! This module handles the computation of valid ranges for polynomial coefficients
 //! and validation that input vectors stay within these bounds.
 
-use bigint_poly::{reduce_and_center_scalar, reduce_scalar};
+use polynomial::{reduce_and_center_scalar, reduce_scalar};
 use fhe::bfv::BfvParameters;
 use fhe::bfv::SecretKey;
 use num_bigint::BigInt;

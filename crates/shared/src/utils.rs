@@ -6,7 +6,7 @@
 use ark_bn254::Fr as Field;
 use ark_bn254::Fr as FieldElement;
 use ark_ff::PrimeField;
-use bigint_poly::reduce_coefficients_3d;
+use polynomial::reduce_coefficients_3d;
 use fhe::bfv::BfvParameters;
 use fhe::bfv::BfvParametersBuilder;
 use num_bigint::BigInt;

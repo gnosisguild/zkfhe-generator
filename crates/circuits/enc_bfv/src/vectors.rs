@@ -3,7 +3,7 @@
 //! This module contains the core data structure and computation logic for generating
 //! input validation vectors required for proving correct BFV encryption in zero-knowledge.
 
-use bigint_poly::*;
+use ::polynomial::*;
 use fhe::bfv::{BfvParameters, Ciphertext, Plaintext, PublicKey};
 use fhe_math::{
     rq::{Poly, Representation},
@@ -350,7 +350,7 @@ impl EncBfvVectors {
 
                 // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
                 let mut ct0i_hat_mod_rqi = ct0i_hat.clone();
-                reduce_in_ring(&mut ct0i_hat_mod_rqi, &cyclo, &qi_bigint);
+                reduce_in_ring(&mut ct0i_hat_mod_rqi, &cyclo, &qi_bigint).unwrap();
                 assert_eq!(&ct0i, &ct0i_hat_mod_rqi);
 
                 // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
@@ -435,7 +435,7 @@ impl EncBfvVectors {
 
                 // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
                 let mut ct1i_hat_mod_rqi = ct1i_hat.clone();
-                reduce_in_ring(&mut ct1i_hat_mod_rqi, &cyclo, &qi_bigint);
+                reduce_in_ring(&mut ct1i_hat_mod_rqi, &cyclo, &qi_bigint).unwrap();
                 assert_eq!(&ct1i, &ct1i_hat_mod_rqi);
 
                 // Compute p2i numerator = ct1i - ct1i_hat
