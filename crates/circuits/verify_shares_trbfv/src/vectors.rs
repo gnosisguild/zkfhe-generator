@@ -7,7 +7,7 @@ use crate::sample::VerifySharesTrbfvData;
 use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use shared::commitments::compute_secret_commitment;
+use shared::commitments::{compute_secret_e_sm_commitment, compute_secret_sk_commitment};
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
@@ -27,9 +27,9 @@ pub struct VerifySharesTrbfvVectors {
     /// Parity check matrices: h[mod_idx][row][col]
     /// Size per modulus: (N_PARTIES - T) × (N_PARTIES + 1)
     pub h: Vec<Vec<Vec<BigInt>>>,
-    /// Expected commitment to secret (from C1, pk_trbfv circuit)
-    /// This can be either commit(sk_trbfv) or commit(e_sm)
-    /// Uses secret_crt[0] (first modulus) for commitment computation
+    /// Expected commitment(s) to secret (from C1, pk_trbfv circuit)
+    /// For SK: single commitment (1 element) computed from secret_crt[0] since all moduli are the same
+    /// For ESM: L commitments (one per modulus) computed from secret_crt[j] for each modulus j
     pub expected_secret_commitment: BigInt,
     /// Sample type to determine which circuit struct to use
     pub sample_type: SampleType,
@@ -159,8 +159,15 @@ impl VerifySharesTrbfvVectors {
         }
 
         // Compute expected_secret_commitment (matches C1's compute_secret_commitment)
-        // Uses secret_crt[0] (first modulus) for commitment computation, matching Noir circuit
-        let expected_secret_commitment = compute_secret_commitment(&secret_crt[0], bit_secret);
+        // For SK: secret_crt[j][i] is the same for all j (trinary), so compute commitment from secret_crt[0]
+        // For ESM: secret_crt[j][i] is different for each modulus j (RNS representation), so compute commitment for each modulus
+        let expected_secret_commitment = if is_secret_key {
+            // For SK: single commitment (all moduli have the same polynomial)
+            compute_secret_sk_commitment(&secret_crt[0], bit_secret)
+        } else {
+            // For ESM: compute commitment for each modulus
+            compute_secret_e_sm_commitment(&secret_crt, bit_secret)
+        };
 
         Ok(VerifySharesTrbfvVectors {
             secret_crt,
@@ -345,8 +352,8 @@ impl VerifySharesTrbfvVectors {
         // Reduce h coefficients (3D array)
         let h = reduce_coefficients_3d(&self.h, &zkp_modulus);
 
-        // Reduce expected_secret_commitment modulo ZKP modulus
-        let mut expected_secret_commitment = self.expected_secret_commitment % &zkp_modulus;
+        // Reduce expected_secret_commitment(s) modulo ZKP modulus
+        let mut expected_secret_commitment = self.expected_secret_commitment.clone() % &zkp_modulus;
         if expected_secret_commitment < BigInt::zero() {
             expected_secret_commitment += &zkp_modulus;
         }

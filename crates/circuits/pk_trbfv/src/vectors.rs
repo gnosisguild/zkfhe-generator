@@ -19,6 +19,7 @@ type ModulusComputationResult = (
     Vec<BigInt>,
     Vec<BigInt>,
     Vec<BigInt>,
+    Vec<BigInt>,
 );
 
 /// Set of vectors for input validation of a ciphertext
@@ -27,7 +28,7 @@ pub struct PkTrBfvVectors {
     pub a: Vec<Vec<BigInt>>,
     pub eek: Vec<BigInt>,
     pub sk: Vec<BigInt>,
-    pub e_sm: Vec<BigInt>,
+    pub e_sm: Vec<Vec<BigInt>>,
     pub r1is: Vec<Vec<BigInt>>,
     pub r2is: Vec<Vec<BigInt>>,
     pub pk0is: Vec<Vec<BigInt>>,
@@ -40,7 +41,7 @@ impl PkTrBfvVectors {
             a: vec![vec![BigInt::zero(); degree]; num_moduli],
             eek: vec![BigInt::zero(); degree],
             sk: vec![BigInt::zero(); degree],
-            e_sm: vec![BigInt::zero(); degree],
+            e_sm: vec![vec![BigInt::zero(); degree]; num_moduli],
             r1is: vec![vec![BigInt::zero(); 2 * (degree - 1)]; num_moduli],
             r2is: vec![vec![BigInt::zero(); degree - 1]; num_moduli],
             pk0is: vec![vec![BigInt::zero(); degree]; num_moduli],
@@ -100,21 +101,6 @@ impl PkTrBfvVectors {
                 .collect()
         };
 
-        let e_sm: Vec<BigInt> = unsafe {
-            ctx.moduli_operators()[0]
-                .center_vec_vt(
-                    e_sm_rns_copy
-                        .coefficients()
-                        .row(0)
-                        .as_slice()
-                        .ok_or_else(|| "Cannot center coefficients.".to_string())?,
-                )
-                .iter()
-                .rev()
-                .map(|&x| BigInt::from(x))
-                .collect()
-        };
-
         // Extract and convert public key polynomials
         let (mut pk0, mut pk1): (Poly, Poly) = (pk.clone(), a_rns.clone());
         pk0.change_representation(Representation::PowerBasis);
@@ -135,12 +121,14 @@ impl PkTrBfvVectors {
         let a_coeffs = a_rns_copy.coefficients();
         let sk_coeffs = sk_rns_copy.coefficients();
         let eek_coeffs = eek_rns_copy.coefficients();
+        let e_sm_coeffs = e_sm_rns_copy.coefficients();
 
         let pk0_coeffs_rows = pk0_coeffs.rows();
         let pk1_coeffs_rows = pk1_coeffs.rows();
         let a_coeffs_rows = a_coeffs.rows();
         let sk_coeffs_rows = sk_coeffs.rows();
         let eek_coeffs_rows = eek_coeffs.rows();
+        let e_sm_coeffs_rows = e_sm_coeffs.rows();
 
         // Perform the main computation logic
         let results: Vec<ModulusComputationResult> = izip!(
@@ -149,12 +137,13 @@ impl PkTrBfvVectors {
             pk1_coeffs_rows,
             a_coeffs_rows,
             sk_coeffs_rows,
-            eek_coeffs_rows
+            eek_coeffs_rows,
+            e_sm_coeffs_rows
         )
         .enumerate()
         .par_bridge()
         .map(
-            |(i, (qi, pk0_coeffs, pk1_coeffs, a_coeffs, sk_coeffs, eek_coeffs))| {
+            |(i, (qi, pk0_coeffs, pk1_coeffs, a_coeffs, sk_coeffs, eek_coeffs, e_sm_coeffs))| {
                 let mut pk0i: Vec<BigInt> =
                     pk0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
                 let mut pk1i: Vec<BigInt> =
@@ -195,6 +184,19 @@ impl PkTrBfvVectors {
                 let eeki: Vec<BigInt> = unsafe {
                     qi.center_vec_vt(
                         eek_coeffs
+                            .as_slice()
+                            .ok_or_else(|| "Cannot center coefficients.".to_string())
+                            .unwrap(),
+                    )
+                    .iter()
+                    .rev()
+                    .map(|&x| BigInt::from(x))
+                    .collect()
+                };
+
+                let e_smi: Vec<BigInt> = unsafe {
+                    qi.center_vec_vt(
+                        e_sm_coeffs
                             .as_slice()
                             .ok_or_else(|| "Cannot center coefficients.".to_string())
                             .unwrap(),
@@ -290,24 +292,24 @@ impl PkTrBfvVectors {
                 // pk1i = ai
                 assert_eq!(&pk1i, &ai);
 
-                (i, r2i, r1i, pk0i, pk1i, ai.clone())
+                (i, r2i, r1i, pk0i, pk1i, e_smi, ai.clone())
             },
         )
         .collect();
 
         // Merge results into the `res` structure after parallel execution
-        for (i, r2i, r1i, pk0i, pk1i, a) in results.into_iter() {
+        for (i, r2i, r1i, pk0i, pk1i, e_smi, a) in results.into_iter() {
             res.r2is[i] = r2i;
             res.r1is[i] = r1i;
             res.pk0is[i] = pk0i;
             res.pk1is[i] = pk1i;
+            res.e_sm[i] = e_smi;
             res.a[i] = a;
         }
 
         // Set final result vectors
         res.sk = sk;
         res.eek = eek;
-        res.e_sm = e_sm;
 
         Ok(res)
     }
@@ -322,9 +324,9 @@ impl PkTrBfvVectors {
             pk1is: reduce_coefficients_2d(&self.pk1is, zkp_modulus),
             r1is: reduce_coefficients_2d(&self.r1is, zkp_modulus),
             r2is: reduce_coefficients_2d(&self.r2is, zkp_modulus),
+            e_sm: reduce_coefficients_2d(&self.e_sm, zkp_modulus),
             sk: reduce_coefficients(&self.sk, zkp_modulus),
             eek: reduce_coefficients(&self.eek, zkp_modulus),
-            e_sm: reduce_coefficients(&self.e_sm, zkp_modulus),
         }
     }
 
@@ -332,7 +334,7 @@ impl PkTrBfvVectors {
         json!({
             "sk": to_string_1d_vec(&self.sk),
             "eek": to_string_1d_vec(&self.eek),
-            "e_sm": to_string_1d_vec(&self.e_sm),
+            "e_sm": to_string_2d_vec(&self.e_sm),
             "a": to_string_2d_vec(&self.a),
             "r2is": to_string_2d_vec(&self.r2is),
             "r1is": to_string_2d_vec(&self.r1is),
@@ -360,7 +362,6 @@ mod tests {
         assert!(std_form.a.iter().flatten().all(|x| x < &p));
         assert!(std_form.eek.iter().all(|x| x < &p));
         assert!(std_form.sk.iter().all(|x| x < &p));
-        assert!(std_form.e_sm.iter().all(|x| x < &p));
     }
 
     #[test]

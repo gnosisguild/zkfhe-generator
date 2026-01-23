@@ -65,17 +65,7 @@ impl Circuit for DecShareTrBfvCircuit {
                 }
             })?;
 
-        let vectors = DecShareTrBfvVectors::compute(
-            &decryption_data.ciphertext,
-            &decryption_data.s_rns,
-            &decryption_data.e_rns,
-            &decryption_data.d_share_rns,
-            trbfv_params,
-        )?;
-
-        let vectors_standard = vectors.standard_form();
-
-        // Create bounds data for template
+        // Create bounds data for template (needed for bit width calculation)
         let bounds_data = DecShareTrBfvBoundsData {
             decryption_share_bound: bounds.decryption_share_bound.to_string(),
             r1_bounds: bounds.r1_bounds.iter().map(|b| b.to_string()).collect(),
@@ -108,6 +98,22 @@ impl Circuit for DecShareTrBfvCircuit {
             num_parties as u32,
             threshold as u32,
         )?;
+
+        // Extract bit_s and bit_e from template_params (they are both equal to bit_r2)
+        let bit_s = template_params.bit_s;
+        let bit_e = template_params.bit_e;
+
+        let vectors = DecShareTrBfvVectors::compute(
+            &decryption_data.ciphertext,
+            &decryption_data.s_rns,
+            &decryption_data.e_rns,
+            &decryption_data.d_share_rns,
+            trbfv_params,
+            bit_s,
+            bit_e,
+        )?;
+
+        let vectors_standard = vectors.standard_form();
 
         // Generate config .nr file (named after parameter set: trbfv.nr)
         let configs_filename = format!("{}.nr", self.parameter_type().as_str());
