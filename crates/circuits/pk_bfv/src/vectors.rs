@@ -1,4 +1,4 @@
-use bigint_poly::*;
+use ::polynomial::*;
 use fhe::bfv::BfvParameters;
 use fhe::bfv::PublicKey;
 use fhe_math::rq::Representation;

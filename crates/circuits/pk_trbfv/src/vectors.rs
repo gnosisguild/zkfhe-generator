@@ -1,4 +1,4 @@
-use bigint_poly::*;
+use ::polynomial::*;
 use fhe::bfv::BfvParameters;
 use fhe_math::rq::{Poly, Representation};
 use itertools::izip;
@@ -221,7 +221,7 @@ impl PkTrBfvVectors {
 
                 // Check whether pk0i_hat mod R_qi (the ring) is equal to pk0i
                 let mut pk0i_hat_mod_rqi = pk0i_hat.clone();
-                reduce_in_ring(&mut pk0i_hat_mod_rqi, &cyclo, &qi_bigint);
+                reduce_in_ring(&mut pk0i_hat_mod_rqi, &cyclo, &qi_bigint).unwrap();
                 assert_eq!(&pk0i, &pk0i_hat_mod_rqi);
 
                 // Compute r2i numerator = pk0i - pk0i_hat and reduce/center the polynomial

@@ -324,7 +324,7 @@ impl VerifySharesTrbfvVectors {
     /// This reduces all coefficients modulo the ZKP field modulus to ensure
     /// they fit within the circuit's field representation.
     pub fn standard_form(self) -> Self {
-        use bigint_poly::reduce_coefficients_3d;
+        use polynomial::reduce_coefficients_3d;
         use shared::constants::get_zkp_modulus;
         let zkp_modulus = get_zkp_modulus();
 
