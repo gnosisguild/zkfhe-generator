@@ -940,7 +940,7 @@ dependencies = [
 [[package]]
 name = "polynomial"
 version = "0.1.7"
-source = "git+https://github.com/gnosisguild/enclave?branch=refactor%2Fbigint-poly#27e7cb63457485e53c8ce0105d798c95379acfaa"
+source = "git+https://github.com/gnosisguild/enclave?branch=main#a358cb0417c657b2397c43e1687e1a9b92e42101"
 dependencies = [
  "num-bigint",
  "num-traits",
