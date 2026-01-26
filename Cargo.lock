@@ -317,9 +317,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.53"
+version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9e340e012a1bf4935f5282ed1436d1489548e8f72308207ea5df0e23d2d03f8"
+checksum = "be92d32e80243a54711e5d7ce823c35c41c9d929dc4ab58e1276f625841aadf9"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -327,9 +327,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.53"
+version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d76b5d13eaa18c901fd2f7fca939fefe3a0727a953561fefdf3b2922b8569d00"
+checksum = "707eab41e9622f9139419d573eca0900137718000c517d47da73045f54331c3d"
 dependencies = [
  "anstream",
  "anstyle",
@@ -339,9 +339,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.5.49"
+version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a0b5487afeab2deb2ff4e03a807ad1a03ac532ff5a2cee5d86884440c7f7671"
+checksum = "ef4f52386a59ca4c860f7393bcf8abd8dfd91ecccc0f774635ff68e92eeef491"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -920,6 +920,17 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "parity-matrix"
+version = "0.1.7"
+source = "git+https://github.com/gnosisguild/enclave?branch=refactor%2Fparity-matrix#7df5e4f8f3b1cfa632a83f99dfb19e62516b03ec"
+dependencies = [
+ "clap",
+ "num-bigint",
+ "num-traits",
+ "thiserror",
+]
 
 [[package]]
 name = "paste"
@@ -1750,16 +1761,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zkfhe-parity-matrix"
-version = "0.1.0"
-dependencies = [
- "clap",
- "num-bigint",
- "num-traits",
- "thiserror",
-]
-
-[[package]]
 name = "zkfhe-pk-agg-trbfv"
 version = "0.1.0"
 dependencies = [
@@ -1858,12 +1859,12 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
+ "parity-matrix",
  "polynomial",
  "rand",
  "serde",
  "serde_json",
  "tempfile",
  "toml",
- "zkfhe-parity-matrix",
  "zkfhe-shared",
 ]

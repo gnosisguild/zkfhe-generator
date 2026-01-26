@@ -14,7 +14,7 @@ rust-version.workspace = true
 
 [dependencies]
 shared = { package = "zkfhe-shared", path = "../../shared" }
-parity_matrix = { package = "zkfhe-parity-matrix", path = "../../parity_matrix" }
+parity_matrix = { workspace = true }
 polynomial = { workspace = true }
 fhe = { workspace = true }
 fhe-math = { workspace = true }
