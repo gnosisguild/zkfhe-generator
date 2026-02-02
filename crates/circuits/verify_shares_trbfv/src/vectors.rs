@@ -7,7 +7,9 @@ use crate::sample::VerifySharesTrbfvData;
 use fhe::bfv::BfvParameters;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use shared::commitments::{compute_secret_e_sm_commitment, compute_secret_sk_commitment};
+use shared::commitments::{
+    compute_share_computation_e_sm_commitment, compute_share_computation_sk_commitment,
+};
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
@@ -163,10 +165,10 @@ impl VerifySharesTrbfvVectors {
         // For ESM: secret_crt[j][i] is different for each modulus j (RNS representation), so compute commitment for each modulus
         let expected_secret_commitment = if is_secret_key {
             // For SK: single commitment (all moduli have the same polynomial)
-            compute_secret_sk_commitment(&secret_crt[0], bit_secret)
+            compute_share_computation_sk_commitment(&secret_crt[0], bit_secret)
         } else {
             // For ESM: compute commitment for each modulus
-            compute_secret_e_sm_commitment(&secret_crt, bit_secret)
+            compute_share_computation_e_sm_commitment(&secret_crt, bit_secret)
         };
 
         Ok(VerifySharesTrbfvVectors {

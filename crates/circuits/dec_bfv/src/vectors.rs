@@ -8,7 +8,7 @@ use fhe_traits::FheDecrypter;
 use num_bigint::BigInt;
 use num_traits::Zero;
 use serde_json::json;
-use shared::commitments::compute_spm_commitment_from_message;
+use shared::commitments::compute_share_encryption_commitment_from_message;
 use shared::errors::{ZkFheError, ZkFheResult};
 use shared::utils::to_string_1d_vec;
 use std::sync::Arc;
@@ -88,7 +88,7 @@ impl DecBfvVectors {
                     // Compute expected commitment for this decrypted share
                     // This matches Circuit 3's message commitment
                     res.expected_commitments[party_idx][mod_idx] =
-                        compute_spm_commitment_from_message(&share_coeffs, bit_msg);
+                        compute_share_encryption_commitment_from_message(&share_coeffs, bit_msg);
                 }
             }
         }
