@@ -16,7 +16,7 @@ use num_bigint::ToBigInt;
 use num_traits::{ToPrimitive, Zero};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
-use shared::commitments::compute_pk_agg_commitment;
+use shared::commitments::compute_threshold_pk_commitment;
 use shared::errors::ZkFheResult;
 use shared::utils::{to_string_1d_vec, to_string_2d_vec};
 use std::ops::Deref;
@@ -511,7 +511,7 @@ impl GrecoVectors {
         res.e1 = e1;
 
         // Compute pk_commitment from pk0is and pk1is
-        res.pk_commitment = compute_pk_agg_commitment(&res.pk0is, &res.pk1is, bit_pk);
+        res.pk_commitment = compute_threshold_pk_commitment(&res.pk0is, &res.pk1is, bit_pk);
 
         Ok(res)
     }
