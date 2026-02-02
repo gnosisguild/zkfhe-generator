@@ -3,7 +3,7 @@ use fhe_math::rq::Representation;
 use itertools::izip;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use shared::commitments::compute_threshold_pk_commitment;
+use shared::commitments::compute_pk_aggregation_commitment;
 use shared::errors::ZkFheResult;
 use std::sync::Arc;
 
@@ -144,7 +144,7 @@ impl PkAggTrBfvVectors {
         let mut expected_pk_trbfv_commitments = Vec::new();
         for party_idx in 0..data.num_honest_parties {
             let commitment =
-                compute_threshold_pk_commitment(&pk0[party_idx], &pk1[party_idx], bit_pk);
+                compute_pk_aggregation_commitment(&pk0[party_idx], &pk1[party_idx], bit_pk);
             expected_pk_trbfv_commitments.push(commitment);
         }
 
